@@ -20,8 +20,13 @@
     <div id="start" hidden>
       <div class="start-inner">
         <h1>Babylon VR Playground</h1>
-        <p class="sub">Sponza atrium · Havok physics · WebXR hands &amp; controllers</p>
+        <p class="sub">Havok physics · WebXR hands &amp; controllers · touch &amp; desktop</p>
+        <label class="location">
+          <span>Location</span>
+          <select id="location"></select>
+        </label>
         <button id="enter-vr" hidden>Enter VR</button>
+        <button id="enter-touch" hidden>Play (touch controls)</button>
         <button id="enter-desktop">Play on desktop</button>
         <p id="xr-status" class="hint"></p>
       </div>
@@ -38,6 +43,19 @@
         <b>Hold LMB</b> grab · <b>RMB</b> throw · <b>Wheel</b> push/pull held · <b>F</b> push blast · <b>R</b> reset blocks
       </div>
       <div id="crosshair"></div>
+    </div>
+
+    <div id="touch" hidden>
+      <div id="stick"><div id="stick-knob"></div></div>
+      <div id="touch-hint">Left thumb: move · Right thumb: look</div>
+      <div id="touch-buttons">
+        <button data-act="push" class="small">Push</button>
+        <button data-act="throw" class="small">Throw</button>
+        <button data-act="reset" class="small">Reset</button>
+        <button data-act="grab">Grab</button>
+        <button data-act="crouch">Crouch</button>
+        <button data-act="jump" class="big">Jump</button>
+      </div>
     </div>
     <script type="module" src="./src/main.ts"></script>
   </body>

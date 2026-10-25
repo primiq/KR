@@ -5,6 +5,9 @@ const REMOTE_ENV = "https://raw.githubusercontent.com/BabylonJS/Assets/master/en
 export const Assets = {
     sponza: { local: "assets/sponza/", remote: REMOTE_SPONZA, file: "Sponza.gltf" },
     environment: { local: "assets/env/sanGiuseppeBridge.env", remote: REMOTE_ENV },
+    /** "Forest Slope" HDRI by Poly Haven (CC0), mirrored in pmndrs/drei-assets. */
+    forestHdr: { local: "assets/env/forest_slope_1k.hdr", remote: "https://raw.githubusercontent.com/pmndrs/drei-assets/master/hdri/forest_slope_1k.hdr" },
+    waterBump: { local: "assets/forest/waterbump.png", remote: "https://raw.githubusercontent.com/BabylonJS/Assets/master/textures/waterbump.png" },
 };
 
 /** Physics collision layers (Havok shape filters). */

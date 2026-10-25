@@ -3,6 +3,7 @@
 //
 //  - Sponza (Crytek, PBR textures by Alexandre Pestana) from the Khronos glTF Sample Assets repo
 //  - "San Giuseppe Bridge" prefiltered HDR environment from the BabylonJS Assets repo
+//  - "Forest Slope" HDRI (Poly Haven, CC0) via pmndrs/drei-assets, and Babylon's water bump map
 import { mkdir, writeFile, access } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -41,6 +42,9 @@ async function main() {
     }
     console.log("Fetching environment…");
     await download(ENV, join(root, "env", "sanGiuseppeBridge.env"));
+    console.log("Fetching forest assets…");
+    await download("https://raw.githubusercontent.com/pmndrs/drei-assets/master/hdri/forest_slope_1k.hdr", join(root, "env", "forest_slope_1k.hdr"));
+    await download("https://raw.githubusercontent.com/BabylonJS/Assets/master/textures/waterbump.png", join(root, "forest", "waterbump.png"));
     console.log("Done.");
 }
 

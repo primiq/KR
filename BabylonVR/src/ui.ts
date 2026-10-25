@@ -94,11 +94,12 @@ export class VRMenu {
         stats: Stats,
         onReset: () => void,
         status: () => string,
+        locations: { list: Array<{ id: string; label: string }>; current: string; select: (id: string) => void },
     ) {
-        this.plane = MeshBuilder.CreatePlane("vrMenu", { width: 0.56, height: 0.7 }, scene);
+        this.plane = MeshBuilder.CreatePlane("vrMenu", { width: 0.56, height: 0.84 }, scene);
         this.plane.isVisible = false;
         this.plane.isPickable = false;
-        const ui = AdvancedDynamicTexture.CreateForMesh(this.plane, 800, 1000, false);
+        const ui = AdvancedDynamicTexture.CreateForMesh(this.plane, 800, 1200, false);
 
         const bg = new Rectangle("bg");
         bg.background = "#0c0e16dd";
@@ -154,8 +155,31 @@ export class VRMenu {
         reset.onPointerUpObservable.add(onReset);
         panel.addControl(reset);
 
+        // Location switcher (reloads the page into the chosen location).
+        const locRow = new StackPanel("locations");
+        locRow.isVertical = false;
+        locRow.height = "90px";
+        locRow.paddingTopInPixels = 16;
+        for (const loc of locations.list) {
+            const b = Button.CreateSimpleButton(`loc-${loc.id}`, loc.label);
+            b.width = "330px";
+            b.height = "70px";
+            b.paddingLeftInPixels = 10;
+            b.paddingRightInPixels = 10;
+            b.cornerRadius = 16;
+            b.fontSize = 28;
+            const active = loc.id === locations.current;
+            b.color = active ? "#05060a" : "#e8ecf4";
+            b.background = active ? "#6ee7ff" : "#20263a";
+            b.onPointerUpObservable.add(() => {
+                if (!active) locations.select(loc.id);
+            });
+            locRow.addControl(b);
+        }
+        panel.addControl(locRow);
+
         this.statsText = new TextBlock("stats", "");
-        this.statsText.height = "250px";
+        this.statsText.height = "230px";
         this.statsText.color = "#9aa3b5";
         this.statsText.fontSize = 24;
         this.statsText.fontFamily = "monospace";

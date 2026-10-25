@@ -10,7 +10,9 @@
     "noUnusedParameters": true,
     "skipLibCheck": true,
     "isolatedModules": true,
-    "noEmit": true
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "paths": { "@eztree/*": ["./node_modules/@dgreenheck/ez-tree/src/*"] }
   },
   "include": ["src"]
 }

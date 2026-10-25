@@ -3,9 +3,21 @@ import { Interaction as I } from "./config";
 import type { InteractionSystem, Manipulator } from "./interaction";
 import type { PlayerController } from "./player";
 
-/** Keyboard + mouse first-person controls (also handy for testing without a headset). */
+/** Movement intent from a non-keyboard source (the mobile touch overlay). */
+export interface ExternalInput {
+    move: { x: number; y: number };
+    sprint: boolean;
+    crouch: boolean;
+}
+
+/**
+ * Keyboard + mouse first-person controls (also handy for testing without a headset). Grab, throw
+ * and push are public so the mobile touch overlay can drive the same "hand".
+ */
 export class DesktopControls {
     enabled = true;
+    /** Set by touch controls; merged with the keyboard each frame. */
+    external: ExternalInput | null = null;
     private readonly keys = new Set<string>();
     private readonly hand: Manipulator;
     private readonly crosshair = document.getElementById("crosshair");
@@ -27,16 +39,13 @@ export class DesktopControls {
                 e.preventDefault();
             }
             if (e.code === "KeyR") this.onReset();
-            if (e.code === "KeyF") {
-                const cam = player.desktopCamera;
-                interaction.blast(cam.globalPosition, cam.getDirection(Vector3.Forward()), 6, 6);
-            }
+            if (e.code === "KeyF") this.push();
         });
         window.addEventListener("keyup", (e) => this.keys.delete(e.code));
         window.addEventListener("blur", () => this.keys.clear());
 
         canvas.addEventListener("pointerdown", (e) => {
-            if (!this.enabled) return;
+            if (!this.enabled || e.pointerType === "touch") return;
             if (document.pointerLockElement !== canvas) {
                 canvas.requestPointerLock?.();
                 return;
@@ -45,7 +54,7 @@ export class DesktopControls {
             if (e.button === 2) this.throwHeld();
         });
         canvas.addEventListener("pointerup", (e) => {
-            if (e.button === 0) this.hand.release();
+            if (e.button === 0 && e.pointerType !== "touch") this.hand.release();
         });
         canvas.addEventListener("contextmenu", (e) => e.preventDefault());
         canvas.addEventListener(
@@ -65,10 +74,12 @@ export class DesktopControls {
         const input = this.player.input;
         const x = (k.has("KeyD") || k.has("ArrowRight") ? 1 : 0) - (k.has("KeyA") || k.has("ArrowLeft") ? 1 : 0);
         const y = (k.has("KeyW") || k.has("ArrowUp") ? 1 : 0) - (k.has("KeyS") || k.has("ArrowDown") ? 1 : 0);
+        const ext = this.external;
         input.move.set(x, y);
         if (x && y) input.move.scaleInPlace(Math.SQRT1_2);
-        input.sprint = k.has("ShiftLeft") || k.has("ShiftRight");
-        input.crouch = k.has("KeyC") || k.has("ControlLeft") || k.has("ControlRight");
+        if (!x && !y && ext) input.move.set(ext.move.x, ext.move.y);
+        input.sprint = k.has("ShiftLeft") || k.has("ShiftRight") || !!ext?.sprint;
+        input.crouch = k.has("KeyC") || k.has("ControlLeft") || k.has("ControlRight") || !!ext?.crouch;
 
         const cam = this.player.desktopCamera;
         this.hand.position.copyFrom(cam.globalPosition);
@@ -80,17 +91,32 @@ export class DesktopControls {
         }
     }
 
-    private tryGrab(): void {
+    get holding(): boolean {
+        return !!this.hand.held;
+    }
+
+    /** Grabs whatever is under the crosshair; returns false if nothing is in reach. */
+    tryGrab(): boolean {
         const cam = this.player.desktopCamera;
         const dir = cam.getDirection(Vector3.Forward());
         const hit = this.interaction.raycast(cam.globalPosition, dir, I.desktopReach);
-        if (!hit) return;
+        if (!hit) return false;
         this.hand.grab(hit.grabbable);
         // Pull it to a comfortable carry distance in front of the camera.
         this.hand.setOffset(new Vector3(0, -0.1, Math.min(I.desktopHoldDistance, Math.max(0.7, hit.distance))));
+        return true;
     }
 
-    private throwHeld(): void {
+    drop(): void {
+        this.hand.release();
+    }
+
+    push(): void {
+        const cam = this.player.desktopCamera;
+        this.interaction.blast(cam.globalPosition, cam.getDirection(Vector3.Forward()), 6, 6);
+    }
+
+    throwHeld(): void {
         if (!this.hand.held) return;
         const dir = this.player.desktopCamera.getDirection(Vector3.Forward());
         const mass = this.hand.held.aggregate.body.getMassProperties().mass ?? 1;
