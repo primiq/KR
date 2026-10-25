@@ -9,7 +9,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "fetch-assets": "node scripts/fetch-assets.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:cf": "npm run fetch-assets && npm run build"
   },
   "dependencies": {
     "@babylonjs/core": "^9.32.0",

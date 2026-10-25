@@ -23,6 +23,9 @@ WebXR only works on `https://` or `localhost`.
 - **Same network:** `npm run dev:https`, then open `https://<your-pc-ip>:5173` in the
   headset browser and accept the self-signed certificate warning.
 - **USB (Quest):** `adb reverse tcp:5173 tcp:5173`, then open `http://localhost:5173` on the headset.
+- **Cloudflare (Workers / Pages, git-connected):** set *Root directory* = `BabylonVR`,
+  *Build command* = `npm run build:cf`, *Deploy command* = `npx wrangler deploy`
+  (config in `wrangler.jsonc`; `build:cf` also bundles Sponza + HDR so nothing streams from GitHub).
 - **Static hosting:** `npm run build` and upload `dist/` to any HTTPS host (GitHub Pages,
   Netlify, Cloudflare Pages…). The build uses relative paths, so a sub-folder works.
 
