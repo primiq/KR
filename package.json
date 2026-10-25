@@ -1,0 +1,8 @@
+{
+  "name": "kr-web",
+  "private": true,
+  "description": "Repo-root build wrapper so hosting providers can build the BabylonVR web app without a root-directory setting.",
+  "scripts": {
+    "build": "cd BabylonVR && npm ci && npm run build:cf"
+  }
+}
