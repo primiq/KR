@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>Babylon VR Playground</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <canvas id="renderCanvas" touch-action="none"></canvas>
+
+    <div id="loading">
+      <div class="loading-inner">
+        <h1>Babylon VR Playground</h1>
+        <div class="bar"><div id="loading-bar"></div></div>
+        <p id="loading-text">Starting…</p>
+      </div>
+    </div>
+
+    <div id="start" hidden>
+      <div class="start-inner">
+        <h1>Babylon VR Playground</h1>
+        <p class="sub">Sponza atrium · Havok physics · WebXR hands &amp; controllers</p>
+        <button id="enter-vr" hidden>Enter VR</button>
+        <button id="enter-desktop">Play on desktop</button>
+        <p id="xr-status" class="hint"></p>
+      </div>
+    </div>
+
+    <div id="hud" hidden>
+      <div id="stats"></div>
+      <details id="settings" open>
+        <summary>Graphics</summary>
+        <div id="settings-list"></div>
+      </details>
+      <div id="help">
+        <b>WASD</b> move · <b>Mouse</b> look · <b>Space</b> jump · <b>C / Ctrl</b> crouch · <b>Shift</b> sprint<br />
+        <b>Hold LMB</b> grab · <b>RMB</b> throw · <b>Wheel</b> push/pull held · <b>F</b> push blast · <b>R</b> reset blocks
+      </div>
+      <div id="crosshair"></div>
+    </div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

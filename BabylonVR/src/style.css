@@ -1,0 +1,200 @@
+:root {
+    --bg: #07080c;
+    --panel: rgba(12, 14, 22, 0.72);
+    --text: #e8ecf4;
+    --muted: #9aa3b5;
+    --accent: #6ee7ff;
+    --accent-2: #b48cff;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+#renderCanvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    outline: none;
+    touch-action: none;
+}
+
+[hidden] {
+    display: none !important;
+}
+
+#loading,
+#start {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: radial-gradient(ellipse at 50% 30%, rgba(40, 50, 90, 0.55), rgba(5, 6, 10, 0.92));
+    z-index: 10;
+}
+
+#start {
+    background: radial-gradient(ellipse at 50% 30%, rgba(30, 40, 80, 0.35), rgba(5, 6, 10, 0.6));
+    backdrop-filter: blur(6px);
+}
+
+.loading-inner,
+.start-inner {
+    text-align: center;
+    padding: 32px 40px;
+    border-radius: 18px;
+    background: var(--panel);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    max-width: min(560px, calc(100vw - 32px));
+}
+
+h1 {
+    margin: 0 0 12px;
+    font-size: 28px;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+.sub {
+    color: var(--muted);
+    margin: 0 0 24px;
+}
+
+.bar {
+    width: 320px;
+    max-width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+    margin: 20px auto 12px;
+}
+
+#loading-bar {
+    height: 100%;
+    width: 0;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    transition: width 0.2s ease;
+}
+
+#loading-text,
+.hint {
+    color: var(--muted);
+    font-size: 13px;
+    margin: 8px 0 0;
+}
+
+button {
+    display: block;
+    width: 100%;
+    margin: 10px 0;
+    padding: 14px 20px;
+    font: inherit;
+    font-size: 17px;
+    font-weight: 600;
+    color: #05060a;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    border: 0;
+    border-radius: 12px;
+    cursor: pointer;
+}
+
+button#enter-desktop {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text);
+}
+
+#hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 5;
+}
+
+#stats {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: var(--panel);
+    font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: pre;
+}
+
+#settings {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: var(--panel);
+    pointer-events: auto;
+    min-width: 190px;
+}
+
+#settings summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
+#settings label {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 2px 0;
+    cursor: pointer;
+    user-select: none;
+}
+
+#help {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 8px 14px;
+    border-radius: 10px;
+    background: var(--panel);
+    color: var(--muted);
+    text-align: center;
+    font-size: 12px;
+    max-width: calc(100vw - 32px);
+}
+
+#help b {
+    color: var(--text);
+}
+
+#crosshair {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 6px;
+    height: 6px;
+    margin: -3px 0 0 -3px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.85);
+    box-shadow: 0 0 6px rgba(110, 231, 255, 0.9);
+}
+
+#crosshair.active {
+    background: var(--accent);
+    width: 12px;
+    height: 12px;
+    margin: -6px 0 0 -6px;
+}
