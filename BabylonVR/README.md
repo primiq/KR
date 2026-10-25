@@ -1,16 +1,21 @@
 # Babylon VR Playground
 
-A WebXR-first physics playground built on **Babylon.js 9** and **Havok** physics, set in the
-**Crytek Sponza** atrium. Open it in a VR headset browser and you play it in VR with
-controllers or your bare hands. On a desktop it runs as a first-person game with mouse and
-keyboard.
+A WebXR-first physics playground built on **Babylon.js 9** and **Havok** physics. Pick a
+location from the start screen or the in-VR menu:
+
+- **Sponza Atrium:** the Crytek Sponza courtyard.
+- **Deep Forest:** a procedurally grown forest with a clearing and a pond.
+
+Open it in a VR headset browser and you play it in VR with controllers or your bare hands.
+On a phone or tablet you get touch controls. On a desktop it runs as a first-person game with
+mouse and keyboard.
 
 ## Quick start
 
 ```bash
 cd BabylonVR
 npm install
-npm run fetch-assets   # optional: download Sponza + HDR (~52 MB) for offline use
+npm run fetch-assets   # optional: download Sponza + HDR skies (~55 MB) for offline use
 npm run dev            # http://localhost:5173
 ```
 
@@ -23,9 +28,10 @@ WebXR only works on `https://` or `localhost`.
 - **Same network:** `npm run dev:https`, then open `https://<your-pc-ip>:5173` in the
   headset browser and accept the self-signed certificate warning.
 - **USB (Quest):** `adb reverse tcp:5173 tcp:5173`, then open `http://localhost:5173` on the headset.
-- **Cloudflare (Workers / Pages, git-connected):** set *Root directory* = `BabylonVR`,
-  *Build command* = `npm run build:cf`, *Deploy command* = `npx wrangler deploy`
-  (config in `wrangler.jsonc`; `build:cf` also bundles Sponza + HDR so nothing streams from GitHub).
+- **Cloudflare (Workers, git-connected):** leave *Root directory* empty, set *Build command* =
+  `npm run build` and *Deploy command* = `npx wrangler deploy`. The repo-root `package.json`
+  and `wrangler.jsonc` build this folder (with Sponza and the HDR skies bundled) and deploy
+  `BabylonVR/dist`.
 - **Static hosting:** `npm run build` and upload `dist/` to any HTTPS host (GitHub Pages,
   Netlify, Cloudflare Pages…). The build uses relative paths, so a sub-folder works.
 
@@ -36,24 +42,49 @@ first tap anywhere on the start screen enters VR.
 
 ## Controls
 
-| Action | VR controllers | Hand tracking | Desktop |
-| --- | --- | --- | --- |
-| Move | Left stick (click = sprint) | Walk around your room | WASD (+Shift to sprint) |
-| Turn | Right stick snap-turn (30°) | Turn your body | Mouse |
-| Jump | **A** | Flick both palms upward | Space |
-| Crouch | Crouch for real, or hold **B** / pull right stick back | Crouch for real | Hold C or Ctrl |
-| Grab / throw | **Grip** an object you're touching, then let go mid-swing to throw | **Pinch** (thumb + index) or **make a fist** around it | Hold left mouse button |
-| Force-grab | **Trigger** at an object up to 15 m away; it flies to your hand | – | – |
-| Push / poke | Touch objects with the controller | Fingertips and palms are physics colliders | **F**: force push |
-| Throw (desktop) | – | – | Right mouse button while holding |
-| Hold distance | – | – | Mouse wheel |
-| Menu (graphics toggles + stats) | **Y** | Pinch your left hand for about 1 second | Panel at top-right |
-| Reset blocks | **X** | Button in the menu | **R** |
+| Action | VR controllers | Hand tracking | Phone / tablet | Desktop |
+| --- | --- | --- | --- | --- |
+| Move | Left stick (click = sprint) | Walk around your room | Left thumb: floating joystick (push to the rim to sprint) | WASD (+Shift to sprint) |
+| Turn / look | Right stick snap-turn (30°) | Turn your body | Drag with your right thumb | Mouse |
+| Jump | **A** | Flick both palms upward | **Jump** button | Space |
+| Crouch | Crouch for real, or hold **B** / pull right stick back | Crouch for real | **Crouch** button (toggles) | Hold C or Ctrl |
+| Grab | **Grip** an object you're touching | **Pinch** (thumb + index) or **make a fist** around it | **Grab** what's under the centre dot; tap again to drop | Hold left mouse button |
+| Throw | Let go mid-swing | Open your hand mid-swing | **Throw** button | Right mouse button while holding |
+| Force-grab | **Trigger** at an object up to 15 m away; it flies to your hand | – | – | – |
+| Push / poke | Touch objects with the controller | Fingertips and palms are physics colliders | **Push** button | **F** |
+| Hold distance | – | – | – | Mouse wheel |
+| Menu (graphics, stats, location) | **Y** | Pinch your left hand for about 1 second | Graphics panel at top-right | Panel at top-right |
+| Reset blocks | **X** | Button in the menu | **Reset** button | **R** |
 
-## What's in the scene
+On phones the app asks for full screen and landscape where the browser allows it (Android
+Chrome and Samsung Internet do).
 
-- **Environment:** the Sponza atrium (Khronos glTF sample asset), with PBR textures and
-  a triangle-mesh Havok collider. Alpha-tested foliage and chains have no collision.
+## Locations
+
+**Sponza Atrium:** the Sponza atrium (Khronos glTF sample asset), with PBR textures and a
+triangle-mesh Havok collider. Alpha-tested foliage and chains have no collision. Flickering
+torches light the arcades.
+
+**Deep Forest:** generated at load time, with no large downloads:
+
+- **Trees:** oak, ash, pine and aspen trees and bushes, grown procedurally (an algorithm
+  ported from [ez-tree](https://github.com/dgreenheck/ez-tree)). They use photo-scanned bark
+  (colour, normal, roughness and AO maps) and alpha-tested leaves with subsurface
+  translucency, so sunlight glows through the canopy. Each species is drawn with **thin
+  instances** at two detail levels (near and far), and every trunk has a Havok collider.
+- **Terrain:** a rolling height-field with a flat clearing. A custom PBR shader
+  (`PBRCustomMaterial`) blends grass into dirt on slopes, in patches and along the pond shore.
+- **Ground cover:** thousands of thin-instanced grass clumps and flowers.
+- **Wind:** a custom **material plugin** sways leaves and grass, with each instance on its own
+  phase.
+- **Pond:** `WaterMaterial` gives it real-time reflection and refraction of the trees and sky.
+- **Rocks:** climbable boulders with convex-hull colliders.
+- **Fireflies:** a GPU particle system steered by animated noise (CPU particles on low tiers).
+- **Atmosphere:** exponential fog, the Poly Haven *Forest Slope* HDR sky lighting the scene,
+  cascaded shadows from the canopy, and looping forest ambience (Babylon Audio V2).
+
+Both locations get the same physics playground:
+
 - **Physics playground:**
   - two block pyramids
   - a brick wall
@@ -69,6 +100,16 @@ first tap anywhere on the start screen enters VR.
   through crouched. When you stand up inside it, a head-room raycast stops you clipping
   through the roof.
 
+### Quality tiers
+
+The app picks a tier from the device. You can override it with `?quality=high|medium|mobile`.
+
+| Tier | Used for | Differences |
+| --- | --- | --- |
+| high | Desktop | Full forest density (about 1.2M triangles), 4 shadow cascades, GPU particles |
+| medium | VR headsets | About 550k triangles, 3 shadow cascades |
+| mobile | Phones and tablets | About 300k triangles, 2 cascades at 1024 px, render resolution capped at 1.25× pixel ratio, no MSAA, glow/probe/water off by default |
+
 ### Rendering features
 
 | Feature | Babylon.js API | Desktop | VR default |
@@ -83,6 +124,9 @@ first tap anywhere on the start screen enters VR.
 | Chromatic aberration, grain, vignette, sharpen | `DefaultRenderingPipeline` | ✓ | toggle |
 | Emissive glow for neon trims and circuits | `GlowLayer` | ✓ | ✓ |
 | Live scene reflections and refraction | `ReflectionProbe`, a real-time cube map | ✓ | ✓ |
+| Water reflections and refraction (forest) | `WaterMaterial` | ✓ | ✓ |
+| Wind-animated vegetation (forest) | Custom `MaterialPluginBase` | ✓ | ✓ |
+| Fog and fireflies (forest) | `Scene.fogMode`, `GPUParticleSystem` + `NoiseProceduralTexture` | ✓ | ✓ |
 | Fixed foveated rendering | `WebXRSessionManager.fixedFoveation` | – | ✓ |
 
 Screen-space passes run once per eye in VR, so they start switched off there. You can turn
@@ -117,15 +161,22 @@ All materials are Babylon `PBRMaterial`:
 
 ```
 src/
-  main.ts         bootstrap: engine, Havok, loading flow, start screen, VR entry
+  main.ts         bootstrap: engine, Havok, quality tier, location, start screen, VR/touch/desktop entry
   config.ts       asset URLs, physics layers, player & interaction tuning
-  environment.ts  Sponza, IBL, sun + cascaded shadows, torches, reflection probe
+  environment.ts  location interface, quality tiers, shared sun/shadows/skybox/probe helpers
+  locations/
+    atrium.ts     Sponza, torches, playground layout for the corridor
+    forest.ts     terrain, trees, grass, flowers, rocks, pond, fireflies, fog, playground layout
+  forest/
+    treeGen.ts    procedural tree geometry (ported from ez-tree)
+    wind.ts       wind-sway material plugin
   materials.ts    showcase material library
   props.ts        dynamic blocks, parkour, crouch tunnel, showcase
   player.ts       Havok PhysicsCharacterController: walk/sprint/jump/crouch, XR head-follow
   interaction.ts  grab/throw manipulators, kinematic finger/controller colliders, force push
   xr.ts           WebXR session, controllers, hand tracking (pinch/fist/poke/jump gesture)
-  desktop.ts      keyboard + mouse controls
+  desktop.ts      keyboard + mouse controls (grab/throw/push shared with touch)
+  touch.ts        mobile touch controls: floating joystick, look-drag, action buttons
   graphics.ts     post-processing stack and quality toggles
   ui.ts           desktop HUD and in-VR menu (Babylon GUI on a mesh)
 ```
@@ -160,6 +211,15 @@ colliders, and held objects each have their own Havok collision filter. This mea
 - **San Giuseppe Bridge** HDR environment from the
   [Babylon.js Assets](https://github.com/BabylonJS/Assets) repository (CC0, originally
   from Poly Haven).
+- **Forest Slope** HDRI by Poly Haven (CC0), via
+  [pmndrs/drei-assets](https://github.com/pmndrs/drei-assets).
+- **Tree generator, leaf textures, grass, flowers, rocks, dirt and grass textures, and forest
+  ambience** come from [ez-tree](https://github.com/dgreenheck/ez-tree) by Daniel Greenheck
+  (MIT). Its bark textures are CC0, from Poly Haven and TextureCan.
+- **Water bump map** from the [Babylon.js Assets](https://github.com/BabylonJS/Assets)
+  repository (CC BY 4.0).
+- **Draco glTF decoder** from [google/draco](https://github.com/google/draco) (Apache-2.0),
+  bundled in `public/draco`.
 - The default WebXR hand meshes are loaded at runtime from the Babylon.js CDN.
 - [Babylon.js](https://www.babylonjs.com/) (Apache-2.0) and
   [Havok for Babylon.js](https://www.npmjs.com/package/@babylonjs/havok) (MIT).

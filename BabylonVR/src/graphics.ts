@@ -18,7 +18,9 @@ import {
 import { Layer } from "./config";
 import type { Environment } from "./environment";
 
-export type SettingKey = "bloom" | "dof" | "ssao" | "ssr" | "godRays" | "glow" | "shadows" | "probe" | "lensFx" | "sharpen";
+export type SettingKey = "bloom" | "dof" | "ssao" | "ssr" | "godRays" | "glow" | "shadows" | "probe" | "water" | "lensFx" | "sharpen";
+
+export type ProfileName = "desktop" | "xr" | "mobile";
 
 export interface Setting {
     key: SettingKey;
@@ -28,10 +30,14 @@ export interface Setting {
 
 type Profile = Record<SettingKey, boolean>;
 
-/** Desktop: everything on. VR: the expensive screen-space passes default off (each eye pays for them). */
-const PROFILES: Record<"desktop" | "xr", Profile> = {
-    desktop: { bloom: true, dof: true, ssao: true, ssr: true, godRays: true, glow: true, shadows: true, probe: true, lensFx: true, sharpen: true },
-    xr: { bloom: true, dof: false, ssao: false, ssr: false, godRays: false, glow: true, shadows: true, probe: true, lensFx: false, sharpen: false },
+/**
+ * Desktop: everything on. VR: the expensive screen-space passes default off (each eye pays for them).
+ * Mobile: phone GPUs are fill-rate bound, so only the cheap effects are on by default.
+ */
+const PROFILES: Record<ProfileName, Profile> = {
+    desktop: { bloom: true, dof: true, ssao: true, ssr: true, godRays: true, glow: true, shadows: true, probe: true, water: true, lensFx: true, sharpen: true },
+    xr: { bloom: true, dof: false, ssao: false, ssr: false, godRays: false, glow: true, shadows: true, probe: true, water: true, lensFx: false, sharpen: false },
+    mobile: { bloom: true, dof: false, ssao: false, ssr: false, godRays: false, glow: false, shadows: true, probe: false, water: false, lensFx: false, sharpen: false },
 };
 
 const LABELS: Record<SettingKey, string> = {
@@ -43,6 +49,7 @@ const LABELS: Record<SettingKey, string> = {
     glow: "Emissive glow layer",
     shadows: "Cascaded PCF shadows",
     probe: "Live reflection probe",
+    water: "Water reflections & refraction",
     lensFx: "Lens FX (CA, grain, vignette)",
     sharpen: "Sharpen",
 };
@@ -61,16 +68,19 @@ export class Graphics {
     private godRaysCamera: Camera | null = null;
     private focus = 3000;
     private readonly ray = new PhysicsRaycastResult();
-    private readonly probeRefresh: number;
+    private profile: ProfileName;
 
     constructor(
         private readonly scene: Scene,
         private readonly env: Environment,
+        profile: ProfileName,
     ) {
-        this.settings = (Object.keys(LABELS) as SettingKey[]).map((key) => ({ key, label: LABELS[key], value: PROFILES.desktop[key] }));
-        this.probeRefresh = env.probe.refreshRate;
+        this.profile = profile;
+        this.settings = (Object.keys(LABELS) as SettingKey[])
+            .filter((key) => key !== "water" || !!env.water)
+            .map((key) => ({ key, label: LABELS[key], value: PROFILES[profile][key] }));
 
-        this.glow = new GlowLayer("glow", scene, { mainTextureSamples: 4, blurKernelSize: 48 });
+        this.glow = new GlowLayer("glow", scene, { mainTextureSamples: profile === "mobile" ? 1 : 4, blurKernelSize: profile === "mobile" ? 24 : 48 });
         this.glow.intensity = 0.65;
         // Only emissive props glow – keeps Sponza out of the glow pass.
         this.glow.customEmissiveColorSelector = (mesh, _sub, material, result) => {
@@ -82,19 +92,19 @@ export class Graphics {
         const ip = scene.imageProcessingConfiguration;
         ip.toneMappingEnabled = true;
         ip.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES;
-        ip.exposure = 1.5;
+        ip.exposure = env.exposure;
         ip.contrast = 1.18;
 
         scene.onBeforeRenderObservable.add(() => this.autofocus());
     }
 
     get(key: SettingKey): boolean {
-        return this.settings.find((s) => s.key === key)!.value;
+        return this.settings.find((s) => s.key === key)?.value ?? false;
     }
 
     set(key: SettingKey, value: boolean): void {
-        const s = this.settings.find((x) => x.key === key)!;
-        if (s.value === value) return;
+        const s = this.settings.find((x) => x.key === key);
+        if (!s || s.value === value) return;
         s.value = value;
         this.apply();
     }
@@ -103,7 +113,8 @@ export class Graphics {
         this.set(key, !this.get(key));
     }
 
-    useProfile(profile: "desktop" | "xr"): void {
+    useProfile(profile: ProfileName): void {
+        this.profile = profile;
         for (const s of this.settings) s.value = PROFILES[profile][s.key];
     }
 
@@ -133,7 +144,8 @@ export class Graphics {
         this.glow.isEnabled = this.get("glow");
         this.env.sun.shadowEnabled = this.get("shadows");
         // refreshRate 0 = render once: the probe keeps its last capture when paused.
-        this.env.probe.refreshRate = this.get("probe") ? this.probeRefresh : 0;
+        this.env.probe.refreshRate = this.get("probe") ? 2 : 0;
+        this.env.water?.setEnabled(this.get("water"));
         for (const cb of this.onChanged) cb();
     }
 
@@ -183,12 +195,13 @@ export class Graphics {
         }
 
         const p = new DefaultRenderingPipeline("default", true, scene, cams);
-        p.samples = 4;
+        // MSAA on the HDR target is costly on phones; FXAA covers them.
+        p.samples = this.profile === "mobile" ? 1 : 4;
         p.fxaaEnabled = true;
         p.imageProcessingEnabled = true;
         p.imageProcessing.toneMappingEnabled = true;
         p.imageProcessing.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES;
-        p.imageProcessing.exposure = 1.5;
+        p.imageProcessing.exposure = this.env.exposure;
         p.imageProcessing.contrast = 1.18;
         p.bloomThreshold = 0.85;
         p.bloomWeight = 0.35;

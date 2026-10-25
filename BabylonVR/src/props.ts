@@ -32,18 +32,7 @@ export class Props {
         private readonly env: Environment,
         private readonly mats: MaterialLibrary,
     ) {
-        // Sponza's central corridor runs along X, between the curtain lines at z ≈ -2.1 and 1.5.
-        // The floor isn't perfectly flat, so each structure sits on the highest point under its footprint.
-        const z0 = -0.3;
-        const at = (x: number, z: number, hx: number, hz: number) => new Vector3(x, this.floorUnder(x, z, hx, hz), z);
-        this.buildCrouchTunnel(at(-7.4, z0, 1.2, 0.8));
-        this.buildBrickWall(at(-3.0, z0, 0.15, 1.3), 6, 5);
-        this.buildHeavyCrates(at(-1.9, z0 - 1.05, 0.9, 0.35));
-        this.buildDominoes(at(-2.0, z0 + 0.75, 0.1, 0.3), 15);
-        this.buildShowcase(at(2.6, z0 - 1.3, 1.6, 0.25));
-        this.buildBlockTower(at(2.4, z0 + 0.45, 0.65, 0.65), 4, 0.32);
-        this.buildBlockTower(at(4.3, z0 + 0.2, 0.6, 0.6), 3, 0.4);
-        this.buildParkour(at(6.6, z0, 0.5, 0.5));
+        env.populate(this);
     }
 
     get(mesh: Mesh | null | undefined): Grabbable | undefined {
@@ -70,6 +59,11 @@ export class Props {
     }
 
     // ---------------------------------------------------------------------------
+
+    /** Ground point at (x, z): the highest floor-level hit under a footprint of half-size hx × hz. */
+    groundAt(x: number, z: number, hx: number, hz: number): Vector3 {
+        return new Vector3(x, this.floorUnder(x, z, hx, hz), z);
+    }
 
     private floorUnder(x: number, z: number, hx: number, hz: number): number {
         const physics = this.scene.getPhysicsEngine()!;
@@ -139,7 +133,7 @@ export class Props {
         return strip;
     }
 
-    private buildBlockTower(base: Vector3, levels: number, s: number): void {
+    buildBlockTower(base: Vector3, levels: number, s: number): void {
         for (let level = 0; level < levels; level++) {
             const n = levels - level;
             for (let i = 0; i < n; i++) {
@@ -152,7 +146,7 @@ export class Props {
         }
     }
 
-    private buildBrickWall(base: Vector3, cols: number, rows: number): void {
+    buildBrickWall(base: Vector3, cols: number, rows: number): void {
         const w = 0.42;
         const h = 0.21;
         const d = 0.21;
@@ -167,7 +161,7 @@ export class Props {
         }
     }
 
-    private buildDominoes(start: Vector3, count: number): void {
+    buildDominoes(start: Vector3, count: number): void {
         for (let i = 0; i < count; i++) {
             const domino = MeshBuilder.CreateBox("domino", { width: 0.06, height: 0.5, depth: 0.25 }, this.scene);
             const a = i * 0.11;
@@ -177,7 +171,7 @@ export class Props {
         }
     }
 
-    private buildParkour(base: Vector3): void {
+    buildParkour(base: Vector3): void {
         // Rising steps to jump up, along the -Z side of the corridor.
         const steps = [0.35, 0.7, 1.05, 1.4];
         steps.forEach((h, i) => {
@@ -220,7 +214,7 @@ export class Props {
         }
     }
 
-    private buildCrouchTunnel(base: Vector3): void {
+    buildCrouchTunnel(base: Vector3): void {
         const length = 2.4;
         const clearance = 1.15;
         const width = 1.3;
@@ -247,7 +241,7 @@ export class Props {
         }
     }
 
-    private buildShowcase(base: Vector3): void {
+    buildShowcase(base: Vector3): void {
         const items: Array<{ mesh: Mesh; type: PhysicsShapeType; mat: Material; mass: number }> = [
             { mesh: MeshBuilder.CreatePolyhedron("diamond", { type: 1, size: 0.12 }, this.scene), type: PhysicsShapeType.CONVEX_HULL, mat: this.mats.diamond, mass: 0.5 },
             { mesh: MeshBuilder.CreateSphere("glassOrb", { diameter: 0.26, segments: 48 }, this.scene), type: PhysicsShapeType.SPHERE, mat: this.mats.glass, mass: 1 },
@@ -267,7 +261,14 @@ export class Props {
         });
     }
 
-    private buildHeavyCrates(base: Vector3): void {
+    buildLog(base: Vector3, material: Material): void {
+        const log = MeshBuilder.CreateCylinder("log", { height: 2.8, diameter: 0.5, tessellation: 24 }, this.scene);
+        log.rotation.set(0, 0.3, Math.PI / 2);
+        log.position.set(base.x, base.y + 0.26, base.z);
+        this.dynamic(log, PhysicsShapeType.CYLINDER, 60, material, { friction: 0.9 });
+    }
+
+    buildHeavyCrates(base: Vector3): void {
         for (let i = 0; i < 3; i++) {
             const crate = MeshBuilder.CreateBox("heavyCrate", { size: 0.6 }, this.scene);
             crate.position.set(base.x + i * 0.68, base.y + 0.301, base.z);
