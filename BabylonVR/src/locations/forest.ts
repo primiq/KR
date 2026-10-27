@@ -31,6 +31,7 @@ import { ALL_LAYERS, Assets, Layer } from "../config";
 import { addShadowCasterFn, createProbe, createSkybox, createSun, type Environment, type ProgressFn, type Quality, resolveAsset, tier } from "../environment";
 import { generateTree, toBabylon, type TreePreset } from "../forest/treeGen";
 import { WindPlugin } from "../forest/wind";
+import { loadCharacter } from "../forest/character";
 
 import oakLarge from "@eztree/lib/presets/oak_large.json";
 import ashLarge from "@eztree/lib/presets/ash_large.json";
@@ -518,6 +519,10 @@ export async function createForest(scene: Scene, quality: Quality, onProgress: P
         i++;
     }
     rocks.slice(0, 6).forEach((r) => water.addToRenderList(r));
+
+    // ---- The visitor: full-resolution figure at player height, facing the spawn point ----------
+    onProgress(0.72, "Placing the visitor…");
+    await loadCharacter(scene, new Vector3(-1.6, 0, -6), Math.PI, 1.8, addShadowCaster);
 
     // ---- Fireflies & floating pollen ------------------------------------------------------
     const dot = new DynamicTexture("glowDot", 64, scene, false);
