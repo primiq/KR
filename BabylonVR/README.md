@@ -5,6 +5,7 @@ location from the start screen or the in-VR menu:
 
 - **Sponza Atrium:** the Crytek Sponza courtyard.
 - **Deep Forest:** a procedurally grown forest with a clearing and a pond.
+- **Desert Island:** a palm-covered island in an open sea with interactive water.
 
 Open it in a VR headset browser and you play it in VR with controllers or your bare hands.
 On a phone or tablet you get touch controls. On a desktop it runs as a first-person game with
@@ -83,7 +84,31 @@ torches light the arcades.
 - **Atmosphere:** exponential fog, the Poly Haven *Forest Slope* HDR sky lighting the scene,
   cascaded shadows from the canopy, and looping forest ambience (Babylon Audio V2).
 
-Both locations get the same physics playground:
+**Desert Island:** a beach terrace, a wooden pier and an open ocean.
+
+- **Ocean:** a custom GPU shader with six Gerstner waves (real rolling crests). Waves calm in
+  the shallows using a seabed depth texture. The water has Fresnel sky reflection, a sun
+  glitter path, depth-based colour (turquoise shallows to deep blue), light scattered through
+  crests, lacy shoreline foam, see-through shallows and a seamless horizon.
+- **Interactive water:** a wave-equation simulation runs on the GPU in ping-pong render
+  targets that follow the player. Your legs, VR hands and controllers, and anything floating
+  push ripples into it.
+- **Liquid mechanics:**
+  - Buoyancy and drag on every prop, sampled from the same wave function as the shader.
+    Crates, coconuts, a beach ball and a swim ring bob and drift; gold, chrome and the diamond
+    sink.
+  - Wading slows you down. In deep water you float and swim, and Jump strokes upward.
+  - Fast entries throw splashes.
+  - Underwater turns into blue fog.
+- **Light:** an atmospheric `SkyMaterial` sky is rendered once into an HDR cube, then
+  GGX-prefiltered with `HDRFiltering` and projected to spherical harmonics. That way the
+  scene's lighting and the ocean's reflections match the sky exactly. The seabed shows
+  animated caustics and depth absorption.
+- **Island:** a sand, grass and rock blend shader with a wet-sand line, plus procedurally
+  generated palm trees (curved ringed trunks, drooping fronds with per-leaflet colour, coconut
+  clusters, wind sway). Shore rocks and grass are thin-instanced.
+
+All locations get the same physics playground:
 
 - **Physics playground:**
   - two block pyramids
@@ -167,9 +192,16 @@ src/
   locations/
     atrium.ts     Sponza, torches, playground layout for the corridor
     forest.ts     terrain, trees, grass, flowers, rocks, pond, fireflies, fog, playground layout
+    island.ts     island terrain + caustics, ocean, palms, pier, floating toys, playground layout
   forest/
     treeGen.ts    procedural tree geometry (ported from ez-tree)
     wind.ts       wind-sway material plugin
+    character.ts  the woman figure (loaded from public/models)
+  island/
+    ocean.ts      Gerstner ocean shader, buoyancy, splashes, wading/swimming hookup, underwater
+    ripples.ts    GPU wave-equation ripple simulation
+    sky.ts        atmospheric sky -> prefiltered HDR environment
+    palm.ts       procedural palm trees
   materials.ts    showcase material library
   props.ts        dynamic blocks, parkour, crouch tunnel, showcase
   player.ts       Havok PhysicsCharacterController: walk/sprint/jump/crouch, XR head-follow
@@ -216,6 +248,8 @@ colliders, and held objects each have their own Havok collision filter. This mea
 - **Tree generator, leaf textures, grass, flowers, rocks, dirt and grass textures, and forest
   ambience** come from [ez-tree](https://github.com/dgreenheck/ez-tree) by Daniel Greenheck
   (MIT). Its bark textures are CC0, from Poly Haven and TextureCan.
+- **Sand and rocky-ground textures** from the [Babylon.js Assets](https://github.com/BabylonJS/Assets)
+  repository (CC BY 4.0).
 - **Water bump map** from the [Babylon.js Assets](https://github.com/BabylonJS/Assets)
   repository (CC BY 4.0).
 - **Draco glTF decoder** from [google/draco](https://github.com/google/draco) (Apache-2.0),

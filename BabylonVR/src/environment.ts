@@ -11,6 +11,7 @@ import {
     StandardMaterial,
     Vector3,
 } from "@babylonjs/core";
+import type { PlayerController } from "./player";
 import type { Props } from "./props";
 
 /**
@@ -25,11 +26,12 @@ export function tier<T>(quality: Quality, high: T, medium: T, mobile: T): T {
     return quality === "high" ? high : quality === "medium" ? medium : mobile;
 }
 
-export type LocationId = "atrium" | "forest";
+export type LocationId = "atrium" | "forest" | "island";
 
 export const LOCATIONS: Array<{ id: LocationId; label: string }> = [
     { id: "atrium", label: "Sponza Atrium" },
     { id: "forest", label: "Deep Forest" },
+    { id: "island", label: "Desert Island" },
 ];
 
 export interface Environment {
@@ -50,6 +52,8 @@ export interface Environment {
     water?: { setEnabled(on: boolean): void };
     /** Places the physics playground for this location. */
     populate(props: Props): void;
+    /** Called once the player exists (e.g. so water can make them wade and swim). */
+    attachPlayer?(player: PlayerController): void;
     addShadowCaster(mesh: AbstractMesh): void;
 }
 
@@ -131,6 +135,10 @@ export function addShadowCasterFn(shadows: CascadedShadowGenerator) {
 }
 
 export async function loadLocation(id: LocationId, scene: Scene, quality: Quality, onProgress: ProgressFn): Promise<Environment> {
+    if (id === "island") {
+        const { createIsland } = await import("./locations/island");
+        return createIsland(scene, quality, onProgress);
+    }
     if (id === "forest") {
         const { createForest } = await import("./locations/forest");
         return createForest(scene, quality, onProgress);

@@ -12,6 +12,7 @@ import {
 } from "@babylonjs/core";
 import { ALL_LAYERS, Interaction as I, Layer } from "./config";
 import type { Grabbable, Props } from "./props";
+import { waterProbes } from "./waterProbes";
 
 const MAX_FOLLOW_SPEED = 25; // m/s – keeps held objects from tunnelling through the world.
 
@@ -136,6 +137,7 @@ export class Manipulator {
  */
 export class KinematicCollider {
     readonly node: TransformNode;
+    private readonly probe: { node: TransformNode; radius: number };
     private readonly body: PhysicsBody;
     private readonly prev = new Vector3();
     private enabled = true;
@@ -143,6 +145,8 @@ export class KinematicCollider {
 
     constructor(scene: Scene, name: string, radius: number, showDebug = false) {
         this.node = new TransformNode(name, scene);
+        this.probe = { node: this.node, radius };
+        waterProbes.add(this.probe);
         this.node.rotationQuaternion = Quaternion.Identity();
         this.body = new PhysicsBody(this.node, PhysicsMotionType.ANIMATED, false, scene);
         const shape = new PhysicsShapeSphere(Vector3.Zero(), radius, scene);
@@ -180,6 +184,7 @@ export class KinematicCollider {
     }
 
     dispose(): void {
+        waterProbes.delete(this.probe);
         this.body.shape?.dispose();
         this.body.dispose();
         this.node.dispose();

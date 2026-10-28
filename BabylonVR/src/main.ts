@@ -95,6 +95,7 @@ async function main(): Promise<void> {
     const props = new Props(scene, env, mats);
 
     const player = new PlayerController(scene, env.floorY, env.spawn, env.lookAt);
+    env.attachPlayer?.(player);
     scene.activeCamera = player.desktopCamera;
 
     const graphics = new Graphics(scene, env, quality === "mobile" ? "mobile" : "desktop");

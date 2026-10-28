@@ -39,6 +39,11 @@ export class PlayerController {
     readonly input: PlayerInput = { move: new Vector2(), sprint: false, jump: false, crouch: false, snapTurn: 0 };
     xrCamera: WebXRCamera | null = null;
     onGround = false;
+    /** Water surface sampler for the current location (null when there's no swimmable water). */
+    water: { surfaceAt(x: number, z: number): number } | null = null;
+    /** How far the feet are below the water surface (negative when out of the water). */
+    waterDepth = Number.NEGATIVE_INFINITY;
+    swimming = false;
 
     private readonly cc: PhysicsCharacterController;
     private capsuleHeight: number = P.standHeight;
@@ -84,6 +89,11 @@ export class PlayerController {
 
     get position(): Vector3 {
         return this.cc.getPosition();
+    }
+
+    /** Current velocity of the character (m/s). */
+    get linearVelocity(): Vector3 {
+        return this.velocity;
     }
 
     get footY(): number {
@@ -198,6 +208,18 @@ export class PlayerController {
 
         this.support = this.cc.checkSupport(dt, new Vector3(0, -1, 0));
         const supported = this.support.supportedState === CharacterSupportedState.SUPPORTED;
+
+        // Water: wading drags you down; deep enough and you float and swim.
+        const pos = this.cc.getPosition();
+        const foot = pos.y - this.capsuleHeight / 2;
+        const surface = this.water ? this.water.surfaceAt(pos.x, pos.z) : Number.NEGATIVE_INFINITY;
+        this.waterDepth = surface - foot;
+        if (this.waterDepth > 0.2) this.desired.scaleInPlace(clamp(1 - (this.waterDepth - 0.2) * 0.45, 0.4, 1));
+        this.swimming = this.waterDepth > P.swimDepth && !(supported && this.waterDepth < P.swimDepth + 0.15);
+        if (this.swimming) {
+            this.swim(dt, surface, foot);
+            return;
+        }
         this.coyote = supported ? 0.12 : Math.max(0, this.coyote - dt);
         const current = this.cc.getVelocity();
 
@@ -233,6 +255,23 @@ export class PlayerController {
 
         this.cc.setVelocity(this.velocity);
         this.cc.integrate(dt, this.support, GRAVITY);
+    }
+
+    /** Buoyant swimming: float with the eyes just above the surface; Jump is a strong upward stroke. */
+    private swim(dt: number, surface: number, foot: number): void {
+        const v = this.cc.getVelocity().clone();
+        const k = Math.min(1, dt * 3);
+        v.x += (this.desired.x * P.swimSpeedFactor - v.x) * k;
+        v.z += (this.desired.z * P.swimSpeedFactor - v.z) * k;
+        const targetFoot = surface - P.swimDepth - 0.05;
+        // Critically damped float towards the target depth.
+        v.y += ((targetFoot - foot) * 36 - v.y * 12) * dt;
+        if (this.input.jump) v.y = Math.max(v.y, 3.2);
+        this.velocity.copyFrom(v);
+        this.onGround = false;
+        this.coyote = 0;
+        this.cc.setVelocity(v);
+        this.cc.integrate(dt, this.support!, Vector3.ZeroReadOnly);
     }
 
     private syncXRCamera(xr: WebXRCamera): void {

@@ -45,6 +45,10 @@ async function main() {
     console.log("Fetching forest assets…");
     await download("https://raw.githubusercontent.com/pmndrs/drei-assets/master/hdri/forest_slope_1k.hdr", join(root, "env", "forest_slope_1k.hdr"));
     await download("https://raw.githubusercontent.com/BabylonJS/Assets/master/textures/waterbump.png", join(root, "forest", "waterbump.png"));
+    console.log("Fetching island textures…");
+    for (const f of ["sand.jpg", "rockyGround_basecolor.png", "rockyGround_normal.png"]) {
+        await download(`https://raw.githubusercontent.com/BabylonJS/Assets/master/textures/${f}`, join(root, "island", f));
+    }
     console.log("Done.");
 }
 

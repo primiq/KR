@@ -7,6 +7,9 @@ export const Assets = {
     environment: { local: "assets/env/sanGiuseppeBridge.env", remote: REMOTE_ENV },
     /** "Forest Slope" HDRI by Poly Haven (CC0), mirrored in pmndrs/drei-assets. */
     forestHdr: { local: "assets/env/forest_slope_1k.hdr", remote: "https://raw.githubusercontent.com/pmndrs/drei-assets/master/hdri/forest_slope_1k.hdr" },
+    sand: { local: "assets/island/sand.jpg", remote: "https://raw.githubusercontent.com/BabylonJS/Assets/master/textures/sand.jpg" },
+    rockColor: { local: "assets/island/rockyGround_basecolor.png", remote: "https://raw.githubusercontent.com/BabylonJS/Assets/master/textures/rockyGround_basecolor.png" },
+    rockNormal: { local: "assets/island/rockyGround_normal.png", remote: "https://raw.githubusercontent.com/BabylonJS/Assets/master/textures/rockyGround_normal.png" },
     waterBump: { local: "assets/forest/waterbump.png", remote: "https://raw.githubusercontent.com/BabylonJS/Assets/master/textures/waterbump.png" },
 };
 
@@ -36,6 +39,9 @@ export const Player = {
     /** Vertical drop applied to the XR head when the "virtual crouch" button is held. */
     vrVirtualCrouch: 0.6,
     snapTurnDegrees: 30,
+    /** Feet this far below the surface and you start floating/swimming (eyes stay just above water). */
+    swimDepth: 1.4,
+    swimSpeedFactor: 0.55,
 };
 
 export const Interaction = {

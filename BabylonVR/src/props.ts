@@ -76,7 +76,8 @@ export class Props {
         return Number.isFinite(top) ? top + 0.004 : this.env.floorY;
     }
 
-    private dynamic(mesh: Mesh, type: PhysicsShapeType, mass: number, material: Material, opts: { friction?: number; restitution?: number } = {}): Grabbable {
+    /** Adds a grabbable dynamic physics prop. */
+    dynamic(mesh: Mesh, type: PhysicsShapeType, mass: number, material: Material, opts: { friction?: number; restitution?: number } = {}): Grabbable {
         mesh.material = material;
         mesh.rotationQuaternion ??= Quaternion.FromEulerVector(mesh.rotation);
         const aggregate = new PhysicsAggregate(

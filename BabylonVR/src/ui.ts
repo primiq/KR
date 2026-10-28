@@ -162,12 +162,12 @@ export class VRMenu {
         locRow.paddingTopInPixels = 16;
         for (const loc of locations.list) {
             const b = Button.CreateSimpleButton(`loc-${loc.id}`, loc.label);
-            b.width = "330px";
+            b.width = `${Math.floor(720 / locations.list.length)}px`;
             b.height = "70px";
             b.paddingLeftInPixels = 10;
             b.paddingRightInPixels = 10;
             b.cornerRadius = 16;
-            b.fontSize = 28;
+            b.fontSize = 24;
             const active = loc.id === locations.current;
             b.color = active ? "#05060a" : "#e8ecf4";
             b.background = active ? "#6ee7ff" : "#20263a";
