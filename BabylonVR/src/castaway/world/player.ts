@@ -353,7 +353,9 @@ export class Player {
                 this.pos.y = g;
                 this.vel.y = Math.max(0, this.vel.y);
                 this.onGround = true;
-            } else if (this.pos.y - g > 0.08) this.onGround = false;
+            // (a jump that has only just left the ground is still rising: at 120 Hz its first frame is under 8 cm, and sticking it
+            //  back down would eat every jump)
+            } else if (this.pos.y - g > 0.08 || this.vel.y > 0.5) this.onGround = false;
             else { this.pos.y = g; this.onGround = true; }
         }
 
