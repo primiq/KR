@@ -8,13 +8,16 @@ const T = {
     handle: tok("handle"), steel: tok("steel"), stone: tok("stoneTool"), diamond: tok("diamond"), skin: tok("skin"), sleeve: tok("sleeve"),
     rope: tok("rope"), paper: tok("paper"), soot: tok("soot"), flame: tok("flame"), item: tok("item"),
 };
+let viewSkin = "#d9a07a";
+/** your skin tone, for the first-person hands (takes effect when the held model is next built) */
+export function setViewSkin(hex: string) { viewSkin = hex; }
 function mat(scene: Scene, key: string, itemColor: string): Material {
     switch (key) {
         case "handle": return solid(scene, "#8b5e34", 0.85);
         case "steel": return solid(scene, "#aeb6bd", 0.3, 0.9);
         case "stoneTool": return solid(scene, "#8e8a82", 0.9);
         case "diamond": return solid(scene, "#7ff4ff", 0.08, 0.2);
-        case "skin": return solid(scene, "#d9a07a", 0.6);
+        case "skin": return solid(scene, viewSkin, 0.6);
         case "sleeve": return solid(scene, "#3f6f8a", 0.9);
         case "rope": return solid(scene, "#b8a470", 1);
         case "paper": return solid(scene, "#3b73a8", 0.8);

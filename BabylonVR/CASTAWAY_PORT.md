@@ -33,7 +33,7 @@ Everything that renders, animates or simulates is rebuilt on Babylon:
 | 8 | Survival loop: vitals, day/night, death, sleep | done |
 | 9 | VR-first controls and menus (wrist hotbar, panels, arm-swing hits, hand-held tools) | in progress (controls, held tools, arm swings, wrist HUD, bag/craft panel) |
 | 10 | Wildlife, fishing, cooking and map | done |
-| 11 | Characters: player models, customisation, procedural animation | |
+| 11 | Characters: player models, customisation, procedural animation | done (Castaway's rigs and outfits drawn through ThreeMirror; customise screen; looks sync in multiplayer) |
 | 12 | World content: caves, airstrip, cars, balloons, tower, cat house, hide-and-seek, tiles, campaign, narrator, Keith Avenue, paintings, weather, ships | |
 | 13 | Audio, polish and performance pass | |
 

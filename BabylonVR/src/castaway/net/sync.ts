@@ -6,6 +6,7 @@ import type { FaunaTarget } from "../game/fauna";
 import type { Structure } from "../game/structures";
 import { heightAt } from "../world/island";
 import { Avatars, playerColor } from "./avatars";
+import { parseOutfit } from "./outfit";
 import { type PState, Session, type VRPoseData } from "./session";
 import { applyWorld, captureWorld, packInv, unpackInv } from "./world";
 
@@ -229,6 +230,7 @@ export class WorldSync {
             case "zz": if (this.session.isHost) this.vote(from); break;
             case "zm": g.hud.message(e.m); break;
             case "dd": g.hud.message(`${this.session.players.get(from)?.name ?? "Someone"} died`); break;
+            case "lk": { const p = this.session.players.get(from), o = parseOutfit(e.l); if (p && o) p.look = o; break; }
             case "mp": this.addPing(from, this.session.players.get(from)?.name ?? "Someone", playerColor(from), e.x, e.z); break;
         }
     }

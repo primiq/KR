@@ -16,6 +16,10 @@ import { Ocean } from "../island/ocean";
 import { createSky } from "../island/sky";
 import { Input } from "./core/input";
 import { Chat } from "./net/chat";
+import { getOutfit, onOutfitChange, setPlayerOutfit } from "./net/outfit";
+import { SKINS } from "./net/playerModel";
+import { setupCustomise, setNameLocked } from "./ui/customise";
+import { setViewSkin } from "./game/viewmodel";
 import { playerColor } from "./net/avatars";
 import { eraseSaves, guestKey, LAYOUT, loadChar, loadWorld, migrateWorld, newWorldId, saveChar, saveWorld } from "./net/save";
 import { Session } from "./net/session";
@@ -226,6 +230,19 @@ async function main() {
     nameEl.value = getPref("name") ?? "";
     const myName = () => { const n = nameEl.value.trim().slice(0, 14) || `Castaway ${Math.floor(10 + Math.random() * 90)}`; setPref("name", nameEl.value.trim()); return n; };
     const charId = () => (sync && !sync.session.isHost ? guestKey(wid, myName()) : wid);
+    setupCustomise();
+    /** your look changed (customise screen): the first-person hands and everybody else in the room */
+    const applyOutfit = () => {
+        const o = getOutfit();
+        setViewSkin(SKINS[o[2]]);
+        if (!sync) { setPlayerOutfit(0, o); return; }
+        const id = sync.session.myId, me = sync.session.players.get(id);
+        setPlayerOutfit(id, o);
+        if (me) me.look = o;
+        sync.session.sendEvent({ k: "lk", l: o });
+    };
+    onOutfitChange(applyOutfit);
+    applyOutfit();
     const doSave = () => {
         if (!started || game.stats.dead || noSave) return;
         if (!sync || sync.session.isHost) saveWorld({ v: 1, layout: LAYOUT, wid, hour: clock.hour, world: captureWorld(game), savedAt: Date.now() });
@@ -262,6 +279,7 @@ async function main() {
     let armed = 0;
     const begin = () => {
         started = true;
+        setNameLocked(true);
         input.enabled = true;
         game.sfx.init();
         $("menu").classList.add("hidden");

@@ -32,6 +32,7 @@
       <button id="continue" class="hidden">Continue</button>
       <button id="play">Play</button>
       <button id="play-vr" class="hidden">Play in VR</button>
+      <button id="customise" class="ghost-btn">Customise character</button>
       <button id="quit-menu" class="hidden ghost-btn">Save &amp; back to main menu</button>
       <div class="help" id="help-desktop">
         <b>WASD</b> move &nbsp; <b>Shift</b> sprint &nbsp; <b>Space</b> jump &nbsp; <b>Mouse</b> look<br />
@@ -81,6 +82,21 @@
       </div>
       <div id="backend" class="backend"></div>
       <a class="backend" href="./index.html">← Babylon VR playground</a>
+    </div>
+  </div>
+
+  <div id="custom" class="hidden" role="dialog" aria-label="Customise your character">
+    <div class="cz-card">
+      <h2>Your castaway</h2>
+      <div class="cz-body">
+        <div class="cz-view"><canvas id="cz-canvas"></canvas><div class="cz-hint">Drag to turn</div></div>
+        <div class="cz-controls">
+          <label class="cz-name">Name <input id="cz-name" maxlength="14" placeholder="Your name" autocomplete="off" /></label>
+          <div id="cz-note" class="cz-note hidden">Your name changes the next time you start a game. The look changes right away.</div>
+          <div id="cz-rows"></div>
+          <div class="cz-actions"><button id="cz-random" type="button" class="ghost-btn">Randomise</button><button id="cz-done" type="button">Done</button></div>
+        </div>
+      </div>
     </div>
   </div>
 
