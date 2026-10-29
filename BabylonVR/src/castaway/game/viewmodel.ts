@@ -1,32 +1,16 @@
-import { type Material, type Node, type Scene, TransformNode } from "@babylonjs/core";
+import type { Scene } from "@babylonjs/core";
 import * as THREE from "three";
-import { bakeGroup, disposeBaked, tok } from "../render/bake";
-import { glow, solid } from "../render/materials";
+import { tok } from "../render/bake";
+import { ThreeMirror } from "../render/mirror";
+import { ViewModel as Hands, type ViewState, VM_LIGHT, tickViewMaterials, setViewSkin as setHandSkin } from "./hands";
 import { ITEMS, type ItemId } from "./items";
 
 const T = {
     handle: tok("handle"), steel: tok("steel"), stone: tok("stoneTool"), diamond: tok("diamond"), skin: tok("skin"), sleeve: tok("sleeve"),
     guitar: tok("guitarBody"), rope: tok("rope"), paper: tok("paper"), soot: tok("soot"), flame: tok("flame"), item: tok("item"),
 };
-let viewSkin = "#d9a07a";
-/** your skin tone, for the first-person hands (takes effect when the held model is next built) */
-export function setViewSkin(hex: string) { viewSkin = hex; }
-function mat(scene: Scene, key: string, itemColor: string): Material {
-    switch (key) {
-        case "handle": return solid(scene, "#8b5e34", 0.85);
-        case "steel": return solid(scene, "#aeb6bd", 0.3, 0.9);
-        case "stoneTool": return solid(scene, "#8e8a82", 0.9);
-        case "diamond": return solid(scene, "#7ff4ff", 0.08, 0.2);
-        case "skin": return solid(scene, viewSkin, 0.6);
-        case "sleeve": return solid(scene, "#3f6f8a", 0.9);
-        case "rope": return solid(scene, "#b8a470", 1);
-        case "guitarBody": return solid(scene, "#c98a43", 0.55);
-        case "paper": return solid(scene, "#3b73a8", 0.8);
-        case "soot": return solid(scene, "#0d0b0a", 1);
-        case "flame": return glow(scene, "#ffb14a");
-        default: return solid(scene, itemColor, 0.85);
-    }
-}
+/** your skin tone, for the first-person hands */
+export function setViewSkin(hex: string) { setHandSkin(hex); }
 
 const m = (g: THREE.BufferGeometry, t: THREE.Material, x = 0, y = 0, z = 0) => {
     const o = new THREE.Mesh(g, t);
@@ -83,87 +67,58 @@ export const ITEM_COLOR: Partial<Record<ItemId, string>> = {
 };
 
 /**
- * First-person hands: the held item at the bottom right of the screen, swinging when you use a tool. The swing's
- * contact moment fires `onHit` (that is when the tree / rock takes the blow), as in Castaway.
+ * First-person hands: Castaway's own two-handed view model (game/hands.ts: skinned hands that grip each tool, elbow-to-wrist
+ * arms, the chop, eat, reach, place, drink and swim animations), a three.js rig that follows the Babylon camera and is drawn
+ * by a mirror in rendering group 1, so it always shows over the world. The swing's contact moment fires `onHit` (that is
+ * when the tree / rock takes the blow), as in Castaway.
  */
 export class ViewModel {
-    readonly root: TransformNode;
-    private pivot: TransformNode;
-    private held: TransformNode | null = null;
-    private heldId: ItemId | null = null;
-    private swingT = -1;
-    private hitDone = false;
-    private reachT = -1;
-    private eatT = -1;
-    private bob = 0;
+    private holder = new THREE.Scene();
+    /** a stand-in for the Babylon camera (the hands hang off it in its own space) */
+    private cam3 = new THREE.PerspectiveCamera(70, 16 / 9, 0.05, 10);
+    private vm: Hands;
+    private mirror: ThreeMirror;
+    private vs: ViewState = { speed: 0, sprinting: false, swimming: false, underwater: false, onGround: true, vy: 0, yawRate: 0, pitchRate: 0, time: 0 };
+    private lastYaw = 0;
+    private lastPitch = 0;
+    private t = 0;
     onHit: (() => void) | null = null;
-    get swinging() { return this.swingT >= 0; }
+    get swinging() { return this.vm.swinging; }
 
-    constructor(private readonly scene: Scene, parent: Node) {
-        this.root = new TransformNode("viewmodel", scene);
-        this.root.parent = parent;
-        this.root.position.set(0.28, -0.3, -0.5);
-        this.pivot = new TransformNode("vmPivot", scene);
-        this.pivot.parent = this.root;
-        // forearm
-        const arm = new THREE.Group();
-        arm.add(m(new THREE.BoxGeometry(0.07, 0.07, 0.34).translate(0, 0, 0.2), T.sleeve, 0, -0.02, 0));
-        arm.add(m(new THREE.BoxGeometry(0.06, 0.06, 0.09).translate(0, 0, 0.03), T.skin, 0, 0, 0));
-        const a = bakeGroup("arm", arm, scene, (k) => mat(scene, k, "#ffffff"), false).node;
-        a.parent = this.pivot;
-        for (const mm of a.getChildMeshes()) mm.renderingGroupId = 1;
+    constructor(private readonly scene: Scene, private readonly camera: { getWorldMatrix(): { m: ArrayLike<number> } }) {
+        this.cam3.matrixAutoUpdate = false;
+        this.holder.add(this.cam3);
+        this.vm = new Hands(this.cam3);
+        this.vm.onHit = () => this.onHit?.();
+        this.mirror = new ThreeMirror(scene, this.holder, null, false, { tag: { keepUnderground: true, viewModel: true }, group: 1 });
     }
 
-    setItem(id: ItemId | null) {
-        if (id === this.heldId) return;
-        this.heldId = id;
-        if (this.held) disposeBaked(this.held);
-        this.held = null;
-        if (!id) return;
-        const color = ITEM_COLOR[id] ?? "#cfc6b4";
-        const b = bakeGroup(`held_${id}`, heldModel(id), this.scene, (k) => mat(this.scene, k, color), false);
-        this.held = b.node;
-        this.held.parent = this.pivot;
-        this.held.rotation.set(-0.35, 0, -0.15);
-        for (const mm of this.held.getChildMeshes()) mm.renderingGroupId = 1;
-    }
+    setItem(id: ItemId | null) { this.vm.setItem(id); }
+    swing() { this.vm.swing(); }
+    reach() { this.vm.reach(); }
+    place() { this.vm.place(); }
+    eat() { this.vm.eat(); }
+    drink(on: boolean) { this.vm.drink(on); }
+    visible(v: boolean) { this.vm.visible(v); }
 
-    swing() { this.swingT = 0; this.hitDone = false; }
-    reach() { this.reachT = 0; }
-    place() { this.reachT = 0; }
-    eat() { this.eatT = 0; }
-    visible(v: boolean) { this.root.setEnabled(v); }
-
-    update(dt: number, speed: number) {
-        this.bob += dt * speed * 2.2;
-        let rx = 0, ry = 0, rz = 0, px = 0, py = Math.sin(this.bob * 2) * 0.012 * Math.min(1, speed / 4), pz = 0;
-        if (this.swingT >= 0) {
-            this.swingT += dt;
-            const D = 0.42, u = this.swingT / D;
-            // wind up, chop down, recover
-            const k = u < 0.35 ? -Math.sin((u / 0.35) * Math.PI * 0.5) * 0.9 : u < 0.55 ? -0.9 + ((u - 0.35) / 0.2) * 2.3 : 1.4 * (1 - (u - 0.55) / 0.45);
-            rx = -k * 0.9;
-            ry = k * 0.25;
-            pz = -Math.max(0, k) * 0.08;
-            if (!this.hitDone && u >= 0.52) { this.hitDone = true; this.onHit?.(); }
-            if (u >= 1) this.swingT = -1;
-        }
-        if (this.reachT >= 0) {
-            this.reachT += dt;
-            const u = this.reachT / 0.35;
-            pz -= Math.sin(Math.min(1, u) * Math.PI) * 0.18;
-            py -= Math.sin(Math.min(1, u) * Math.PI) * 0.05;
-            if (u >= 1) this.reachT = -1;
-        }
-        if (this.eatT >= 0) {
-            this.eatT += dt;
-            const u = this.eatT / 0.8;
-            px -= Math.sin(Math.min(1, u) * Math.PI) * 0.2;
-            py += Math.sin(Math.min(1, u) * Math.PI) * 0.18;
-            rz += Math.sin(Math.min(1, u) * Math.PI) * 0.6;
-            if (u >= 1) this.eatT = -1;
-        }
-        this.pivot.position.set(px, py, pz);
-        this.pivot.rotation.set(rx, ry, rz);
+    /** once a frame, after the camera has moved */
+    update(dt: number, p: { vel: { x: number; y: number; z: number }; sprinting: boolean; mode: string; underwater: boolean; onGround: boolean; yaw: number; pitch: number }, daylight: number) {
+        this.t += dt;
+        let dy = p.yaw - this.lastYaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+        const vs = this.vs;
+        vs.yawRate = dt > 0 ? dy / dt : 0; vs.pitchRate = dt > 0 ? (p.pitch - this.lastPitch) / dt : 0;
+        this.lastYaw = p.yaw; this.lastPitch = p.pitch;
+        vs.speed = Math.hypot(p.vel.x, p.vel.z); vs.sprinting = p.sprinting;
+        vs.swimming = p.mode === "swim"; vs.underwater = p.underwater;
+        vs.onGround = p.onGround; vs.vy = p.vel.y; vs.time = this.t;
+        VM_LIGHT.value = daylight;
+        tickViewMaterials();
+        const eng = this.scene.getEngine();
+        this.cam3.aspect = eng.getRenderWidth() / Math.max(1, eng.getRenderHeight());
+        this.vm.update(dt, vs);
+        this.cam3.matrix.fromArray(this.camera.getWorldMatrix().m as unknown as number[]);
+        this.cam3.matrixWorldNeedsUpdate = true;
+        this.holder.updateMatrixWorld();
+        this.mirror.sync();
     }
 }

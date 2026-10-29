@@ -726,7 +726,9 @@ export class Game {
             const def = this.equippedDef, torch = def?.id === "torch" && (!this.torchPlace || ug.active) && !stats.dead;
             this.structures.setHeldLight(torch, this.vr.active ? this.vr.eye : player.eye, dt, ug.active ? 2.1 : 1);
         }
-        view.update(dt, Math.hypot(player.vel.x, player.vel.z));
+        // the hands: their self-light fades with the daylight (full in the caves, where lanterns light them)
+        view.drink(this.drinking && !hud.inventoryOpen);
+        { const d = this.clock.day ?? 1; view.update(dt, player, ug.active ? 1 : 0.05 + 0.95 * d * d); }
         this.fishing.update(dt);
         {
             const h = this.clock.hour, p = player;

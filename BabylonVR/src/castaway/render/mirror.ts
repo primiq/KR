@@ -9,6 +9,8 @@ export interface MirrorOptions {
     custom?: (m: THREE.Material) => Material | null;
     /** merged into every Babylon mesh's metadata (e.g. { keepUnderground: true }) */
     tag?: Record<string, unknown>;
+    /** draw into this Babylon rendering group (1: over the world, with its own depth: the first-person hands) */
+    group?: number;
 }
 
 /** a soft round glow, for sprites that have no texture (cave crystal halos) */
@@ -168,6 +170,7 @@ export class ThreeMirror {
             mesh.isPickable = false;
             mesh.receiveShadows = true;
             if (this.opts.tag) mesh.metadata = { ...this.opts.tag };
+            if (this.opts.group) mesh.renderingGroupId = this.opts.group;
             // a three.js group can tag the Babylon meshes drawn for it (userData.babylonTag): the sky room's mirror uses this
             for (let o: THREE.Object3D | null = src ?? null; o; o = o.parent) if (o.userData.babylonTag) { mesh.metadata = { ...(mesh.metadata ?? {}), ...o.userData.babylonTag }; break; }
             mesh.alwaysSelectAsActiveMesh = true;
@@ -197,6 +200,7 @@ export class ThreeMirror {
             mesh.receiveShadows = true;
             mesh.alwaysSelectAsActiveMesh = true;
             if (this.opts.tag) mesh.metadata = { ...this.opts.tag };
+            if (this.opts.group) mesh.renderingGroupId = this.opts.group;
             if (this.shadows) shadowCasters.add(mesh);
             mesh.rotationQuaternion = new Quaternion();
             v = { mesh, pos: new Float32Array(P.count * 3), seen: 0 };
@@ -243,6 +247,7 @@ export class ThreeMirror {
             plane.isPickable = false;
             plane.renderingGroupId = 1;
             if (this.opts.tag) plane.metadata = { ...this.opts.tag };
+            if (this.opts.group) plane.renderingGroupId = this.opts.group;
             const tex = new DynamicTexture("mirrorSpriteTex", img, { scene: this.scene });
             tex.hasAlpha = true;
             tex.update();
@@ -318,7 +323,7 @@ export class ThreeMirror {
             if (b.n) { b.mesh.thinInstanceBufferUpdated("matrix"); if (b.col) b.mesh.thinInstanceBufferUpdated("color"); }
         }
         for (const v of this.skins.values()) if (v.seen !== this.frame) v.mesh.setEnabled(false);
-        for (const { m, p } of this.liveMats) { const k = m.emissiveIntensity; p.emissiveColor.set(m.emissive.r * k, m.emissive.g * k, m.emissive.b * k); if (m.transparent) p.alpha = m.opacity; }
+        for (const { m, p } of this.liveMats) { const k = m.emissiveIntensity; p.emissiveColor.set(m.emissive.r * k, m.emissive.g * k, m.emissive.b * k); p.albedoColor.set(m.color.r, m.color.g, m.color.b); if (m.transparent) p.alpha = m.opacity; }
         for (const l of this.live) if (l.map.version !== l.version) { l.version = l.map.version; l.tex.update(l.map.flipY !== false); }
         for (const [s, v] of this.sprites) {
             if (v.seen === this.frame) continue;
