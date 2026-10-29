@@ -286,7 +286,8 @@ come from Castaway. Rendering, materials, the ocean and the VR controls are rebu
   a cave network under the island: dig with a pickaxe, climb down with a torch, and mine iron,
   coal and diamonds among glowing crystals.
 - **Island life:** footprints in the sand, birds that hop about and scatter when you come close,
-  flamingos, sea turtles that come ashore to nest, and wild flowers to pick and plant.
+  flamingos, sea turtles that come ashore to nest, wild flowers to pick and plant, and island
+  cats. At night something watches from the trees.
 - **Weather:** showers and the odd storm, decided by the host. The sky greys, the palms bend, the
   sea heaves, lightning flashes and thunder rolls, and a rainbow can follow the rain.
 - **The sea:** schools of fish swim in the lagoon and scatter when you come close, and on some

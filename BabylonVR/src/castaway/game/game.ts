@@ -24,6 +24,8 @@ import { Underground, type UgTarget } from "./underground";
 import { Birds, Flamingos, Footprints, type Walker } from "./nature";
 import { Turtles } from "./turtles";
 import { Saplings } from "./saplings";
+import { Stalkers } from "./stalker";
+import { Twins } from "./twins";
 import { type Door, Doors } from "./doors";
 import { type FrameAim, type Painting, Paintings } from "./paintings";
 import { Painter } from "../ui/painter";
@@ -74,13 +76,17 @@ export class Game {
     readonly birds: Birds;
     readonly flamingos = new Flamingos();
     readonly turtles: Turtles;
-    private natureRoot = new THREE.Scene();
+    /** three.js things drawn by natureMirror (main adds the island cats here too) */
+    readonly natureRoot = new THREE.Scene();
     /** wild flowers to pick, and the ones people plant */
     readonly flowers: Flowers;
     private natureMirror: ThreeMirror;
     private walkers: Walker[] = [];
     /** saplings people plant, growing into trees */
     readonly saplings: Saplings;
+    /** night things: the Stalker in the trees, and the twins on the beach */
+    readonly stalkers: Stalkers;
+    readonly twins: Twins;
     /** doors hung in doorways, and pictures on the walls (with the paint editor) */
     readonly doors: Doors;
     readonly paintings: Paintings;
@@ -121,6 +127,7 @@ export class Game {
         /** the host tells everybody whether the sea glows tonight; clients just follow */
         bio?: (on: boolean) => void;
         bioRemote?: boolean;
+        hitStalker?: (idx: number, px: number, pz: number) => void;
     } = {};
     /** bumps on every swing so other players can animate it */
     swings = 0;
@@ -216,6 +223,13 @@ export class Game {
         }
         this.turtles = new Turtles(this.natureRoot, o.shadows);
         this.saplings = new Saplings(o.vegetation, this.resources);
+        this.stalkers = new Stalkers(this.natureRoot, o.vegetation.colliders);
+        this.twins = new Twins(this.natureRoot);
+        this.stalkers.onSound = (w, x, z) => this.fauna.onSound?.(w, x, z);
+        this.stalkers.onBlood = (x, y, z, n) => this.fauna.onBlood?.(x, y, z, n);
+        this.twins.onSound = (w, x, z) => this.fauna.onSound?.(w, x, z);
+        this.twins.nearFire = (x, z, r) => this.structures.list.some((q) => q.lit && Math.hypot(q.x - x, q.z - z) < r);
+        this.stalkers.nearFire = (x, z, r) => this.structures.list.some((q) => q.lit && Math.hypot(q.x - x, q.z - z) < r);
         this.doors = new Doors(o.scene, this.building, o.shadows);
         this.paintings = new Paintings(o.scene, o.shadows);
         this.building.afterRemove = (p, silent) => {
@@ -599,6 +613,9 @@ export class Game {
             this.fauna.update(dt, ug.active ? [{ id: this.netId, x: 1e6, y: 0, z: 1e6, sprint: false }] : this.net.targets ? this.net.targets() : [{ id: this.netId, x: p.pos.x, y: p.pos.y, z: p.pos.z, sprint: p.sprinting, yaw: p.yaw }], h < 5.8 || h > 19.5);
             this.faunaMirror.sync();
             const ts = ug.active ? [] : (this.net.targets ? this.net.targets() : [{ x: p.pos.x, y: p.pos.y, z: p.pos.z }]).filter((t) => Math.abs(t.x) < 5e5);
+            const nightNow = h < 5.4 || h > 19.8;
+            this.stalkers.update(dt, ts, nightNow);
+            this.twins.update(dt, ts, nightNow);
             this.turtles.update(dt, h, ts);
             this.updateNature(dt, h, ug.active);
             this.natureMirror.sync();
@@ -819,12 +836,14 @@ export class Game {
         } else {
             this.runHold(dt, null, () => {}, () => {});
             const an = ug.active ? null : this.fauna.raycast(eye, dir, 4.2, this.assist);
+            const sk = ug.active ? null : this.stalkers.raycast(eye, dir, 4.2, this.assist);
             const click = `<b>${this.vr.active ? "Swing" : this.input.touch ? "HIT" : "Click"}</b>`;
             if (this.fishPrompt && def?.tool?.model === "rod") hud.setPrompt(this.fishPrompt, "", true);
             else if (an && (!t || an.dist < t.dist)) {
                 const a = an.a, hostile = a.kind === "boar" && a.state === "chase";
                 hud.setPrompt(`${a.def.name}  ${Math.max(1, Math.ceil(a.hp))}/${a.def.hp}`, def?.tool && an.dist <= def.tool.reach ? `${click} attack` : an.dist > (def?.tool?.reach ?? 0) ? "Move closer" : "", hostile);
-            } else if (this.frameAim) {
+            } else if (sk && (!an || sk.dist < an.dist) && (!t || sk.dist < t.dist)) hud.setPrompt("The Stalker", def?.tool && sk.dist <= def.tool.reach ? `${click} attack` : "It watches you", true);
+            else if (this.frameAim) {
                 const fa = this.frameAim;
                 hud.setPrompt(def!.name, fa.ok ? `${click} hang it here` : fa.reason, fa.ok);
             } else if (def?.flower !== undefined && !t) {
@@ -1058,6 +1077,8 @@ export class Game {
             this.wearHeld();
             return;
         }
+        const sk = ug.active ? null : this.stalkers.raycast(eye, this.dir, def.tool.reach, this.assist);
+        if (sk && (!an || sk.dist < an.dist) && (!t || t.type !== "node" || sk.dist < t.dist)) { this.hitStalker(sk.s); return; }
         if (an && (!t || t.type !== "node" || an.dist < t.dist)) { this.hitAnimal(an.a, def.tool.dmg); return; }
         if (!t) { this.sfx.hit("leaf"); return; }
         this.vr.haptic?.(0.55);
@@ -1163,6 +1184,13 @@ export class Game {
         if (!found) return { x, y, z, why: "Aim at the ground" };
         if (this.building.ground(x, z, y + 1) > y + 0.25) return { x, y, z, why: "Flowers grow in the ground, not on floors" };
         return { x, y, z, why: this.flowers.check(x, z) };
+    }
+
+    private hitStalker(s: Stalkers["list"][number]) {
+        const p = this.player;
+        if (this.stalkers.remote) { this.net.hitStalker?.(this.stalkers.indexOf(s), p.pos.x, p.pos.z); this.fauna.onBlood?.(s.x, s.y + 1.4, s.z, 6); }
+        else this.stalkers.hit(s, p.pos.x, p.pos.z);
+        this.sfx.thwack(); this.vr.haptic?.(0.8); p.shake(0.3); this.wearHeld();
     }
 
     private hitAnimal(a: Animal, dmg: number) {

@@ -74,7 +74,8 @@ export class WorldSync {
         game.net.rayPlayer = (eye, dir, reach) => this.rayPlayer(eye, dir, reach);
         // ---- wildlife: the host simulates, clients mirror
         const fauna = game.fauna;
-        if (!session.isHost) { fauna.remote = true; game.turtles.remote = true; }
+        if (!session.isHost) { fauna.remote = true; game.turtles.remote = true; game.stalkers.remote = true; game.twins.remote = true; }
+        game.net.hitStalker = (i, px, pz) => session.sendEvent({ k: "sh", i, x: +px.toFixed(1), z: +pz.toFixed(1) });
         // weather: the host decides, the others follow
         if (game.weather) {
             game.weather.remote = !session.isHost;
@@ -94,6 +95,8 @@ export class WorldSync {
             session.onFast = () => {
                 const near = (x: number, z: number) => this.targets().some((t) => Math.hypot(t.x - x, t.z - z) < 135);
                 session.sendEvent({ k: "an", r: fauna.exportState(near) });
+                session.sendEvent({ k: "sk", r: game.stalkers.exportState() });
+                session.sendEvent({ k: "tw", r: game.twins.exportState() });
                 const tu = game.turtles.exportState(); if (tu.length) session.sendEvent({ k: "tu", r: tu });
                 // the weather, for anyone who joined since it started
                 if (++this.slowTick % 40 === 0) {
@@ -166,6 +169,8 @@ export class WorldSync {
         const f = this.game.fauna;
         if (f.remote) f.promote();
         if (this.game.turtles.remote) this.game.turtles.promote();
+        if (this.game.stalkers.remote) this.game.stalkers.promote();
+        if (this.game.twins.remote) this.game.twins.promote();
         if (this.game.weather) { this.game.weather.remote = false; this.game.weather.onChange = null; }
         if (this.orig) { f.onSound = this.orig.sound; f.onBlood = this.orig.blood; f.onKill = this.orig.kill; this.orig = null; }
         this.session.onFast = null;
@@ -280,6 +285,9 @@ export class WorldSync {
             case "ga": g.paintings.place({ x: e.x, y: e.y, z: e.z, yaw: e.r, wall: e.w }, { nid: e.n, data: e.d, remote: true }); break;
             case "gd": { const p = g.paintings.list.find((q) => q.nid === e.n); if (p) g.paintings.remove(p, true); break; }
             case "gp": { const p = g.paintings.list.find((q) => q.nid === e.n); if (p && typeof e.d === "string") g.paintings.setData(p, e.d, true); break; }
+            case "tw": if (!this.session.isHost) g.twins.importState(e.r); break;
+            case "sk": if (!this.session.isHost) g.stalkers.importState(e.r); break;
+            case "sh": { const q = this.session.isHost ? g.stalkers.list[e.i] : undefined; if (q) g.stalkers.hit(q, e.x, e.z); break; }
             case "mp": this.addPing(from, this.session.players.get(from)?.name ?? "Someone", playerColor(from), e.x, e.z); break;
         }
     }

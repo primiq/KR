@@ -21,6 +21,7 @@ import { planSites, SurfaceSites } from "./world/sites";
 import { CaveView } from "./world/caveView";
 import { Weather } from "./world/weather";
 import { BIO } from "./world/sealife";
+import { Cats } from "./world/cats";
 import { getOutfit, onOutfitChange, setPlayerOutfit } from "./net/outfit";
 import { SKINS } from "./net/playerModel";
 import { setupCustomise, setNameLocked } from "./ui/customise";
@@ -142,6 +143,12 @@ async function main() {
     const sites = new SurfaceSites(game.ugRoot as unknown as THREE.Scene, sitePlan, vegetation.colliders, q.shadows);
     game.under.sites = sites;
     const caves = new CaveView(scene, game, clock, q.shadows);
+    // the island's cats
+    const cats = params.has("nocats") ? null : new Cats(game.natureRoot, vegetation.colliders, q.shadows, () => game.fauna.animals);
+    if (cats) {
+        cats.onMeow = (v) => game.sfx.meow(v);
+        cats.beds = () => game.structures.list.filter((s) => s.kind === "cat_bed");
+    }
     // showers and storms
     const weather = new Weather(scene, q.name, clock, ocean);
     game.weather = weather;
@@ -231,6 +238,7 @@ async function main() {
             }
             game.update(dt, true);
             game.under.sites?.update(dt);
+            if (cats && !game.under.active) cats.update(dt, player.pos.x, player.pos.z, player.pos.y);
             ocean.bio = BIO.value;
             Wind.push[0].set(player.pos.x, player.pos.y, player.pos.z, 0.9);
         } else {
@@ -592,7 +600,7 @@ async function main() {
     // a hidden tab stops rendering: keep the room in step anyway (a host who alt-tabs must not freeze everyone else)
     setInterval(() => { if (document.hidden) sync?.update(0.1); }, 100);
 
-    Object.assign(window as unknown as Record<string, unknown>, { Wind, scene, engine, game, player, sites, caves, heightAt, weather, vegetation, terrain, ocean, input, clock, camera, getSync: () => sync, doSave });
+    Object.assign(window as unknown as Record<string, unknown>, { Wind, scene, engine, game, player, sites, caves, heightAt, weather, cats, vegetation, terrain, ocean, input, clock, camera, getSync: () => sync, doSave });
 }
 
 main().catch((e) => {
