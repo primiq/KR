@@ -48,7 +48,7 @@ import { getOutfit, onOutfitChange, setPlayerOutfit } from "./net/outfit";
 import { SKINS } from "./net/playerModel";
 import { setupCustomise, setNameLocked } from "./ui/customise";
 import { setViewSkin } from "./game/viewmodel";
-import { playerColor } from "./net/avatars";
+import { Avatars, playerColor } from "./net/avatars";
 import { eraseSaves, guestKey, LAYOUT, loadChar, loadWorld, migrateWorld, newWorldId, saveChar, saveWorld } from "./net/save";
 import { Session } from "./net/session";
 import { WorldSync } from "./net/sync";
@@ -437,6 +437,8 @@ async function main() {
         }
     }
 
+    /** draws your reflection in the sky room's mirror (the room's avatars when in a room, a private set when solo) */
+    let mirrorAv: Avatars | null = null;
     // ---- frame loop
     let last = performance.now();
     scene.onBeforeRenderObservable.add(() => {
@@ -510,6 +512,12 @@ async function main() {
             const sy = sync;
             if (sy) dive.updateRemote(sy.avatars.positions.map((a) => { const st = sy.session.states.get(a.id); return { id: a.id, x: a.x, y: a.y, z: a.z, yaw: st?.yaw ?? 0, flags: st?.flags ?? 0 }; }));
             sky.update(dt, player, (x, z) => heightAt(x, z));
+            // the secret room's mirror: you (a private copy only the mirror draws) and everybody else in it
+            if (sky.active || mirrorAv) {
+                mirrorAv ??= sync?.avatars ?? new Avatars(scene, false);
+                const held = game.equipped;
+                mirrorAv.mirrorSelf(sky.active, { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch, spd: Math.hypot(player.vel.x, player.vel.z), item: held ? held.id : "", swing: game.swings, flags: (player.sprinting ? 1 : 0) | (game.isSleeping ? 8 : 0), hp: game.stats.health, arm: game.armorCode }, sync?.session.myId ?? 0, dt, sync?.session.players.get(sync.session.myId)?.name);
+            }
             {
                 // the cat house: the host keeps the mouse and the ball going; everybody in it simulates the same toys
                 const host = !sync || sync.session.isHost;

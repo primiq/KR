@@ -11,6 +11,8 @@ export interface MirrorOptions {
     tag?: Record<string, unknown>;
     /** draw into this Babylon rendering group (1: over the world, with its own depth: the first-person hands) */
     group?: number;
+    /** a Babylon layer mask for every mesh (e.g. one no camera sees, for a copy only a mirror draws) */
+    layerMask?: number;
 }
 
 /** a soft round glow, for sprites that have no texture (cave crystal halos) */
@@ -171,6 +173,7 @@ export class ThreeMirror {
             mesh.receiveShadows = true;
             if (this.opts.tag) mesh.metadata = { ...this.opts.tag };
             if (this.opts.group) mesh.renderingGroupId = this.opts.group;
+            if (this.opts.layerMask !== undefined) mesh.layerMask = this.opts.layerMask;
             // a three.js group can tag the Babylon meshes drawn for it (userData.babylonTag): the sky room's mirror uses this
             for (let o: THREE.Object3D | null = src ?? null; o; o = o.parent) if (o.userData.babylonTag) { mesh.metadata = { ...(mesh.metadata ?? {}), ...o.userData.babylonTag }; break; }
             mesh.alwaysSelectAsActiveMesh = true;
@@ -201,6 +204,7 @@ export class ThreeMirror {
             mesh.alwaysSelectAsActiveMesh = true;
             if (this.opts.tag) mesh.metadata = { ...this.opts.tag };
             if (this.opts.group) mesh.renderingGroupId = this.opts.group;
+            if (this.opts.layerMask !== undefined) mesh.layerMask = this.opts.layerMask;
             if (this.shadows) shadowCasters.add(mesh);
             mesh.rotationQuaternion = new Quaternion();
             v = { mesh, pos: new Float32Array(P.count * 3), seen: 0 };
@@ -248,6 +252,7 @@ export class ThreeMirror {
             plane.renderingGroupId = 1;
             if (this.opts.tag) plane.metadata = { ...this.opts.tag };
             if (this.opts.group) plane.renderingGroupId = this.opts.group;
+            if (this.opts.layerMask !== undefined) plane.layerMask = this.opts.layerMask;
             const tex = new DynamicTexture("mirrorSpriteTex", img, { scene: this.scene });
             tex.hasAlpha = true;
             tex.update();

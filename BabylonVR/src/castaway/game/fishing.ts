@@ -22,6 +22,8 @@ export class Fishing {
     private to = new Vector3();
     private pos = new Vector3();
     private bobber: TransformNode;
+    /** the sea's height under the float (the Gerstner swell): it rides the waves instead of sitting at sea level */
+    surface: (x: number, z: number) => number = () => 0;
     private line: LinesMesh;
     private pts: Vector3[] = Array.from({ length: N }, () => new Vector3());
     private tip = new Vector3();
@@ -138,13 +140,13 @@ export class Fishing {
             if (k >= 1) {
                 this.state = "wait";
                 this.t = 0;
-                this.pos.y = 0;
+                this.pos.y = this.surface(this.pos.x, this.pos.z);
                 this.ev.sound("plop");
                 this.ev.splash(this.pos.x, 0.03, this.pos.z, 8);
                 this.ev.prompt("Waiting for a bite…");
             }
         } else if (this.state === "wait") {
-            this.pos.y = Math.sin(this.clock * 2.1) * 0.012;
+            this.pos.y = this.surface(this.pos.x, this.pos.z) + Math.sin(this.clock * 2.1) * 0.012;
             this.pos.x += Math.sin(this.clock * 0.7) * 0.0006;
             this.pos.z += Math.cos(this.clock * 0.6) * 0.0006;
             if (this.t > this.biteAt) {
@@ -156,7 +158,7 @@ export class Fishing {
                 this.ev.prompt("Bite! Click now!");
             }
         } else if (this.state === "bite") {
-            this.pos.y = -0.07 + Math.sin(this.clock * 38) * 0.02;
+            this.pos.y = this.surface(this.pos.x, this.pos.z) - 0.07 + Math.sin(this.clock * 38) * 0.02;
             this.pos.x += Math.sin(this.clock * 31) * 0.004;
             if (this.t > this.window) {
                 this.ev.message("The fish got away.");

@@ -396,6 +396,7 @@ export class Game {
             },
             prompt: (t) => { this.fishPrompt = t; },
         });
+        this.fishing.surface = (x, z) => this.player.surfaceAt(x, z);
         this.player.onLand = (v) => {
             if (this.stats.dead || this.under.camp?.active || this.under.town?.active) return;
             const d = (v - 14) * 6;

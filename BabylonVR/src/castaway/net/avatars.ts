@@ -717,6 +717,8 @@ export class ThreeAvatars {
       const fade = Math.min(1, (20 - b.t) / 4);
       (b.mats[0] as any).opacity = 0.35 * fade;
       (b.mats[1] as any).opacity = 0.7 * fade;
+      // a ping out on the water rides the waves (it was left at sea level, sunk in the crests and floating over the troughs)
+      if (swimSurface && heightAt(b.g.position.x, b.g.position.z) < 0) b.g.position.y = swimSurface(b.g.position.x, b.g.position.z);
       const ring = b.g.children[1]; const p = (b.t * 0.9) % 1; ring.scale.setScalar(0.6 + p * 1.6); (b.mats[1] as any).opacity *= 1 - p * 0.8;
     }
   }
@@ -768,11 +770,14 @@ export class ThreeAvatars {
  * Babylon side: Castaway's avatars live in a private three.js scene graph (animated by their own code) and are drawn
  * by a ThreeMirror each frame.
  */
+/** a layer no camera draws (cameras see 0x0fffffff): meshes only a mirror's render list picks up */
+export const MIRROR_ONLY = 0x10000000;
+
 export class Avatars {
   private holder = new THREE.Scene();
   readonly three = new ThreeAvatars(this.holder, false);
   private mirror: ThreeMirror;
-  constructor(scene: Scene, shadows: boolean) { this.mirror = new ThreeMirror(scene, this.holder, null, shadows, { tag: { keepUnderground: true, avatar: true } }); }
+  constructor(private readonly scene: Scene, shadows: boolean) { this.mirror = new ThreeMirror(scene, this.holder, null, shadows, { tag: { keepUnderground: true, avatar: true } }); }
   set onStep(f: ((x: number, y: number, z: number) => void) | null) { this.three.onStep = f ? (x, y, z) => f(x, y, z) : null; }
   set surfaceAt(f: (x: number, z: number) => number) { setSwimSurface(f); }
   get positions() { return this.three.positions; }
@@ -784,4 +789,21 @@ export class Avatars {
     this.mirror.sync();
   }
   clear() { this.three.clear(); this.holder.updateMatrixWorld(); this.mirror.sync(); }
+
+  // ---- your own reflection in the secret room's mirror: a private copy of your avatar on a layer no camera draws (the
+  //      mirror's render list takes it anyway)
+  private selfHolder: THREE.Scene | null = null;
+  private selfThree: ThreeAvatars | null = null;
+  private selfMirror: ThreeMirror | null = null;
+  mirrorSelf(on: boolean, st: PState | null, myId: number, dt: number, name?: string) {
+    if (!on && !this.selfThree) return;
+    if (!this.selfThree) {
+      this.selfHolder = new THREE.Scene();
+      this.selfThree = new ThreeAvatars(this.selfHolder, false);
+      this.selfMirror = new ThreeMirror(this.scene, this.selfHolder, null, false, { tag: { keepUnderground: true, avatar: true, mirrorSelf: true }, layerMask: MIRROR_ONLY });
+    }
+    this.selfThree.mirrorSelf(on, st, myId, dt, name);
+    this.selfHolder!.updateMatrixWorld();
+    this.selfMirror!.sync();
+  }
 }
