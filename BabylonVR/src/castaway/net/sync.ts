@@ -72,6 +72,8 @@ export class WorldSync {
             game.weather.onChange = session.isHost ? (s, l) => session.sendEvent({ k: "we", s, l: Math.round(l) }) : null;
         }
         game.net.targets = () => this.targets();
+        game.net.bioRemote = !session.isHost;
+        if (session.isHost) game.net.bio = (on) => session.sendEvent({ k: "bi", v: on ? 1 : 0 });
         game.net.hitAnimal = (i, dmg, px, pz) => session.sendEvent({ k: "ah", i, d: +dmg.toFixed(1), x: +px.toFixed(1), z: +pz.toFixed(1) });
         game.net.hurtRemote = (to, dmg, fx, fz, by) => session.sendEvent({ k: "hurt", to, d: dmg, x: +fx.toFixed(1), z: +fz.toFixed(1), by });
         if (session.isHost) {
@@ -85,7 +87,10 @@ export class WorldSync {
                 session.sendEvent({ k: "an", r: fauna.exportState(near) });
                 const tu = game.turtles.exportState(); if (tu.length) session.sendEvent({ k: "tu", r: tu });
                 // the weather, for anyone who joined since it started
-                if (++this.slowTick % 40 === 0 && game.weather) session.sendEvent({ k: "we", s: game.weather.kind, l: Math.round(game.weather.left) });
+                if (++this.slowTick % 40 === 0) {
+                    if (game.weather) session.sendEvent({ k: "we", s: game.weather.kind, l: Math.round(game.weather.left) });
+                    session.sendEvent({ k: "bi", v: game.bioTonight ? 1 : 0 });
+                }
             };
         }
 
@@ -255,6 +260,7 @@ export class WorldSync {
             case "fa": g.flowers.plant(e.s, e.x, e.y, e.z, { nid: e.n, rot: e.r, remote: true }); break;
             case "fd": g.flowers.unplant(e.n, true); break;
             case "we": if (!this.session.isHost && (e.s === 0 || e.s === 1 || e.s === 2)) g.weather?.setRemote(e.s, Number(e.l) || 0); break;
+            case "bi": if (!this.session.isHost) g.bioTonight = !!e.v; break;
             case "mp": this.addPing(from, this.session.players.get(from)?.name ?? "Someone", playerColor(from), e.x, e.z); break;
         }
     }

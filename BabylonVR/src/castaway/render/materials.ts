@@ -257,3 +257,21 @@ export function glow(scene: Scene, hex: string, alpha = 1): StandardMaterial {
         return m;
     });
 }
+
+/** Castaway's fish: vertex-coloured, with a side-to-side tail beat (the tail weight rides in the colour alpha, see sealife). */
+export function fishMaterial(scene: Scene, amp: number): PBRCustomMaterial {
+    return once(`fish:${amp.toFixed(3)}`, () => {
+        const m = new PBRCustomMaterial(`fish${amp.toFixed(2)}`, scene);
+        m.metallic = 0.15;
+        m.roughness = 0.4;
+        m.AddUniform("fishTime", "float", 0);
+        m.Vertex_Before_PositionUpdated(`
+            #ifdef VERTEXCOLOR
+            float wig = fract(color.a) / 0.66;
+            positionUpdated.x += sin(fishTime * 11.0 + positionUpdated.x * 3.1 + positionUpdated.z * 2.3) * wig * ${amp.toFixed(4)};
+            #endif
+        `);
+        m.onBindObservable.add(() => m.getEffect()?.setFloat("fishTime", performance.now() / 1000));
+        return m;
+    });
+}

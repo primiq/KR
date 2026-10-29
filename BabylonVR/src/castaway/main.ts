@@ -20,6 +20,7 @@ import * as THREE from "three";
 import { planSites, SurfaceSites } from "./world/sites";
 import { CaveView } from "./world/caveView";
 import { Weather } from "./world/weather";
+import { BIO } from "./world/sealife";
 import { getOutfit, onOutfitChange, setPlayerOutfit } from "./net/outfit";
 import { SKINS } from "./net/playerModel";
 import { setupCustomise, setNameLocked } from "./ui/customise";
@@ -230,6 +231,7 @@ async function main() {
             }
             game.update(dt, true);
             game.under.sites?.update(dt);
+            ocean.bio = BIO.value;
             Wind.push[0].set(player.pos.x, player.pos.y, player.pos.z, 0.9);
         } else {
             // the menu: a slow look along the beach

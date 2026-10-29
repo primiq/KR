@@ -131,6 +131,7 @@ uniform vec3 sunColor;
 uniform vec3 shallowColor;
 uniform vec3 deepColor;
 uniform float daylight;
+uniform float bio;
 uniform float time;
 varying vec3 vPos;
 varying vec3 vNormal;
@@ -199,6 +200,8 @@ void main(void) {
     float lace = smoothstep(0.45, 0.65, foamNoise);
     float foam = clamp(shore * lace * 1.2 + smoothstep(0.7, 1.0, vCrest) * lace * 0.8, 0.0, 1.0);
     col = mix(col, vec3(0.9, 0.93, 0.95) * (0.35 * daylight + 0.65 * length(sunColor) * 0.2), foam * 0.75);
+    // Bioluminescence (Castaway's glowing nights): the breaking water and foam light up blue
+    col += vec3(0.12, 0.62, 1.0) * bio * (foam * 1.6 + smoothstep(0.45, 1.0, vCrest) * 0.5 + shore * 0.4) * (0.7 + 0.3 * sin(time * 2.3 + vPos.x * 0.7 + vPos.z * 0.5));
 
     // Shallow water is clear; deep water is opaque.
     float alpha = clamp(1.0 - exp(-depth * 1.6) + fresnel * 0.6 + foam, 0.0, 1.0);
@@ -230,6 +233,8 @@ export class Ocean {
     private underwater = false;
     /** 1 by day; lower at night so the water's own glow fades with the light (Castaway's day / night) */
     daylight = 1;
+    /** 0..1: the sea glows where it breaks (Castaway's bioluminescent nights) */
+    bio = 0;
 
     constructor(
         private readonly scene: Scene,
@@ -277,7 +282,7 @@ export class Ocean {
             { vertex: "ocean", fragment: "ocean" },
             {
                 attributes: ["position"],
-                uniforms: ["world", "viewProjection", "time", "waveA", "waveB", "seabedRect", "rippleRect", "rippleTexel", "cameraPos", "sunDir", "sunColor", "shallowColor", "deepColor", "daylight"],
+                uniforms: ["world", "viewProjection", "time", "waveA", "waveB", "seabedRect", "rippleRect", "rippleTexel", "cameraPos", "sunDir", "sunColor", "shallowColor", "deepColor", "daylight", "bio"],
                 samplers: ["seabed", "ripples", "envMap"],
                 defines: [`#define NUM_WAVES ${n}`],
                 needAlphaBlending: true,
@@ -295,6 +300,7 @@ export class Ocean {
             const e = mat.getEffect()!;
             e.setFloat("time", this.time);
             e.setFloat("daylight", this.daylight);
+            e.setFloat("bio", this.bio);
             e.setArray4("waveA", this.waveA as unknown as number[]);
             e.setArray4("waveB", this.waveB as unknown as number[]);
             e.setVector3("cameraPos", cam.globalPosition);

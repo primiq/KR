@@ -24,6 +24,8 @@ import { Underground, type UgTarget } from "./underground";
 import { Birds, Flamingos, Footprints, type Walker } from "./nature";
 import { Turtles } from "./turtles";
 import type { Weather } from "../world/weather";
+import { FISH_WIGGLE, SeaLife } from "../world/sealife";
+import { fishMaterial } from "../render/materials";
 import { Flowers } from "../world/flowers";
 import { isProbablyHeadset } from "../../config";
 import { FLOWERS } from "../world/flowerKinds";
@@ -75,6 +77,10 @@ export class Game {
     private walkers: Walker[] = [];
     /** showers and storms (the host decides; see world/weather). Set by main. */
     weather: Weather | null = null;
+    /** schools of fish, and the glowing sea on some nights (the host decides at dusk) */
+    readonly sealife: SeaLife;
+    bioTonight = false;
+    private bioHour = -1;
     private roofT = 0;
     private roofed = false;
     /** switch the presentation between the island and the caves (set by main) */
@@ -99,6 +105,9 @@ export class Game {
         inUse?: (s: Structure) => string | null;
         slept?: () => void;
         died?: () => void;
+        /** the host tells everybody whether the sea glows tonight; clients just follow */
+        bio?: (on: boolean) => void;
+        bioRemote?: boolean;
     } = {};
     /** bumps on every swing so other players can animate it */
     swings = 0;
@@ -200,7 +209,10 @@ export class Game {
         }
         this.birds = new Birds(o.vegetation);
         this.natureRoot.add(this.prints.mesh, this.birds.group, this.flamingos.group);
-        this.natureMirror = new ThreeMirror(o.scene, this.natureRoot, null, o.shadows);
+        this.sealife = new SeaLife(this.natureRoot, !o.shadows);
+        this.natureMirror = new ThreeMirror(o.scene, this.natureRoot, null, o.shadows, {
+            custom: (m) => (m.name.startsWith("fish") ? fishMaterial(o.scene, FISH_WIGGLE[+m.name.slice(4)] ?? 0.1) : null),
+        });
         this.birds.sound = (k, v) => { if (k === "chirp") this.sfx.chirp(v); else this.sfx.flutter(v); };
         this.flamingos.sound = (k, v) => { if (k === "honk") this.sfx.honk(v); else this.sfx.flutter(v); };
         {
@@ -995,6 +1007,20 @@ export class Game {
         this.prints.mesh.visible = onIsland;
         this.birds.update(dt, me, threats, (this.weather?.rain ?? 0) > 0.35 ? 0 : hour, onIsland);
         this.flamingos.update(dt, me, threats, hour, onIsland);
+        // sea life: only near the sea. Some nights (about one in three) the sea glows: the host / solo player decides at dusk
+        if (!this.net.bioRemote) {
+            if (this.bioHour >= 0 && this.bioHour < 19.6 && hour >= 19.6) { this.bioTonight = Math.random() < 0.35; this.net.bio?.(this.bioTonight); }
+            if (this.bioHour >= 0 && this.bioHour < 5.6 && hour >= 5.6) { this.bioTonight = false; this.net.bio?.(false); }
+            this.bioHour = hour;
+        }
+        {
+            const nearSea = onIsland && (p.underwater || heightAt(me.x, me.z) < 6);
+            const waders = nearSea && p.waterDepth > 0.05 && !this.stats.dead ? [{ x: me.x, y: me.y, z: me.z, moving: p.moving }] : [];
+            if (nearSea) for (const o of this.resources.others() as { x: number; y?: number; z: number }[]) if (Math.abs(o.x) < 500 && heightAt(o.x, o.z) < -0.05) waders.push({ x: o.x, y: o.y ?? 0, z: o.z, moving: true });
+            const night = hour < 5.6 || hour > 19.3;
+            this.sealife.bioTarget = this.bioTonight && night ? 1 : 0;
+            this.sealife.update(dt, me, nearSea ? [{ x: me.x, y: me.y, z: me.z }] : [], waders, nearSea);
+        }
         // weather: rain stops under a roof (and in the caves, and under water); the sky, sea and plants follow the host's weather
         this.roofT -= dt;
         if (this.roofT <= 0) { this.roofT = 0.4; this.roofed = onIsland && this.structures.ceilingAt?.(me.x, me.y, me.z) != null; }

@@ -287,6 +287,8 @@ come from Castaway. Rendering, materials, the ocean and the VR controls are rebu
   flamingos, sea turtles that come ashore to nest, and wild flowers to pick and plant.
 - **Weather:** showers and the odd storm, decided by the host. The sky greys, the palms bend, the
   sea heaves, lightning flashes and thunder rolls, and a rainbow can follow the rain.
+- **The sea:** schools of fish swim in the lagoon and scatter when you come close, and on some
+  nights the surf glows blue.
 - **Day and night:** a 25-minute day with a moving sun, stars and moon. Sleep in a bed at night.
 - **Characters:** Castaway's player models, outfits and armour, with walk, swim and swing
   animation. **Customise character** on the menu picks your look, which other players see.
