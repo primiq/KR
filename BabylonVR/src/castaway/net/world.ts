@@ -29,6 +29,7 @@ export function captureWorld(g: Game) {
         pieces: [...g.building.pieces].map((p) => [p.kind, p.i, p.j, p.axis, +p.H.toFixed(3), p.L, p.dir]),
         build: g.building.captureExtras(),
         cave: g.under.capture(),
+        turtles: g.turtles.capture(),
         structs: g.structures.list.map((s) => [s.nid, s.kind, +s.x.toFixed(2), +s.y.toFixed(3), +s.z.toFixed(2), +s.yaw.toFixed(3), +s.fuel.toFixed(1), s.lit ? 1 : 0, +s.prog.toFixed(1), packInv(s.inv)]),
     };
 }
@@ -55,6 +56,7 @@ export function applyWorld(g: Game, snap: any) {
     for (const row of snap.structs ?? []) placeStruct(g, row);
     if (snap.build) g.building.restoreExtras(snap.build);
     g.under.restore(snap.cave);
+    if (snap.turtles) g.turtles.restore(snap.turtles);
 }
 
 /** The local player's own stuff. */

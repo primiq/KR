@@ -21,6 +21,8 @@ import { ThreeMirror } from "../render/mirror";
 import { PBRMaterial, Color3 } from "@babylonjs/core";
 import { MapView, type MapMarkers } from "../ui/map";
 import { Underground, type UgTarget } from "./underground";
+import { Birds, Flamingos, Footprints, type Walker } from "./nature";
+import { Turtles } from "./turtles";
 
 export interface GameOpts {
     scene: Scene;
@@ -57,6 +59,14 @@ export class Game {
     /** the caves (and the chests in the huts and wrecks on the surface); three.js graphs under `ugRoot`, drawn by main */
     readonly under: Underground;
     readonly ugRoot = new THREE.Group();
+    /** footprints in the sand, birds, flamingos and nesting turtles (three.js, drawn by natureMirror) */
+    readonly prints = new Footprints();
+    readonly birds: Birds;
+    readonly flamingos = new Flamingos();
+    readonly turtles: Turtles;
+    private natureRoot = new THREE.Scene();
+    private natureMirror: ThreeMirror;
+    private walkers: Walker[] = [];
     /** switch the presentation between the island and the caves (set by main) */
     onUnderground: ((on: boolean) => void) | null = null;
     private faunaMirror: ThreeMirror;
@@ -171,6 +181,21 @@ export class Game {
                 if (target !== this.netId) { this.net.hurtRemote?.(target, dmg, fx, fz, by); return; }
                 this.hurtPlayer(dmg, fx, fz, by);
             };
+        }
+        this.turtles = new Turtles(this.natureRoot, o.shadows);
+        this.birds = new Birds(o.vegetation);
+        this.natureRoot.add(this.prints.mesh, this.birds.group, this.flamingos.group);
+        this.natureMirror = new ThreeMirror(o.scene, this.natureRoot, null, o.shadows);
+        this.birds.sound = (k, v) => { if (k === "chirp") this.sfx.chirp(v); else this.sfx.flutter(v); };
+        this.flamingos.sound = (k, v) => { if (k === "honk") this.sfx.honk(v); else this.sfx.flutter(v); };
+        {
+            const pk = this.resources.pickups, tu = this.turtles;
+            tu.layEgg = (x, y, z) => pk.spawn("turtle_egg", 1, x, y, z)?.nid ?? null;
+            tu.eggThere = (nid) => pk.byId.has(nid);
+            tu.takeEgg = (nid) => { const p = pk.byId.get(nid); if (p) pk.remove(p); };
+            tu.onSand = (x, y, z, n) => { if (Math.hypot(x - this.player.pos.x, z - this.player.pos.z) < 90) this.resources.burst(new Vector3(x, y, z), "sand", n, 2.2); };
+            this.resources.onTreeHit = (x, z) => this.birds.treeHit(x, z);
+            tu.onArrive = (x, z) => { if (!this.under.active && Math.hypot(x - this.player.pos.x, z - this.player.pos.z) < 170) this.hud.message("Sea turtles are coming ashore to nest. Watch them, but give them room."); };
         }
         this.under = new Underground({
             scene: this.ugRoot, player: o.player,
@@ -484,6 +509,10 @@ export class Game {
             const h = this.clock.hour, p = player;
             this.fauna.update(dt, ug.active ? [{ id: this.netId, x: 1e6, y: 0, z: 1e6, sprint: false }] : this.net.targets ? this.net.targets() : [{ id: this.netId, x: p.pos.x, y: p.pos.y, z: p.pos.z, sprint: p.sprinting, yaw: p.yaw }], h < 5.8 || h > 19.5);
             this.faunaMirror.sync();
+            const ts = ug.active ? [] : (this.net.targets ? this.net.targets() : [{ x: p.pos.x, y: p.pos.y, z: p.pos.z }]).filter((t) => Math.abs(t.x) < 5e5);
+            this.turtles.update(dt, h, ts);
+            this.updateNature(dt, h, ug.active);
+            this.natureMirror.sync();
         }
         if (this.deathMark && !stats.dead && Math.hypot(this.deathMark.x - player.pos.x, this.deathMark.z - player.pos.z) < 5) this.deathMark = null;
         {
@@ -897,6 +926,33 @@ export class Game {
         // felling a tree sometimes shakes a sapling loose
         if (emptied && (n.kind === "palm" || n.kind === "tree") && Math.random() < (wasPlanted ? 0.4 : 0.12)) { this.give("sapling", 1); this.hud.message("A sapling fell out of the tree!"); }
         this.wearHeld();
+    }
+
+    /** footprints in the sand, and the birds and flamingos (which take off when someone comes too close) */
+    private updateNature(dt: number, hour: number, away: boolean) {
+        const p = this.player, me = p.pos, onIsland = !away && Math.abs(me.x) < 500 && Math.abs(me.z) < 500 && me.y < heightAt(me.x, me.z) + 60;
+        const W = this.walkers; W.length = 0;
+        const threats: { x: number; z: number; fast: boolean }[] = [];
+        if (onIsland) {
+            if (!this.stats.dead && p.mode === "walk" && !p.cave) W.push({ key: "me", x: me.x, y: me.y, z: me.z, kind: "foot", fast: p.sprinting });
+            threats.push({ x: me.x, z: me.z, fast: p.sprinting });
+            for (const o of this.resources.others() as { id?: number; x: number; y?: number; z: number }[]) {
+                if (Math.abs(o.x) > 500 || Math.abs(o.z) > 500) continue;
+                const y = o.y ?? heightAt(o.x, o.z);
+                W.push({ key: "p" + (o.id ?? 0), x: o.x, y, z: o.z, kind: "foot" });
+                threats.push({ x: o.x, z: o.z, fast: false });
+            }
+            this.fauna.animals.forEach((a, i) => {
+                if (a.kind === "crab" || a.state === "dead" || Math.abs(a.x - me.x) > 80 || Math.abs(a.z - me.z) > 80) return;
+                W.push({ key: "a" + i, x: a.x, y: a.y, z: a.z, kind: a.kind === "boar" ? "hoof" : "paw" });
+                threats.push({ x: a.x, z: a.z, fast: true });
+            });
+            for (const t of this.turtles.adults) if (t.st >= 1 && t.st <= 5) W.push({ key: "t" + t.id, x: t.x, y: heightAt(t.x, t.z), z: t.z, kind: "flipper" });
+        }
+        this.prints.update(dt, W);
+        this.prints.mesh.visible = onIsland;
+        this.birds.update(dt, me, threats, hour, onIsland);
+        this.flamingos.update(dt, me, threats, hour, onIsland);
     }
 
     private hitAnimal(a: Animal, dmg: number) {

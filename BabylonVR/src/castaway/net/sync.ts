@@ -60,7 +60,7 @@ export class WorldSync {
         game.net.rayPlayer = (eye, dir, reach) => this.rayPlayer(eye, dir, reach);
         // ---- wildlife: the host simulates, clients mirror
         const fauna = game.fauna;
-        if (!session.isHost) fauna.remote = true;
+        if (!session.isHost) { fauna.remote = true; game.turtles.remote = true; }
         game.net.targets = () => this.targets();
         game.net.hitAnimal = (i, dmg, px, pz) => session.sendEvent({ k: "ah", i, d: +dmg.toFixed(1), x: +px.toFixed(1), z: +pz.toFixed(1) });
         game.net.hurtRemote = (to, dmg, fx, fz, by) => session.sendEvent({ k: "hurt", to, d: dmg, x: +fx.toFixed(1), z: +fz.toFixed(1), by });
@@ -73,6 +73,7 @@ export class WorldSync {
             session.onFast = () => {
                 const near = (x: number, z: number) => this.targets().some((t) => Math.hypot(t.x - x, t.z - z) < 135);
                 session.sendEvent({ k: "an", r: fauna.exportState(near) });
+                const tu = game.turtles.exportState(); if (tu.length) session.sendEvent({ k: "tu", r: tu });
             };
         }
 
@@ -134,6 +135,7 @@ export class WorldSync {
         this.game.mapExtras = {};
         const f = this.game.fauna;
         if (f.remote) f.promote();
+        if (this.game.turtles.remote) this.game.turtles.promote();
         if (this.orig) { f.onSound = this.orig.sound; f.onBlood = this.orig.blood; f.onKill = this.orig.kill; this.orig = null; }
         this.session.onFast = null;
         resources.autoRespawn = true;
@@ -201,6 +203,7 @@ export class WorldSync {
             case "ss": this.applyStation(e); break;
             case "sa": for (const row of e.list) this.applyStation(row); break;
             case "an": if (!this.session.isHost) g.fauna.importState(e.r); break;
+            case "tu": if (!this.session.isHost) g.turtles.importState(e.r); break;
             case "ah": {
                 const a = this.session.isHost ? g.fauna.animals[e.i] : undefined;
                 if (a && a.state !== "dead") { this.lastHitter = from; g.fauna.damage(a, Math.min(150, e.d), e.x, e.z); }

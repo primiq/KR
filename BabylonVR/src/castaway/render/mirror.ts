@@ -26,7 +26,9 @@ function softDot(col: THREE.Color) {
     return c;
 }
 
-interface Bucket { mesh: Mesh; data: Float32Array; cap: number; n: number }
+interface Bucket { mesh: Mesh; data: Float32Array; cap: number; n: number; col: Float32Array | null }
+
+const _im = new THREE.Matrix4(), _wm = new THREE.Matrix4();
 interface SpriteView { plane: Mesh; mat: StandardMaterial; tex: DynamicTexture; version: number; seen: number }
 
 /**
@@ -83,7 +85,7 @@ export class ThreeMirror {
             p.roughness = 0.8;
             p.metallic = 0;
             b = p;
-        } else if (m.type === "MeshStandardMaterial" && !m.transparent) {
+        } else if (m.type === "MeshStandardMaterial" || m.type === "MeshPhysicalMaterial") {
             const p = new PBRMaterial(`mirror_std${this.id(m)}`, this.scene);
             const c = anyM.color, e = anyM.emissive;
             p.albedoColor = new Color3(c.r, c.g, c.b);
@@ -91,6 +93,13 @@ export class ThreeMirror {
             p.roughness = anyM.roughness;
             p.metallic = anyM.metalness;
             p.backFaceCulling = m.side !== THREE.DoubleSide;
+            if (m.side === THREE.DoubleSide) p.twoSidedLighting = true;
+            if (m.transparent || m.opacity < 1) {
+                p.alpha = m.opacity;
+                p.transparencyMode = PBRMaterial.PBRMATERIAL_ALPHABLEND;
+                if (!m.depthWrite) p.disableDepthWrite = true;
+            }
+            if (m.polygonOffset) p.zOffset = m.polygonOffsetFactor;
             b = p;
         } else {
             const s = new StandardMaterial(`mirror_basic${this.id(m)}`, this.scene);
@@ -126,12 +135,28 @@ export class ThreeMirror {
             mesh.thinInstanceSetBuffer("matrix", data, 16, false);
             mesh.thinInstanceCount = 0;
             mesh.setEnabled(false);
-            b = { mesh, data, cap, n: 0 };
+            b = { mesh, data, cap, n: 0, col: null };
             this.buckets.set(key, b);
             // the three geometry went away (a cave chunk dropped, a rig rebuilt): free its Babylon copy too
             g.addEventListener("dispose", () => { const q = this.buckets.get(key); if (!q) return; shadowCasters.delete(q.mesh); q.mesh.dispose(false, false); this.buckets.delete(key); });
         }
         return b;
+    }
+
+    private grow(b: Bucket) {
+        if (b.n < b.cap) return;
+        b.cap *= 2;
+        const d = new Float32Array(b.cap * 16);
+        d.set(b.data);
+        b.data = d;
+        b.mesh.thinInstanceSetBuffer("matrix", d, 16, false);
+        if (b.col) { const c = new Float32Array(b.cap * 4); c.set(b.col); b.col = c; b.mesh.thinInstanceSetBuffer("color", c, 4, false); }
+    }
+
+    /** this bucket draws an instanced mesh with colours or a fade: give it a per-instance colour buffer */
+    private colours(b: Bucket) {
+        b.col = new Float32Array(b.cap * 4).fill(1);
+        b.mesh.thinInstanceSetBuffer("color", b.col, 4, false);
     }
 
     private sprite(s: THREE.Sprite) {
@@ -182,15 +207,33 @@ export class ThreeMirror {
                 // basic materials can fade (beacons): follow the three material's opacity
                 const bm = b.mesh.material;
                 if (bm instanceof StandardMaterial && (mt.transparent || mt.opacity < 1)) bm.alpha = mt.opacity;
-                if (b.n >= b.cap) {
-                    b.cap *= 2;
-                    const d = new Float32Array(b.cap * 16);
-                    d.set(b.data);
-                    b.data = d;
-                    b.mesh.thinInstanceSetBuffer("matrix", d, 16, false);
+                const im = m as THREE.InstancedMesh;
+                if (im.isInstancedMesh) {
+                    // every instance: the mesh's world matrix times the instance matrix; colours (and a fade, footprints) per instance
+                    const ia = im.instanceMatrix.array as Float32Array, ic = im.instanceColor?.array as Float32Array | undefined;
+                    const alpha = im.userData.instanceAlpha as Float32Array | undefined;
+                    if ((ic || alpha) && !b.col) this.colours(b);
+                    for (let i = 0; i < im.count; i++) {
+                        const o16 = i * 16;
+                        if (ia[o16] === 0 && ia[o16 + 1] === 0 && ia[o16 + 2] === 0 && ia[o16 + 5] === 0) continue; // a hidden (zero-scaled) slot
+                        if (alpha && alpha[i] <= 0.003) continue;
+                        this.grow(b);
+                        _im.fromArray(ia, o16);
+                        _wm.multiplyMatrices(im.matrixWorld, _im);
+                        b.data.set(_wm.elements, b.n * 16);
+                        if (b.col) {
+                            const c4 = b.n * 4;
+                            if (ic) { b.col[c4] = ic[i * 3]; b.col[c4 + 1] = ic[i * 3 + 1]; b.col[c4 + 2] = ic[i * 3 + 2]; } else b.col[c4] = b.col[c4 + 1] = b.col[c4 + 2] = 1;
+                            b.col[c4 + 3] = alpha ? alpha[i] : 1;
+                        }
+                        b.n++;
+                    }
+                } else {
+                    this.grow(b);
+                    b.data.set(m.matrixWorld.elements, b.n * 16);
+                    if (b.col) b.col.fill(1, b.n * 4, b.n * 4 + 4);
+                    b.n++;
                 }
-                b.data.set(m.matrixWorld.elements, b.n * 16);
-                b.n++;
             }
             for (const c of o.children) walk(c);
         };
@@ -198,7 +241,7 @@ export class ThreeMirror {
         for (const b of this.buckets.values()) {
             b.mesh.thinInstanceCount = b.n;
             b.mesh.setEnabled(b.n > 0);
-            if (b.n) b.mesh.thinInstanceBufferUpdated("matrix");
+            if (b.n) { b.mesh.thinInstanceBufferUpdated("matrix"); if (b.col) b.mesh.thinInstanceBufferUpdated("color"); }
         }
         for (const [s, v] of this.sprites) {
             if (v.seen === this.frame) continue;

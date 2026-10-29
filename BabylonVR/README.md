@@ -283,6 +283,8 @@ come from Castaway. Rendering, materials, the ocean and the VR controls are rebu
 - **Caves and ruins:** ruined huts and shipwrecks hide chests. Hollow ground hides shafts down to
   a cave network under the island: dig with a pickaxe, climb down with a torch, and mine iron,
   coal and diamonds among glowing crystals.
+- **Island life:** footprints in the sand, birds that hop about and scatter when you come close,
+  flamingos, and sea turtles that come ashore to nest.
 - **Day and night:** a 25-minute day with a moving sun, stars and moon. Sleep in a bed at night.
 - **Characters:** Castaway's player models, outfits and armour, with walk, swim and swing
   animation. **Customise character** on the menu picks your look, which other players see.
