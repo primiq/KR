@@ -292,6 +292,8 @@ come from Castaway. Rendering, materials, the ocean and the VR controls are rebu
   summons Mario under a cursed pink sky. Lead him to the warp pipe by the old hut and everyone
   jumps into a secret side-scrolling level together. Blue calls an alien invasion that everyone
   fights off from laser cannons round the circle.
+- **Fun:** a giant water slide winding down the far side of the island, and a guitar to strum
+  (other players hear you).
 - **Weather:** showers and the odd storm, decided by the host. The sky greys, the palms bend, the
   sea heaves, lightning flashes and thunder rolls, and a rainbow can follow the rain.
 - **The sea:** schools of fish swim in the lagoon and scatter when you come close, and on some

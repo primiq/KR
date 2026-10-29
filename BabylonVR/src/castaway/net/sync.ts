@@ -95,6 +95,7 @@ export class WorldSync {
             const w = game.warp;
             w.remote = !session.isHost; w.myId = session.myId;
             w.onEvent = (e) => session.sendEvent({ k: "ml", ...e });
+            game.guitar.onStrum = (e) => session.sendEvent({ k: "gs", ...e });
             w.present = (pid) => pid === session.myId || session.players.has(pid);
             w.who = (pid) => ({ name: session.players.get(pid)?.name ?? (pid === session.myId ? "You" : "Friend"), color: playerColor(pid) });
         }
@@ -214,6 +215,7 @@ export class WorldSync {
         if (this.game.weather) { this.game.weather.remote = false; this.game.weather.onChange = null; }
         this.game.offshore.remote = false; this.game.offshore.onWhale = this.game.offshore.onShip = null;
         { const iv = this.game.invaders; iv.remote = false; iv.onEvent = null; iv.myId = 0; iv.aimOf = () => null; iv.who = (pid) => ({ name: pid === 0 ? "You" : "Friend", color: "#ffd23f" }); }
+        this.game.guitar.onStrum = null;
         { const w = this.game.warp; w.remote = false; w.onEvent = null; w.present = () => true; w.who = () => ({ name: "You", color: "#3cb043" }); w.myId = 0; }
         { const dr = this.game.druids; dr.remote = false; dr.onTouch = null; dr.onPhase = null; dr.onHit = null; dr.players = () => [{ id: 0, x: this.game.player.pos.x, y: this.game.player.pos.y, z: this.game.player.pos.z }]; }
         if (this.orig) { f.onSound = this.orig.sound; f.onBlood = this.orig.blood; f.onKill = this.orig.kill; this.orig = null; }
@@ -338,6 +340,7 @@ export class WorldSync {
             case "wh": if (!this.session.isHost) g.offshore.startWhale(+e.x, +e.z, +e.h, +e.s); break;
             case "sx": if (!this.session.isHost && !g.offshore.shipActive) g.offshore.startShip(+e.a, e.d < 0 ? -1 : 1, +e.p || 0); break;
             case "iv": g.invaders.net(e, from); break;
+            case "gs": if (typeof e.x === "number" && Array.isArray(e.s)) g.guitar.remote(e, Math.hypot(g.player.pos.x - e.x, g.player.pos.y - e.y, g.player.pos.z - e.z)); break;
             case "ml": g.warp.net(e, from); break;
             case "mp": this.addPing(from, this.session.players.get(from)?.name ?? "Someone", playerColor(from), e.x, e.z); break;
         }
@@ -457,7 +460,7 @@ export class WorldSync {
         const st: PState = {
             x: p.pos.x, y: p.pos.y, z: p.pos.z, yaw: p.yaw, pitch: p.pitch,
             spd: Math.hypot(p.vel.x, p.vel.z), item: held ? held.id : "", swing: g.swings,
-            flags: (p.sprinting ? 1 : 0) | (p.mode === "swim" ? 2 : 0) | (g.stats.dead ? 4 : 0) | (g.isSleeping ? 8 : 0) | (g.drinking ? 32 : 0) | (g.warp.inLevel ? F_LEVEL : 0),
+            flags: (p.sprinting ? 1 : 0) | (p.mode === "swim" ? 2 : 0) | (g.stats.dead ? 4 : 0) | (g.isSleeping ? 8 : 0) | (g.drinking ? 32 : 0) | (g.warp.inLevel ? F_LEVEL : 0) | (g.slide.riding ? 536870912 : 0),
             hp: g.stats.health, arm: g.armorCode,
         };
         const pose = this.vrPose?.() ?? null;

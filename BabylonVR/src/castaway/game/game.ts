@@ -30,6 +30,8 @@ import { Druids } from "../world/druids";
 import { druidMaterial } from "../world/druidView";
 import { Warp } from "../world/warp";
 import { Invaders } from "../world/invaders";
+import { CHORDS, Guitar } from "./guitar";
+import { Slide } from "../world/slide";
 import { Twins } from "./twins";
 import { type Door, Doors } from "./doors";
 import { type FrameAim, type Painting, Paintings } from "./paintings";
@@ -102,6 +104,11 @@ export class Game {
     /** the blue stones' call: the alien invasion, fought from laser cannons round the circle */
     readonly invaders: Invaders;
     private ivEye = new THREE.Vector3();
+    /** the guitar: a click strums the chord (R changes it); in VR the strings are real */
+    readonly guitar: Guitar;
+    private guitarHinted = false;
+    /** the giant water slide on the far side */
+    readonly slide: Slide;
     private ivDir = new THREE.Vector3();
     /** doors hung in doorways, and pictures on the walls (with the paint editor) */
     readonly doors: Doors;
@@ -209,10 +216,6 @@ export class Game {
         this.structures.touchesBuilding = (x, z, r, y) => this.building.touches(x, z, r, y);
         this.building.blockedByStructures = this.structures.blockedBox;
         this.structures.onEmber = (x, y, z) => this.resources.burst(new Vector3(x, y, z), "ember", 1, 1.5);
-        this.player.world = {
-            ground: (x, z, y) => this.building.ground(x, z, y),
-            resolve: (x, z, r, feetY, out) => this.building.resolve(x, z, r, feetY, out),
-        };
         this.view.onHit = () => this.swingHit();
         {
             // Castaway's wildlife runs on three.js objects; ThreeMirror draws them with Babylon
@@ -264,6 +267,15 @@ export class Game {
             }
             this.sfx.pipe8();
             this.hud.message("You pop out of the pipe, back on the island.");
+        };
+        this.guitar = new Guitar(this.sfx);
+        this.slide = new Slide(this.natureRoot, o.vegetation.colliders, o.shadows);
+        this.slide.say = (t) => this.hud.message(t);
+        this.slide.sound = (k, v) => { if (k === "splash") this.sfx.splash(v); else if (k === "land") this.sfx.splash(0.6); else this.sfx.whoosh(); };
+        // (the slide's tower platform is ground too)
+        this.player.world = {
+            ground: (x, z, y) => Math.max(this.building.ground(x, z, y), this.slide.ground(x, z, y ?? -1e9)),
+            resolve: (x, z, r, feetY, out) => this.building.resolve(x, z, r, feetY, out),
         };
         this.invaders = new Invaders(this.natureRoot);
         {
@@ -792,6 +804,13 @@ export class Game {
                 }
             }
             if (!isTorch || ug.active) this.torchPlace = false;
+            if (def?.instrument) {
+                if (input.rotateQueued) { this.guitar.chord = (this.guitar.chord + input.rotateQueued + CHORDS.length * 4) % CHORDS.length; input.rotateQueued = 0; hud.message(`Chord: ${this.guitar.chordName}`); }
+                if (!this.guitarHinted) {
+                    this.guitarHinted = true;
+                    hud.message(this.vr.active ? "Guitar: strum it with the trigger. X, Y and the left trigger change the chord." : input.touch ? "Guitar: tap HIT to strum, ⟳ to change chord" : "Guitar: click to strum, R to change chord");
+                }
+            } else this.guitar.reset();
             document.body.classList.toggle("holdmode", isTorch && !ug.active);
             document.body.classList.toggle("placemode", this.torchPlace);
         }
@@ -960,6 +979,7 @@ export class Game {
                     else { this.inv.takeAt(hud.selected, 1); this.sfx.place(); view.place(); this.resources.burst(new Vector3(sp.x, sp.y + 0.1, sp.z), "wood", 6, 2); hud.message("Planted. It will take about a day to grow into a big tree."); }
                 }
             }
+            else if (def?.instrument && input.attackQueued) { this.guitar.click(this.ivEye.set(player.pos.x, player.pos.y, player.pos.z)); view.place(); }
             else if (def?.kind === "food" && this.eatCd <= 0 && input.attackQueued) { this.eatCd = 0.9; this.eatSlot(hud.selected); }
             input.attackQueued = false;
         }
@@ -1270,6 +1290,18 @@ export class Game {
             wx.update(dt, this.vr.active ? this.vr.eye : p.eye, local, this.roofed, p.underwater);
             this.druids.update(dt, me, onIsland && !p.cave);
             this.updateWarp(dt);
+            // the water slide: walk into its ladder or its chute to get on
+            if (onIsland && !p.ride && !this.stats.dead && !this.sleeping) {
+                const go = this.slide.check(me, p.yaw, this.input.move.y || (this.input.interactQueued ? 1 : 0));
+                if (go === "slide") {
+                    this.slide.beginRide();
+                    p.ride = (d) => this.slide.ride(d, p.pos, p.vel, p, this.vr.active);
+                    this.hud.message("Wheee!");
+                } else if (go === "ladder") {
+                    this.slide.beginClimb();
+                    p.ride = (d) => this.slide.climb(d, p.pos, p.vel, this.input.move.y, this.input.jumpHeld);
+                }
+            }
             // the alien invasion: the cannon points where you look (your head in VR); click / trigger fires
             {
                 const iv = this.invaders, inp = this.input;

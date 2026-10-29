@@ -6,7 +6,7 @@ import { ITEMS, type ItemId } from "./items";
 
 const T = {
     handle: tok("handle"), steel: tok("steel"), stone: tok("stoneTool"), diamond: tok("diamond"), skin: tok("skin"), sleeve: tok("sleeve"),
-    rope: tok("rope"), paper: tok("paper"), soot: tok("soot"), flame: tok("flame"), item: tok("item"),
+    guitar: tok("guitarBody"), rope: tok("rope"), paper: tok("paper"), soot: tok("soot"), flame: tok("flame"), item: tok("item"),
 };
 let viewSkin = "#d9a07a";
 /** your skin tone, for the first-person hands (takes effect when the held model is next built) */
@@ -20,6 +20,7 @@ function mat(scene: Scene, key: string, itemColor: string): Material {
         case "skin": return solid(scene, viewSkin, 0.6);
         case "sleeve": return solid(scene, "#3f6f8a", 0.9);
         case "rope": return solid(scene, "#b8a470", 1);
+        case "guitarBody": return solid(scene, "#c98a43", 0.55);
         case "paper": return solid(scene, "#3b73a8", 0.8);
         case "soot": return solid(scene, "#0d0b0a", 1);
         case "flame": return glow(scene, "#ffb14a");
@@ -59,6 +60,14 @@ export function heldModel(id: ItemId): THREE.Group {
         g.add(m(new THREE.CylinderGeometry(0.045, 0.035, 0.1, 8), T.soot, 0, 0.47, 0));
         const f = m(new THREE.ConeGeometry(0.05, 0.16, 8), T.flame, 0, 0.6, 0);
         g.add(f);
+    } else if (id === "guitar") {
+        // neck along +y (held at the nut end), the top facing -z, the body hanging below: two bouts, a sound hole, strings
+        const bout = (r: number, y: number) => m(new THREE.CylinderGeometry(r, r, 0.07, 20).rotateX(Math.PI / 2), T.guitar, 0, y, 0);
+        g.add(bout(0.165, -0.68), bout(0.125, -0.45));
+        g.add(m(new THREE.CylinderGeometry(0.042, 0.042, 0.004, 16).rotateX(Math.PI / 2), T.soot, 0, -0.5, -0.037));
+        g.add(m(new THREE.BoxGeometry(0.046, 0.5, 0.026), T.handle, 0, -0.1, -0.022));
+        g.add(m(new THREE.BoxGeometry(0.06, 0.13, 0.016), T.soot, 0, 0.215, -0.02));
+        g.add(m(new THREE.BoxGeometry(0.04, 0.88, 0.003), T.steel, 0, -0.29, -0.047));
     } else if (id === "building_plan") {
         g.add(m(new THREE.CylinderGeometry(0.035, 0.035, 0.3, 10).rotateZ(Math.PI / 2), T.paper, 0, 0.02, 0));
     } else {
