@@ -249,6 +249,8 @@ async function main() {
             dolphins.update(dt, player.pos.x, player.pos.z, player.yaw, game.under.active);
             ocean.bio = BIO.value;
             clock.curse = game.druids.curse;
+            // waking up on the beach after the wreck: the world swims into focus
+            canvas.style.filter = game.eyeBlur > 0.05 ? `blur(${game.eyeBlur.toFixed(1)}px)` : "";
             Wind.push[0].set(player.pos.x, player.pos.y, player.pos.z, 0.9);
         } else {
             // the menu: a slow look along the beach

@@ -137,6 +137,8 @@ export class ThreeMirror {
             const c = anyM.color ?? new THREE.Color(1, 1, 1);
             s.emissiveColor = new Color3(c.r, c.g, c.b).toGammaSpace();
             s.backFaceCulling = m.side !== THREE.DoubleSide;
+            // depth only (a boat's hull lid keeps the sea out of it): drawn with the opaque world, before the water
+            if (!m.colorWrite) { s.disableColorWrite = true; s.backFaceCulling = false; }
             if (m.transparent || m.opacity < 1) {
                 s.alpha = m.opacity;
                 s.disableDepthWrite = true;

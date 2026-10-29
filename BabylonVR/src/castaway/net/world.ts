@@ -34,6 +34,7 @@ export function captureWorld(g: Game) {
         plants: g.saplings.capture(),
         doors: g.doors.capture(),
         paintings: g.paintings.capture(),
+        boats: g.boats.capture(),
         structs: g.structures.list.map((s) => [s.nid, s.kind, +s.x.toFixed(2), +s.y.toFixed(3), +s.z.toFixed(2), +s.yaw.toFixed(3), +s.fuel.toFixed(1), s.lit ? 1 : 0, +s.prog.toFixed(1), packInv(s.inv)]),
     };
 }
@@ -65,6 +66,7 @@ export function applyWorld(g: Game, snap: any) {
     if (snap.plants) g.saplings.restore(snap.plants);
     if (snap.doors) g.doors.restore(snap.doors);
     if (snap.paintings) g.paintings.restore(snap.paintings);
+    if (snap.boats) g.boats.restore(snap.boats);
 }
 
 /** The local player's own stuff. */

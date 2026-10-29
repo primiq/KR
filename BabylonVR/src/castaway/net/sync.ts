@@ -29,6 +29,7 @@ export class WorldSync {
     private orig: { sound: Game["fauna"]["onSound"]; blood: Game["fauna"]["onBlood"]; kill: Game["fauna"]["onKill"] } | null = null;
     private lastHitter = 0;
     private slowTick = 0;
+    private seatTmp = { x: 0, y: 0, z: 0, yaw: 0 };
 
     constructor(
         private game: Game,
@@ -106,6 +107,14 @@ export class WorldSync {
             iv.onEvent = (e) => session.sendEvent({ k: "iv", ...e });
             iv.who = (pid) => ({ name: session.players.get(pid)?.name ?? (pid === session.myId ? "You" : "Friend"), color: playerColor(pid) });
             iv.aimOf = (pid) => { const st = session.states.get(pid); return st ? { yaw: st.yaw, pitch: st.pitch } : null; };
+        }
+        // boats: whoever is at the helm moves one; seats go to whoever sits down first
+        {
+            const bo = game.boats;
+            bo.myId = session.myId;
+            bo.onEvent = (e) => session.sendEvent({ k: "bo", ...e });
+            bo.present = (pid) => pid === session.myId || session.players.has(pid);
+            game.net.calm = () => { if (!session.isHost) session.sendEvent({ k: "bo", op: "calm" }); };
         }
         // gone down the warp pipe (the secret level): their body is not on the island
         this.avatars.three.hideIf = (flags) => (flags & F_LEVEL) !== 0;
@@ -216,6 +225,7 @@ export class WorldSync {
         this.game.offshore.remote = false; this.game.offshore.onWhale = this.game.offshore.onShip = null;
         { const iv = this.game.invaders; iv.remote = false; iv.onEvent = null; iv.myId = 0; iv.aimOf = () => null; iv.who = (pid) => ({ name: pid === 0 ? "You" : "Friend", color: "#ffd23f" }); }
         this.game.guitar.onStrum = null;
+        { const bo = this.game.boats; bo.onEvent = null; bo.present = () => true; for (const b of bo.list) b.helm = b === bo.on && bo.atHelm ? 0 : null; bo.myId = 0; }
         { const w = this.game.warp; w.remote = false; w.onEvent = null; w.present = () => true; w.who = () => ({ name: "You", color: "#3cb043" }); w.myId = 0; }
         { const dr = this.game.druids; dr.remote = false; dr.onTouch = null; dr.onPhase = null; dr.onHit = null; dr.players = () => [{ id: 0, x: this.game.player.pos.x, y: this.game.player.pos.y, z: this.game.player.pos.z }]; }
         if (this.orig) { f.onSound = this.orig.sound; f.onBlood = this.orig.blood; f.onKill = this.orig.kill; this.orig = null; }
@@ -341,6 +351,7 @@ export class WorldSync {
             case "sx": if (!this.session.isHost && !g.offshore.shipActive) g.offshore.startShip(+e.a, e.d < 0 ? -1 : 1, +e.p || 0); break;
             case "iv": g.invaders.net(e, from); break;
             case "gs": if (typeof e.x === "number" && Array.isArray(e.s)) g.guitar.remote(e, Math.hypot(g.player.pos.x - e.x, g.player.pos.y - e.y, g.player.pos.z - e.z)); break;
+            case "bo": if (e.op === "calm") { if (this.session.isHost && g.weather && g.weather.kind !== 0) g.weather.set(0); } else g.boats.net(e, from); break;
             case "ml": g.warp.net(e, from); break;
             case "mp": this.addPing(from, this.session.players.get(from)?.name ?? "Someone", playerColor(from), e.x, e.z); break;
         }
@@ -468,6 +479,8 @@ export class WorldSync {
         s.setMyState(st);
         s.update(dt);
         this.pushApart(dt);
+        // a player on a boat's deck rides along with it
+        for (const [pid, ps] of s.states) if (pid !== s.myId && g.boats.deckOf(pid, this.seatTmp)) { ps.x = this.seatTmp.x; ps.y = this.seatTmp.y; ps.z = this.seatTmp.z; if (!ps.v) ps.yaw = this.seatTmp.yaw; }
         this.avatars.sync(s.players, s.states, s.myId, dt, p.pos);
         this.shareOpenStation(dt);
     }

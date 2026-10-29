@@ -32,13 +32,14 @@ import { Warp } from "../world/warp";
 import { Invaders } from "../world/invaders";
 import { CHORDS, Guitar } from "./guitar";
 import { Slide } from "../world/slide";
+import { type Boat, Boats } from "../world/boat";
 import { Twins } from "./twins";
 import { type Door, Doors } from "./doors";
 import { type FrameAim, type Painting, Paintings } from "./paintings";
 import { Painter } from "../ui/painter";
 import type { Weather } from "../world/weather";
 import { FISH_WIGGLE, SeaLife } from "../world/sealife";
-import { fishMaterial } from "../render/materials";
+import { fishMaterial, glassMaterial, woodMaterials } from "../render/materials";
 import { Flowers } from "../world/flowers";
 import { isProbablyHeadset } from "../../config";
 import { FLOWERS } from "../world/flowerKinds";
@@ -109,6 +110,17 @@ export class Game {
     private guitarHinted = false;
     /** the giant water slide on the far side */
     readonly slide: Slide;
+    /** boats on the sea, and the storm out past the reef */
+    readonly boats: Boats;
+    private boatAim: { ok: boolean; why: string; x: number; z: number; yaw: number } | null = null;
+    private boatTurn = 0;
+    /** seconds since the giant wave hit (-1: not happening) */
+    wreckT = -1;
+    /** how blurred the view is while your eyes open (px; main puts it on the canvas) */
+    eyeBlur = 0;
+    private wreckStage = 0;
+    private wakeAt = { x: 0, z: 0, yaw: 0 };
+    private lidsEl: HTMLElement | null = null;
     private ivDir = new THREE.Vector3();
     /** doors hung in doorways, and pictures on the walls (with the paint editor) */
     readonly doors: Doors;
@@ -151,6 +163,8 @@ export class Game {
         bio?: (on: boolean) => void;
         bioRemote?: boolean;
         hitStalker?: (idx: number, px: number, pz: number) => void;
+        /** washed up after the wreck: ask the host for fine weather */
+        calm?: () => void;
     } = {};
     /** bumps on every swing so other players can animate it */
     swings = 0;
@@ -272,10 +286,16 @@ export class Game {
         this.slide = new Slide(this.natureRoot, o.vegetation.colliders, o.shadows);
         this.slide.say = (t) => this.hud.message(t);
         this.slide.sound = (k, v) => { if (k === "splash") this.sfx.splash(v); else if (k === "land") this.sfx.splash(0.6); else this.sfx.whoosh(); };
-        // (the slide's tower platform is ground too)
+        this.boats = new Boats(this.natureRoot, !!o.shadows);
+        this.boats.surface = (x, z) => this.player.surfaceAt(x, z);
+        this.boats.say = (t) => this.hud.message(t);
+        this.boats.sfx = this.sfx as never;
+        this.boats.shake = (a) => this.player.shake(a);
+        this.boats.onWreck = () => this.startWreck();
+        // (the slide's tower platform and boats' decks are ground too)
         this.player.world = {
-            ground: (x, z, y) => Math.max(this.building.ground(x, z, y), this.slide.ground(x, z, y ?? -1e9)),
-            resolve: (x, z, r, feetY, out) => this.building.resolve(x, z, r, feetY, out),
+            ground: (x, z, y) => Math.max(this.building.ground(x, z, y), this.slide.ground(x, z, y ?? -1e9), this.boats.ground(x, z, y ?? 1e9)),
+            resolve: (x, z, r, feetY, out) => { this.building.resolve(x, z, r, feetY, out); this.boats.resolve(out.x, out.z, r, feetY, out); },
         };
         this.invaders = new Invaders(this.natureRoot);
         {
@@ -333,7 +353,8 @@ export class Game {
         this.natureRoot.add(this.prints.mesh, this.birds.group, this.flamingos.group);
         this.sealife = new SeaLife(this.natureRoot, !o.shadows);
         this.natureMirror = new ThreeMirror(o.scene, this.natureRoot, null, o.shadows, {
-            custom: (m) => (m.name.startsWith("fish") ? fishMaterial(o.scene, FISH_WIGGLE[+m.name.slice(4)] ?? 0.1) : druidMaterial(o.scene, m)),
+            custom: (m) => (m.name.startsWith("fish") ? fishMaterial(o.scene, FISH_WIGGLE[+m.name.slice(4)] ?? 0.1)
+                : m.name === "woodSlab" ? woodMaterials(o.scene).slab : m.name === "glass" ? glassMaterial(o.scene) : druidMaterial(o.scene, m)),
         });
         this.birds.sound = (k, v) => { if (k === "chirp") this.sfx.chirp(v); else this.sfx.flutter(v); };
         this.flamingos.sound = (k, v) => { if (k === "honk") this.sfx.honk(v); else this.sfx.flutter(v); };
@@ -755,7 +776,8 @@ export class Game {
         if (stats.dead && !this.deathHandled) this.onDeath();
         hud.setVitals(stats);
 
-        if (stats.dead || this.sleeping || this.warp.inLevel || this.invaders.seated) { hud.setPrompt(null); this.hideBuildUi(); return; }
+        if (this.boats.atHelm && input.interactQueued) { input.interactQueued = false; this.leaveHelm(); }
+        if (stats.dead || this.sleeping || this.wreckT >= 0 || this.warp.inLevel || this.invaders.seated) { hud.setPrompt(null); this.hideBuildUi(); return; }
 
         if (hud.inventoryOpen) {
             hud.setPrompt(null);
@@ -898,7 +920,24 @@ export class Game {
         // the standing stones on the hilltop
         const dz = ug.active ? null : this.druids.target(eye, dir, 3.2);
         const useStone = !!dz && !useDoor && (!t || dz.dist < t.dist + 0.3) && (!st || dz.dist < st.dist);
-        if (useStone && dz) {
+        // holding a boat: show where it would go in the water
+        if (def?.boat && input.rotateQueued) { this.boatTurn += (Math.PI / 4) * input.rotateQueued; input.rotateQueued = 0; }
+        this.boatAim = def?.boat && !ug.active && !this.boats.on ? this.boats.aim(eye, dir, player.yaw + Math.PI / 2 + this.boatTurn) : null;
+        this.boats.showGhost(this.boatAim, performance.now() / 1000);
+        // a boat: climb aboard from outside; on deck, the wheel
+        const bt = ug.active || this.boats.atHelm ? null : this.boats.target(eye, dir, 4.5);
+        const useBoat = !!bt && (!t || bt.dist < t.dist) && (!st || bt.dist < st.dist) && !useDoor;
+        if (useBoat && bt) {
+            const b = bt.b, E = this.keyLabel("E");
+            if (bt.what === "board") {
+                hud.setPrompt("Boat", `${E} climb aboard${this.boats.aboard(b) ? "" : ` &nbsp;·&nbsp; hold ${E} pack it up`}`, true);
+                this.runHold(dt, b, () => { this.boats.board(b, player.pos, player.vel); player.mode = "walk"; player.lastY = player.pos.y; }, () => this.pickupBoat(b));
+            } else {
+                const busy = b.helm !== null && b.helm !== this.netId;
+                hud.setPrompt("Wheel", busy ? "Somebody else is steering" : `${E} take the wheel`, !busy);
+                this.runHold(dt, b, () => { if (!busy) this.takeHelm(b); }, () => {});
+            }
+        } else if (useStone && dz) {
             const pr = this.druids.prompt(dz.i);
             hud.setPrompt(pr.name, pr.hint.replace(/^E /, `${this.keyLabel("E")} `), this.druids.phase === "idle");
             this.runHold(dt, null, () => {}, () => {});
@@ -939,7 +978,11 @@ export class Game {
                 const a = an.a, hostile = a.kind === "boar" && a.state === "chase";
                 hud.setPrompt(`${a.def.name}  ${Math.max(1, Math.ceil(a.hp))}/${a.def.hp}`, def?.tool && an.dist <= def.tool.reach ? `${click} attack` : an.dist > (def?.tool?.reach ?? 0) ? "Move closer" : "", hostile);
             } else if (sk && (!an || sk.dist < an.dist) && (!t || sk.dist < t.dist)) hud.setPrompt("The Stalker", def?.tool && sk.dist <= def.tool.reach ? `${click} attack` : "It watches you", true);
-            else if (this.frameAim) {
+            else if (this.boatAim) {
+                const ba = this.boatAim;
+                const turnKey = this.vr.active ? "X" : this.input.touch ? "⟳" : this.keyLabel("R");
+                hud.setPrompt("Boat", `${ba.ok ? `${click} put it in the water` : ba.why} &nbsp;·&nbsp; <b>${turnKey}</b> turn it`, ba.ok);
+            } else if (this.frameAim) {
                 const fa = this.frameAim;
                 hud.setPrompt(def!.name, fa.ok ? `${click} hang it here` : fa.reason, fa.ok);
             } else if (def?.flower !== undefined && !t) {
@@ -956,6 +999,15 @@ export class Game {
             if (def?.tool?.model === "rod") {
                 if (input.attackQueued && !view.swinging && this.fishing.click(eye, dir)) view.swing();
             } else if (def?.tool && !view.swinging) { view.swing(); this.sfx.swing(); }
+            else if (def?.boat && input.attackQueued && !ug.active && !this.boats.on) {
+                const ba = this.boatAim;
+                if (!ba || !ba.ok) { hud.message(ba?.why || "Aim at open water"); this.sfx.denied(); }
+                else {
+                    this.boats.add(`b${this.netId}_${Math.random().toString(36).slice(2, 8)}`, ba.x, ba.z, ba.yaw);
+                    this.inv.takeAt(hud.selected, 1); this.sfx.splash(0.9); view.place();
+                    hud.message("In the water! Look at it and press E to get in.");
+                }
+            }
             else if (def?.frame && input.attackQueued && !ug.active) {
                 const fa = this.frameAim;
                 if (!fa || !fa.ok) { hud.message(fa?.reason || "Aim at a plain wall"); this.sfx.denied(); }
@@ -986,7 +1038,7 @@ export class Game {
 
         // interact (pick up / forage / drink)
         if (useUg && ugT && input.interactQueued) { ug.interact(ugT); input.interactQueued = false; }
-        if (!useStruct && !useWin && !useUg && !useDoor && !usePaint && !useStone && (input.interactQueued || input.interactHeld)) this.interact(t, dt, input.interactQueued);
+        if (!useStruct && !useWin && !useUg && !useDoor && !usePaint && !useStone && !useBoat && (input.interactQueued || input.interactHeld)) this.interact(t, dt, input.interactQueued);
         input.interactQueued = false;
     }
 
@@ -1213,6 +1265,88 @@ export class Game {
         this.wearHeld();
     }
 
+    // ------------------------------------------------------------ boats
+    /** true while I sit at a boat's helm (VR: the sticks steer it) */
+    get boatHelm() { return this.boats.atHelm; }
+    private takeHelm(b: Boat) {
+        const p = this.player;
+        if (p.ride || this.stats.dead) return;
+        if (!this.boats.takeHelm(b)) { this.hud.message("Somebody else is steering"); this.sfx.denied(); return; }
+        if (!this.vr.active) { p.yaw = b.yaw; p.pitch = 0; } // facing the bow
+        p.ride = () => {
+            if (this.input.jumpQueued) { this.leaveHelm(); return false; }
+            return this.boats.carryHelm(p.pos, p);
+        };
+        const vr = this.vr.active, touch = this.input.touch;
+        this.hud.message(vr ? "At the wheel: left stick steers, right trigger fills the sails · A let go" : touch ? "At the wheel: the stick steers and sails · USE let go" : "At the wheel: W / S sails, A / D steer, Shift full sail · E or Space let go");
+    }
+    private leaveHelm() {
+        const p = this.player;
+        this.boats.leaveHelm();
+        p.ride = null; p.onGround = true; p.vel.set(0, 0, 0); p.lastY = p.pos.y;
+    }
+    private pickupBoat(b: Boat) {
+        if (this.boats.aboard(b)) { this.hud.message("Somebody is aboard"); this.sfx.denied(); return; }
+        if (this.inv.add("boat", 1) > 0) { this.hud.message("No room in your pockets"); this.sfx.denied(); return; }
+        this.boats.remove(b); this.sfx.pickup(); this.hud.message("Boat picked up");
+    }
+
+    // ------------------------------------------------------------ lost at sea: the giant wave, the black, the beach
+    private startWreck() {
+        if (this.wreckT >= 0) return;
+        this.wreckT = 0; this.wreckStage = 0;
+        document.getElementById("fade")?.classList.add("now");
+        this.hud.fade(true, "");
+        this.vr.haptic?.(1);
+        this.fishing.cancel(true);
+        if (this.hud.inventoryOpen) this.setInventory(false);
+    }
+    private updateWreck(dt: number) {
+        if (this.wreckT < 0) return;
+        const t0 = this.wreckT, t = (this.wreckT += dt), p = this.player;
+        if (t0 < 0.3 && t >= 0.3) {
+            // the boat is gone; you come round on the beach (everybody a little apart), the storm is over
+            const b = this.boats.on;
+            this.boats.leaveHelm();
+            if (b) this.boats.remove(b);
+            this.boats.reset();
+            this.weather?.calm(); this.net.calm?.();
+            const s = this.spawn, k = (this.netId % 4) - 1.5, rx = Math.cos(s.yaw), rz = -Math.sin(s.yaw);
+            const x = s.x + rx * k * 2.4, z = s.z + rz * k * 2.4;
+            this.wakeAt = { x, z, yaw: s.yaw };
+            p.ride = null;
+            p.teleport(x, this.wakeGround(x, z), z, s.yaw);
+            p.ride = () => this.wakeRide();
+            this.stats.hunger = Math.max(10, this.stats.hunger - 12); this.stats.thirst = Math.max(10, this.stats.thirst - 18);
+        }
+        if (t >= 4 && this.wreckStage === 0) { this.wreckStage = 1; this.lids(0); this.hud.fade(false); }
+        if (t >= 4) { this.lids(lidOpen(t - 4)); this.eyeBlur = 9 * (1 - smooth01((t - 4) / 6.2)); }
+        if (t >= 11) {
+            this.wreckT = -1; this.eyeBlur = 0; this.lids(-1);
+            document.getElementById("fade")?.classList.remove("now");
+            this.hud.message("You wake up on the beach, soaked through. The boat is gone… but you still have all your things.");
+        }
+    }
+    private wakeGround(x: number, z: number) { return Math.max(heightAt(x, z), this.building.ground(x, z, heightAt(x, z) + 1)); }
+    /** lying on your back on the sand, then sitting up and getting to your feet */
+    private wakeRide(): boolean {
+        const p = this.player, t = this.wreckT, w = this.wakeAt;
+        if (t < 0) return false;
+        const up = smooth01((t - 8.4) / 2.4);
+        const eyeH = 0.26 + (p.body.eye - 0.26) * up;
+        p.pos.set(w.x, this.wakeGround(w.x, w.z) + eyeH - p.body.eye, w.z);
+        p.vel.set(0, 0, 0);
+        if (!this.vr.active) p.pitch = 1.25 * (1 - up);
+        return t < 11;
+    }
+    /** the eyelids over the screen: -1 gone, 0 shut .. 1 open */
+    private lids(o: number) {
+        const el = (this.lidsEl ??= document.getElementById("lids"));
+        if (!el) return;
+        el.style.display = o < 0 ? "none" : "block";
+        if (o >= 0) el.style.setProperty("--o", o.toFixed(3));
+    }
+
     // ------------------------------------------------------------ Mario's warp pipe and the secret level
     private updateWarp(dt: number) {
         const w = this.warp, dr = this.druids, p = this.player;
@@ -1284,8 +1418,19 @@ export class Game {
         // weather: rain stops under a roof (and in the caves, and under water); the sky, sea and plants follow the host's weather
         this.roofT -= dt;
         if (this.roofT <= 0) { this.roofT = 0.4; this.roofed = onIsland && this.structures.ceilingAt?.(me.x, me.y, me.z) != null; }
+        // boats, and the storm out at sea (it only ever blows round whoever is far out)
+        this.boats.setSelf(me.x, me.z);
+        {
+            const bx0 = me.x, by0 = me.y, bz0 = me.z;
+            this.boats.update(dt, performance.now() / 1000, { x: this.input.move.x, y: this.input.move.y, boost: this.input.wantsSprint }, me, p,
+                (!p.ride || this.boats.atHelm) && !this.stats.dead && !this.sleeping && p.mode !== "fly", !onIsland || !!p.cave || this.stats.dead || this.wreckT >= 0);
+            // the boat moved after the player did this frame: the eyes go with it
+            if (this.boats.on) { p.eye.x += me.x - bx0; p.eye.y += me.y - by0; p.eye.z += me.z - bz0; }
+        }
+        this.updateWreck(dt);
         const wx = this.weather;
         if (wx) {
+            wx.sea = this.boats.storm;
             const local = onIsland && !p.cave;
             wx.update(dt, this.vr.active ? this.vr.eye : p.eye, local, this.roofed, p.underwater);
             this.druids.update(dt, me, onIsland && !p.cave);
@@ -1381,4 +1526,15 @@ export class Game {
             this.fishing.cancel(true);
         } else if (e.dur === 10 || e.dur === 3) this.hud.message(`Your ${name} is wearing out`);
     }
+}
+
+const smooth01 = (x: number) => { const k = Math.max(0, Math.min(1, x)); return k * k * (3 - 2 * k); };
+/** coming round: the eyes flicker open, close again, open a little more ... and stay open */
+const LID_KEYS = [[0, 0], [0.9, 0], [1.6, 0.22], [2.1, 0.03], [2.5, 0.03], [3.3, 0.45], [3.7, 0.16], [4.1, 0.2], [5.4, 1]];
+function lidOpen(t: number) {
+    for (let i = 1; i < LID_KEYS.length; i++) {
+        const [t1, v1] = LID_KEYS[i], [t0, v0] = LID_KEYS[i - 1];
+        if (t <= t1) return v0 + (v1 - v0) * smooth01((t - t0) / (t1 - t0));
+    }
+    return 1;
 }
