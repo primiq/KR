@@ -5,8 +5,7 @@
 // While the player is under water there are also a few slanting shafts of sunlight and specks drifting in the water.
 // Babylon port: the shapes are Castaway's three.js geometry, drawn as Babylon thin instances with PBR custom materials
 // (the current's sway, the depth tint and the caustics are Castaway's node-material code as GLSL).
-import { type Color3, Constants, Effect, Mesh, type Scene, ShaderMaterial, VertexBuffer, VertexData } from "@babylonjs/core";
-import { PBRCustomMaterial } from "@babylonjs/materials";
+import { Color3, Constants, Effect, type Material, MaterialPluginBase, type MaterialDefines, Mesh, PBRMaterial, type Scene, ShaderLanguage, ShaderMaterial, type UniformBuffer, VertexBuffer, VertexData } from "@babylonjs/core";
 import * as THREE from "three";
 import { meshFromThree } from "../render/geometry";
 import { NOISE_GLSL } from "../render/materials";
@@ -121,46 +120,78 @@ vec3 seaLight(vec3 base, vec3 wp, vec3 nw) {
 }`;
 
 type Bind = { time: () => number; day: () => number; sun: () => Color3 };
+/**
+ * The sea-floor look as a plugin on a plain PBR material (a PBRCustomMaterial does not declare the thin-instance colour
+ * attribute the corals and starfish use): the current's sway in the vertex shader, the depth tint, caustics and (for rocks)
+ * the algae-and-barnacle colouring in the fragment shader.
+ */
+class SeaPlugin extends MaterialPluginBase {
+    constructor(material: Material, private readonly bind: Bind, private readonly amp: number, private readonly rock: boolean) {
+        super(material, "SeaFloor", 220, { SEAFLOOR: false });
+        this._enable(true);
+    }
+    override prepareDefines(defines: MaterialDefines): void { defines["SEAFLOOR"] = true; }
+    override getClassName(): string { return "SeaPlugin"; }
+    override isCompatible(shaderLanguage: ShaderLanguage): boolean { return shaderLanguage === ShaderLanguage.GLSL; }
+    override getUniforms() {
+        return {
+            ubo: [{ name: "sbTime", size: 1, type: "float" }, { name: "sbDay", size: 1, type: "float" }, { name: "sbSun", size: 3, type: "vec3" }],
+            vertex: "#ifdef SEAFLOOR\nuniform float sbTime;\n#endif\n",
+            fragment: "#ifdef SEAFLOOR\nuniform float sbTime;\nuniform float sbDay;\nuniform vec3 sbSun;\n#endif\n",
+        };
+    }
+    override bindForSubMesh(ub: UniformBuffer): void {
+        ub.updateFloat("sbTime", this.bind.time());
+        ub.updateFloat("sbDay", this.bind.day());
+        const c = this.bind.sun(); ub.updateFloat3("sbSun", c.r, c.g, c.b);
+    }
+    override getCustomCode(shaderType: string): { [point: string]: string } | null {
+        if (shaderType === "vertex") {
+            if (!this.amp) return null;
+            return {
+                // the current: the whole part of the colour's alpha is the sway weight (render/geometry.ts packs it there)
+                CUSTOM_VERTEX_UPDATE_WORLDPOS: `
+#if defined(SEAFLOOR) && defined(VERTEXCOLOR)
+float sbW = floor(color.a) / 100.0;
+float sbPh = worldPos.x * 0.35 + worldPos.z * 0.27;
+float sbS = sin(sbTime * 0.9 + sbPh) * 0.7 + sin(sbTime * 1.7 + sbPh * 1.9) * 0.3;
+worldPos.xyz += vec3(sbS * sbW * ${this.amp.toFixed(3)}, 0.0, sin(sbTime * 1.1 + sbPh * 1.3) * sbW * ${(this.amp * 0.7).toFixed(3)});
+#endif
+`,
+            };
+        }
+        if (shaderType !== "fragment") return null;
+        return {
+            CUSTOM_FRAGMENT_DEFINITIONS: "#ifdef SEAFLOOR\n" + NOISE_GLSL + SEA_LIGHT + "\n#endif\n",
+            CUSTOM_FRAGMENT_UPDATE_ALBEDO: this.rock ? `
+#ifdef SEAFLOOR
+{
+    vec3 sbP = vPositionW;
+    float n1 = cNoise(sbP * 1.3), n2 = cNoise(sbP * 6.0);
+    vec3 c = mix(vec3(0.110, 0.122, 0.112), vec3(0.044, 0.052, 0.050), n1 * 0.5 + 0.5) * (0.85 + n2 * 0.25);
+    // green and red algae on the tops, barnacle-pale specks
+    c = mix(c, mix(vec3(0.078, 0.144, 0.023), vec3(0.195, 0.042, 0.042), smoothstep(0.2, 0.6, n1)), smoothstep(0.4, 0.9, normalize(vNormalW).y) * smoothstep(-0.3, 0.4, n2) * 0.75);
+    c = mix(c, vec3(0.687, 0.644, 0.527), smoothstep(0.55, 0.75, n2) * 0.35);
+    surfaceAlbedo = seaLight(c, vPositionW, normalize(vNormalW));
+}
+#endif
+` : `
+#ifdef SEAFLOOR
+surfaceAlbedo = seaLight(surfaceAlbedo, vPositionW, normalize(vNormalW));
+#endif
+`,
+        };
+    }
+}
+
 function seaMaterial(scene: Scene, name: string, rough: number, bind: Bind, opts: { amp?: number; rock?: boolean; double?: boolean } = {}) {
-    const m = new PBRCustomMaterial(name, scene);
+    const m = new PBRMaterial(name, scene);
     m.metallic = 0;
     m.roughness = rough;
+    m.albedoColor = new Color3(1, 1, 1);
     m.backFaceCulling = !opts.double;
     if (opts.double) m.twoSidedLighting = true;
-    m.AddUniform("sbTime", "float", 0);
-    m.AddUniform("sbDay", "float", 1);
-    m.AddUniform("sbSun", "vec3", null as never);
-    if (opts.amp) {
-        // the current: the whole part of the colour's alpha is the sway weight (render/geometry.ts packs it there)
-        m.Vertex_After_WorldPosComputed(`
-            #ifdef VERTEXCOLOR
-            float sbW = floor(color.a) / 100.0;
-            #else
-            float sbW = 0.0;
-            #endif
-            float sbPh = worldPos.x * 0.35 + worldPos.z * 0.27;
-            float sbS = sin(sbTime * 0.9 + sbPh) * 0.7 + sin(sbTime * 1.7 + sbPh * 1.9) * 0.3;
-            worldPos.xyz += vec3(sbS * sbW * ${opts.amp.toFixed(3)}, 0.0, sin(sbTime * 1.1 + sbPh * 1.3) * sbW * ${(opts.amp * 0.7).toFixed(3)});
-        `);
-    }
-    m.Fragment_Definitions(NOISE_GLSL + SEA_LIGHT);
-    if (opts.rock) {
-        m.Fragment_Custom_Albedo(`
-            vec3 sbP = vPositionW;
-            float n1 = cNoise(sbP * 1.3), n2 = cNoise(sbP * 6.0);
-            vec3 c = mix(vec3(0.110, 0.122, 0.112), vec3(0.044, 0.052, 0.050), n1 * 0.5 + 0.5) * (0.85 + n2 * 0.25);
-            // green and red algae on the tops, barnacle-pale specks
-            c = mix(c, mix(vec3(0.078, 0.144, 0.023), vec3(0.195, 0.042, 0.042), smoothstep(0.2, 0.6, n1)), smoothstep(0.4, 0.9, normalW.y) * smoothstep(-0.3, 0.4, n2) * 0.75);
-            c = mix(c, vec3(0.687, 0.644, 0.527), smoothstep(0.55, 0.75, n2) * 0.35);
-            surfaceAlbedo = seaLight(c, vPositionW, normalW);
-        `);
-    } else m.Fragment_Custom_Albedo("surfaceAlbedo = seaLight(surfaceAlbedo, vPositionW, normalW);");
-    m.onBindObservable.add(() => {
-        const e = m.getEffect(); if (!e) return;
-        e.setFloat("sbTime", bind.time());
-        e.setFloat("sbDay", bind.day());
-        const s = bind.sun(); e.setFloat3("sbSun", s.r, s.g, s.b);
-    });
+    new SeaPlugin(m, bind, opts.amp ?? 0, !!opts.rock);
     return m;
 }
 
