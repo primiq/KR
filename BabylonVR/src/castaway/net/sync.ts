@@ -55,6 +55,7 @@ export class WorldSync {
         structures.onRemove = (s) => session.sendEvent({ k: "sr", n: s.nid });
 
         game.netId = id;
+        game.under.onEvent = (e) => session.sendEvent(e);
         game.net.hitPlayer = (to, dmg) => session.sendEvent({ k: "ph", to, d: +dmg.toFixed(1), x: +game.player.pos.x.toFixed(1), z: +game.player.pos.z.toFixed(1) });
         game.net.rayPlayer = (eye, dir, reach) => this.rayPlayer(eye, dir, reach);
         // ---- wildlife: the host simulates, clients mirror
@@ -127,6 +128,7 @@ export class WorldSync {
         building.onPlace = building.onRemove = building.onUpgrade = null;
         building.onWindow = null;
         structures.onPlace = structures.onRemove = null;
+        this.game.under.onEvent = null;
         this.game.netId = 0;
         this.game.net = {};
         this.game.mapExtras = {};
@@ -231,6 +233,7 @@ export class WorldSync {
             case "zm": g.hud.message(e.m); break;
             case "dd": g.hud.message(`${this.session.players.get(from)?.name ?? "Someone"} died`); break;
             case "lk": { const p = this.session.players.get(from), o = parseOutfit(e.l); if (p && o) p.look = o; break; }
+            case "cm": case "cc": case "cd": case "ce": g.under.remote(e); break;
             case "mp": this.addPing(from, this.session.players.get(from)?.name ?? "Someone", playerColor(from), e.x, e.z); break;
         }
     }

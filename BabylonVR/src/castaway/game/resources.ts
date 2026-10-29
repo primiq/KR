@@ -69,6 +69,7 @@ class Particles {
         this.mesh.thinInstanceSetBuffer("matrix", this.mat, 16, false);
         this.mesh.thinInstanceSetBuffer("color", this.col, 4, false);
         this.mesh.alwaysSelectAsActiveMesh = true;
+        this.mesh.metadata = { keepUnderground: true };
 
         this.dust = MeshBuilder.CreateIcoSphere("dust", { radius: 1, subdivisions: 1 }, scene);
         const dm = new StandardMaterial("dustMat", scene);
@@ -78,6 +79,7 @@ class Particles {
         dm.disableDepthWrite = true;
         this.dust.material = dm;
         this.dust.isPickable = false;
+        this.dust.metadata = { keepUnderground: true };
         this.dust.thinInstanceSetBuffer("matrix", this.dmat, 16, false);
         this.dust.alwaysSelectAsActiveMesh = true;
     }
@@ -333,6 +335,7 @@ export class PickupField {
         m.instanceMatrix.needsUpdate = true;
         m.count = 0;
         m.mesh.alwaysSelectAsActiveMesh = true;
+        m.mesh.metadata = { keepUnderground: true };
         this.meshes.set(id, m);
         this.free.set(id, Array.from({ length: this.CAP }, (_, i) => this.CAP - 1 - i));
         this.used.set(id, new Uint8Array(this.CAP));

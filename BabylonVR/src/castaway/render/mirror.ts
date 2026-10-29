@@ -3,6 +3,29 @@ import * as THREE from "three";
 import { meshFromThree } from "./geometry";
 import { shadowCasters } from "./inst";
 
+export interface MirrorOptions {
+    /** a Babylon material for a three material (null: the default translation) */
+    custom?: (m: THREE.Material) => Material | null;
+    /** merged into every Babylon mesh's metadata (e.g. { keepUnderground: true }) */
+    tag?: Record<string, unknown>;
+}
+
+/** a soft round glow, for sprites that have no texture (cave crystal halos) */
+const haloCanvas = new Map<string, HTMLCanvasElement>();
+function softDot(col: THREE.Color) {
+    const key = col.getHexString();
+    let c = haloCanvas.get(key);
+    if (c) return c;
+    c = document.createElement("canvas"); c.width = c.height = 64;
+    const g = c.getContext("2d")!;
+    const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    const r = Math.round(col.r * 255), gg = Math.round(col.g * 255), b = Math.round(col.b * 255);
+    for (let i = 0; i <= 8; i++) { const t = i / 8, a = Math.pow(Math.max(0, 1 - t), 2); gr.addColorStop(t, `rgba(${r},${gg},${b},${a.toFixed(3)})`); }
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    haloCanvas.set(key, c);
+    return c;
+}
+
 interface Bucket { mesh: Mesh; data: Float32Array; cap: number; n: number }
 interface SpriteView { plane: Mesh; mat: StandardMaterial; tex: DynamicTexture; version: number; seen: number }
 
@@ -26,6 +49,7 @@ export class ThreeMirror {
         private readonly root: THREE.Object3D,
         private readonly fallback: Material | null,
         private readonly shadows: boolean,
+        private readonly opts: MirrorOptions = {},
     ) {}
 
     private id(o: object) {
@@ -37,6 +61,8 @@ export class ThreeMirror {
     private material(m: THREE.Material): Material {
         let b = this.mats.get(m);
         if (b) return b;
+        const c0 = this.opts.custom?.(m);
+        if (c0) { this.mats.set(m, c0); return c0; }
         const anyM = m as THREE.MeshBasicMaterial & THREE.MeshStandardMaterial;
         const map = anyM.map as THREE.CanvasTexture | null | undefined;
         if (m.name === "body" || m.name === "animal" || (!map && m.type === "MeshBasicMaterial" && anyM.vertexColors)) {
@@ -91,6 +117,7 @@ export class ThreeMirror {
             mesh.material = this.material(m);
             mesh.isPickable = false;
             mesh.receiveShadows = true;
+            if (this.opts.tag) mesh.metadata = { ...this.opts.tag };
             mesh.alwaysSelectAsActiveMesh = true;
             const lit = !(mesh.material instanceof StandardMaterial);
             if (this.shadows && lit) shadowCasters.add(mesh);
@@ -101,6 +128,8 @@ export class ThreeMirror {
             mesh.setEnabled(false);
             b = { mesh, data, cap, n: 0 };
             this.buckets.set(key, b);
+            // the three geometry went away (a cave chunk dropped, a rig rebuilt): free its Babylon copy too
+            g.addEventListener("dispose", () => { const q = this.buckets.get(key); if (!q) return; shadowCasters.delete(q.mesh); q.mesh.dispose(false, false); this.buckets.delete(key); });
         }
         return b;
     }
@@ -110,12 +139,13 @@ export class ThreeMirror {
         const mat = s.material as THREE.SpriteMaterial;
         const map = mat.map as THREE.CanvasTexture | null;
         if (!v) {
-            if (!map?.image) return;
+            const img = (map?.image as HTMLCanvasElement | undefined) ?? softDot(mat.color ?? new THREE.Color(1, 1, 1));
             const plane = MeshBuilder.CreatePlane("mirrorSprite", { size: 1 }, this.scene);
             plane.billboardMode = Mesh.BILLBOARDMODE_ALL;
             plane.isPickable = false;
             plane.renderingGroupId = 1;
-            const tex = new DynamicTexture("mirrorSpriteTex", map.image as HTMLCanvasElement, { scene: this.scene });
+            if (this.opts.tag) plane.metadata = { ...this.opts.tag };
+            const tex = new DynamicTexture("mirrorSpriteTex", img, { scene: this.scene });
             tex.hasAlpha = true;
             tex.update();
             const sm = new StandardMaterial("mirrorSpriteMat", this.scene);
@@ -124,8 +154,9 @@ export class ThreeMirror {
             sm.opacityTexture = tex;
             sm.disableDepthWrite = true;
             sm.backFaceCulling = false;
+            if (mat.blending === THREE.AdditiveBlending) sm.alphaMode = Constants.ALPHA_ADD;
             plane.material = sm;
-            v = { plane, mat: sm, tex, version: map.version, seen: 0 };
+            v = { plane, mat: sm, tex, version: map?.version ?? 0, seen: 0 };
             this.sprites.set(s, v);
         }
         if (map && map.version !== v.version) { v.version = map.version; v.tex.update(); }

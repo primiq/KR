@@ -38,6 +38,7 @@ export class Fishing {
             return m;
         };
         this.bobber = new TransformNode("bobber", scene);
+        this.bobber.metadata = { keepUnderground: true };
         const top = MeshBuilder.CreateSphere("bobTop", { diameter: 0.09, segments: 8, slice: 0.5 }, scene);
         top.material = flat("#ff3b3b");
         const bot = MeshBuilder.CreateSphere("bobBot", { diameter: 0.09, segments: 8, slice: 0.5 }, scene);

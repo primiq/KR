@@ -48,6 +48,8 @@ export class Player {
     /** VR: the headset moves the eyes itself, so no bob, shake or step easing */
     vr = false;
     world: WorldShape | null = null;
+    /** underground: the cave replaces the island's ground, walls and water */
+    cave: { floor(x: number, z: number, y: number): number; resolve(x: number, z: number, r: number, feetY: number, out: { x: number; z: number }): void } | null = null;
     /** sea surface height (waves) at a point */
     surfaceAt: (x: number, z: number) => number = () => 0;
     /** camera shake output (radians / metres), read by the camera rig */
@@ -82,7 +84,7 @@ export class Player {
     get linearVelocity() { return this.vel; }
     water: { surfaceAt(x: number, z: number): number } | null = null;
 
-    private gnd(x: number, z: number) { return this.world ? this.world.ground(x, z, this.pos.y) : heightAt(x, z); }
+    private gnd(x: number, z: number) { return this.cave ? this.cave.floor(x, z, this.pos.y) : this.world ? this.world.ground(x, z, this.pos.y) : heightAt(x, z); }
 
     respawn(x: number, z: number, yaw: number) {
         this.pos.set(x, this.gnd(x, z), z);
@@ -135,7 +137,7 @@ export class Player {
         this.groundGrace = this.onGround ? 0.12 : Math.max(0, this.groundGrace - dt);
 
         const ground = this.gnd(this.pos.x, this.pos.z);
-        this.waterDepth = -ground;
+        this.waterDepth = this.cave ? 0 : -ground;
         const surface = this.surfaceAt(this.pos.x, this.pos.z);
         const look = this.look;
 
@@ -242,17 +244,18 @@ export class Player {
                     if (gz > 0.6) { nz = this.pos.z; this.vel.z = 0; }
                 }
             }
-            this.colliders.resolve(nx, nz, this.body.radius, this.tmp);
+            if (this.cave) this.cave.resolve(nx, nz, this.body.radius, this.pos.y, this.tmp);
+            else this.colliders.resolve(nx, nz, this.body.radius, this.tmp);
             nx = this.tmp.x;
             nz = this.tmp.z;
-            if (this.world) {
+            if (this.world && !this.cave) {
                 this.world.resolve(nx, nz, this.body.radius, this.pos.y, this.tmp);
                 nx = this.tmp.x;
                 nz = this.tmp.z;
             }
             // soft world boundary (somebody who swam further out may come back in, never further out)
             const r = Math.hypot(nx, nz), lim = Math.max(WORLD_RADIUS, Math.hypot(this.pos.x, this.pos.z));
-            if (r > lim) { nx *= lim / r; nz *= lim / r; }
+            if (!this.cave && r > lim) { nx *= lim / r; nz *= lim / r; }
             this.pos.x = nx;
             this.pos.z = nz;
             this.pos.y += this.vel.y * dt;
@@ -289,6 +292,6 @@ export class Player {
             this.shakeY = 0;
             this.shakeAmp = 0;
         }
-        this.underwater = this.eye.y < this.surfaceAt(this.eye.x, this.eye.z) - 0.03 && this.waterDepth > 0;
+        this.underwater = !this.cave && this.eye.y < this.surfaceAt(this.eye.x, this.eye.z) - 0.03 && this.waterDepth > 0;
     }
 }

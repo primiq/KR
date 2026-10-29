@@ -20,6 +20,7 @@ import * as THREE from "three";
 import { ThreeMirror } from "../render/mirror";
 import { PBRMaterial, Color3 } from "@babylonjs/core";
 import { MapView, type MapMarkers } from "../ui/map";
+import { Underground, type UgTarget } from "./underground";
 
 export interface GameOpts {
     scene: Scene;
@@ -53,6 +54,11 @@ export class Game {
     readonly worn = new Inventory(3, 0);
     readonly fishing: Fishing;
     readonly fauna: Fauna;
+    /** the caves (and the chests in the huts and wrecks on the surface); three.js graphs under `ugRoot`, drawn by main */
+    readonly under: Underground;
+    readonly ugRoot = new THREE.Group();
+    /** switch the presentation between the island and the caves (set by main) */
+    onUnderground: ((on: boolean) => void) | null = null;
     private faunaMirror: ThreeMirror;
     readonly map: MapView;
     private fishPrompt: string | null = null;
@@ -166,6 +172,15 @@ export class Game {
                 this.hurtPlayer(dmg, fx, fz, by);
             };
         }
+        this.under = new Underground({
+            scene: this.ugRoot, player: o.player,
+            present: (on) => this.onUnderground?.(on),
+            message: (t) => this.hud.message(t), gain: () => {},
+            give: (id, n) => { this.give(id, n); return n; },
+            canFit: (id, n) => this.inv.canFit(id, n),
+            burst: (p, fx, n) => this.resources.burst(new Vector3(p.x, p.y, p.z), fx as HitFx, n),
+            sfx: { hit: (k) => this.sfx.hit(k as never), denied: () => this.sfx.denied(), pickup: () => this.sfx.pickup(), creak: () => this.sfx.creak(), swing: () => this.sfx.swing() },
+        });
         this.map = new MapView();
         this.map.onClose = () => this.toggleMap(false);
         this.fishing = new Fishing(o.scene, () => o.scene.activeCamera!, {
@@ -430,6 +445,7 @@ export class Game {
 
     respawn() {
         if (!this.stats.dead) return;
+        this.under.exit(null, true);
         this.stats.reset();
         this.inv.add("rock", 1);
         if (this.hasBed) {
@@ -454,18 +470,19 @@ export class Game {
         this.hurtCd -= dt; this.vrCd -= dt; this.eatCd -= dt; this.seaCd -= dt; this.drinkCd -= dt;
         this.resources.update(dt, player.pos.x, player.pos.z);
         this.building.update(dt);
-        this.structures.update(dt, player.pos.x, player.pos.y, player.pos.z);
+        const ug = this.under;
+        this.structures.update(dt, player.pos.x + (ug.active ? 1e6 : 0), player.pos.y, player.pos.z);
         this.sfx.setFire(this.structures.fireNear);
-        this.sfx.setOcean(clamp(1 - Math.max(0, player.pos.y) / 9, 0, 1));
+        this.sfx.setOcean(ug.active ? 0 : clamp(1 - Math.max(0, player.pos.y) / 9, 0, 1));
         {
-            const def = this.equippedDef, torch = def?.id === "torch" && !this.torchPlace && !stats.dead;
-            this.structures.setHeldLight(torch, this.vr.active ? this.vr.eye : player.eye, dt);
+            const def = this.equippedDef, torch = def?.id === "torch" && (!this.torchPlace || ug.active) && !stats.dead;
+            this.structures.setHeldLight(torch, this.vr.active ? this.vr.eye : player.eye, dt, ug.active ? 2.1 : 1);
         }
         view.update(dt, Math.hypot(player.vel.x, player.vel.z));
         this.fishing.update(dt);
         {
             const h = this.clock.hour, p = player;
-            this.fauna.update(dt, this.net.targets ? this.net.targets() : [{ id: this.netId, x: p.pos.x, y: p.pos.y, z: p.pos.z, sprint: p.sprinting, yaw: p.yaw }], h < 5.8 || h > 19.5);
+            this.fauna.update(dt, ug.active ? [{ id: this.netId, x: 1e6, y: 0, z: 1e6, sprint: false }] : this.net.targets ? this.net.targets() : [{ id: this.netId, x: p.pos.x, y: p.pos.y, z: p.pos.z, sprint: p.sprinting, yaw: p.yaw }], h < 5.8 || h > 19.5);
             this.faunaMirror.sync();
         }
         if (this.deathMark && !stats.dead && Math.hypot(this.deathMark.x - player.pos.x, this.deathMark.z - player.pos.z) < 5) this.deathMark = null;
@@ -550,6 +567,7 @@ export class Game {
         }
 
         const eye = this.eye, dir = this.dir;
+        ug.update(dt, player.eye, held ? held.id : null);
         if (this.vr.active) { dir.copyFrom(this.vr.dir); eye.copyFrom(this.vr.eye); this.assist = 1.7; }
         else {
             eye.copyFrom(player.eye);
@@ -569,13 +587,17 @@ export class Game {
                     this.sfx.place();
                 }
             }
-            if (!isTorch) this.torchPlace = false;
-            document.body.classList.toggle("holdmode", isTorch);
+            if (!isTorch || ug.active) this.torchPlace = false;
+            document.body.classList.toggle("holdmode", isTorch && !ug.active);
             document.body.classList.toggle("placemode", this.torchPlace);
         }
 
-        // ---------------- placing furniture / structures
-        if (def?.kind === "placeable" && def.place && (def.place !== "torch" || this.torchPlace)) {
+        // ---------------- placing furniture / structures (not underground: a held torch just lights the way)
+        if (ug.active && (def?.kind === "placeable" || def?.kind === "plan")) {
+            this.building.hideGhost(); this.structures.hideGhost(); this.hideBuildUi();
+            if (input.attackQueued) { hud.message("Too cramped to build down here"); this.sfx.denied(); input.attackQueued = false; }
+        }
+        if (!ug.active && def?.kind === "placeable" && def.place && (def.place !== "torch" || this.torchPlace)) {
             this.building.hideGhost();
             if (input.rotateQueued) { this.placeYaw += STEP * input.rotateQueued; input.rotateQueued = 0; }
             const aim = this.structures.updateGhost(def.place, eye, dir, this.placeYaw);
@@ -594,7 +616,7 @@ export class Game {
         this.structures.hideGhost();
 
         // ---------------- building plan
-        if (def?.kind === "plan") {
+        if (!ug.active && def?.kind === "plan") {
             if (input.cycleDelta) { this.cyclePiece(input.cycleDelta); input.cycleDelta = 0; }
             const pc = PIECES[this.pieceIdx];
             const aim = this.building.updateGhost(pc.kind, eye, dir);
@@ -634,10 +656,12 @@ export class Game {
         this.hideBuildUi();
 
         // ---------------- ordinary play: what are we looking at?
-        const t = this.resources.findTarget(eye, dir, 3.2, this.assist);
-        const st = this.structures.findTarget(eye, dir, 3.6, this.assist);
+        const t = ug.active ? null : this.resources.findTarget(eye, dir, 3.2, this.assist);
+        const st = ug.active ? null : this.structures.findTarget(eye, dir, 3.6, this.assist);
         const useStruct = st && (!t || st.dist < t.dist);
-        const wh = this.building.findPiece(eye, dir, 3.2);
+        const ugT: UgTarget | null = ug.target(eye, dir, def?.tool?.reach ?? 3.2, this.assist);
+        const useUg = !!ugT && !useStruct && (ug.active || !t || ugT.dist < t.dist);
+        const wh = ug.active ? null : this.building.findPiece(eye, dir, 3.2);
         const useWin = !!wh && wh.piece.kind === "window" && (!t || wh.dist < t.dist + 0.3) && (!st || wh.dist < st.dist);
         if (useWin && wh) {
             const w = wh.piece, open = this.building.windowOpen(w);
@@ -647,9 +671,13 @@ export class Game {
             const s = st!.s;
             this.promptStructure(s);
             this.runHold(dt, s, () => this.openStructure(s), () => this.pickupStructure(s));
+        } else if (useUg && ugT) {
+            this.runHold(dt, null, () => {}, () => {});
+            const pr = ug.prompt(ugT, held ? held.id : null);
+            hud.setPrompt(pr.name, pr.hint, pr.ok);
         } else {
             this.runHold(dt, null, () => {}, () => {});
-            const an = this.fauna.raycast(eye, dir, 4.2, this.assist);
+            const an = ug.active ? null : this.fauna.raycast(eye, dir, 4.2, this.assist);
             const click = `<b>${this.vr.active ? "Swing" : this.input.touch ? "HIT" : "Click"}</b>`;
             if (this.fishPrompt && def?.tool?.model === "rod") hud.setPrompt(this.fishPrompt, "", true);
             else if (an && (!t || an.dist < t.dist)) {
@@ -668,7 +696,8 @@ export class Game {
         }
 
         // interact (pick up / forage / drink)
-        if (!useStruct && !useWin && (input.interactQueued || input.interactHeld)) this.interact(t, dt, input.interactQueued);
+        if (useUg && ugT && input.interactQueued) { ug.interact(ugT); input.interactQueued = false; }
+        if (!useStruct && !useWin && !useUg && (input.interactQueued || input.interactHeld)) this.interact(t, dt, input.interactQueued);
         input.interactQueued = false;
     }
 
@@ -825,8 +854,11 @@ export class Game {
             this.dir.set(-Math.sin(player.yaw) * cp, Math.sin(player.pitch), -Math.cos(player.yaw) * cp);
         }
         if (def.tool.model === "rod") return;
-        const t = this.resources.findTarget(eye, this.dir, def.tool.reach, this.assist);
-        const an = this.fauna.raycast(eye, this.dir, def.tool.reach, this.assist);
+        const ug = this.under;
+        const t = ug.active ? null : this.resources.findTarget(eye, this.dir, def.tool.reach, this.assist);
+        const an = ug.active ? null : this.fauna.raycast(eye, this.dir, def.tool.reach, this.assist);
+        // a pickaxe-class swing: mining ore underground, or digging for the way down
+        if (ug.swing(eye, this.dir, held!.id, t && t.type === "node" ? t.dist : 99, this.assist)) { this.vr.haptic?.(0.6); this.wearHeld(); return; }
         const pl = this.net.rayPlayer?.(eye, this.dir, def.tool.reach) ?? null;
         if (pl && (!an || pl.dist < an.dist) && (!t || t.type !== "node" || pl.dist < t.dist)) {
             this.net.hitPlayer?.(pl.id, def.tool.dmg * (0.85 + Math.random() * 0.3));

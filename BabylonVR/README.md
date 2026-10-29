@@ -280,6 +280,9 @@ come from Castaway. Rendering, materials, the ocean and the VR controls are rebu
 - **Wildlife, fishing and the map:** crabs, boars and jaguars are Castaway's procedurally rigged
   animals and their AI, with meat and hides to collect. You can cast a rod for fish, cook on a
   campfire, and use the explored island map (M).
+- **Caves and ruins:** ruined huts and shipwrecks hide chests. Hollow ground hides shafts down to
+  a cave network under the island: dig with a pickaxe, climb down with a torch, and mine iron,
+  coal and diamonds among glowing crystals.
 - **Day and night:** a 25-minute day with a moving sun, stars and moon. Sleep in a bed at night.
 - **Characters:** Castaway's player models, outfits and armour, with walk, swim and swing
   animation. **Customise character** on the menu picks your look, which other players see.

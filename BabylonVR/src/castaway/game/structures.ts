@@ -754,9 +754,9 @@ export class StructureManager {
   }
 
   /** The torch in your hand. */
-  setHeldLight(on: boolean, at: Vector3, dt: number) {
+  setHeldLight(on: boolean, at: Vector3, dt: number, k = 1) {
     this.heldLight.position.copyFrom(at);
-    const target = on ? 6 * (0.86 + 0.14 * Math.sin(this.time * 12.7) + 0.07 * Math.sin(this.time * 31.1)) : 0;
+    const target = on ? 6 * k * (0.86 + 0.14 * Math.sin(this.time * 12.7) + 0.07 * Math.sin(this.time * 31.1)) : 0;
     this.heldFade += (target - this.heldFade) * Math.min(1, dt * 8);
     this.heldLight.intensity = this.heldFade;
     this.heldLight.setEnabled(this.heldFade > 0.01);

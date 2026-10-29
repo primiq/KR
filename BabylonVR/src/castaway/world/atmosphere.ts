@@ -1,4 +1,4 @@
-import { type BaseTexture, Color3, CubeMapToSphericalPolynomialTools, DirectionalLight, HDRFiltering, Mesh, MeshBuilder, StandardMaterial, VertexData, type RenderTargetTexture, type Scene, type ShaderMaterial, Vector3 } from "@babylonjs/core";
+import { type BaseTexture, Color3, HemisphericLight, Scene, CubeMapToSphericalPolynomialTools, DirectionalLight, HDRFiltering, Mesh, MeshBuilder, StandardMaterial, VertexData, type RenderTargetTexture, type ShaderMaterial, Vector3 } from "@babylonjs/core";
 import type { SkyMaterial } from "@babylonjs/materials";
 import { lerp, smoothstep } from "../core/noise";
 import { SPAWN_THETA } from "./island";
@@ -16,6 +16,11 @@ export class Atmosphere {
     /** the direction sunlight travels (what the lights and the ocean shader want) */
     readonly lightDir = new Vector3();
     day = 1;
+    /** in the caves: no sun, moon or sky light, a dim cool fill and dark fog (set by world/caveView) */
+    get underground() { return this.ug; }
+    set underground(on: boolean) { if (on === this.ug) return; this.ug = on; this.apply(!on); }
+    private ug = false;
+    private caveFill: HemisphericLight;
     readonly moon: DirectionalLight;
     private lastCapture = -1e9;
     private stars: Mesh;
@@ -70,6 +75,12 @@ export class Atmosphere {
         this.moonDisc.infiniteDistance = true;
         this.moonDisc.billboardMode = Mesh.BILLBOARDMODE_ALL;
         this.moonDisc.isPickable = false;
+        this.caveFill = new HemisphericLight("caveFill", new Vector3(0, 1, 0), scene);
+        this.caveFill.diffuse = new Color3(0.45, 0.55, 0.9);
+        this.caveFill.groundColor = new Color3(0.25, 0.22, 0.2);
+        this.caveFill.specular = Color3.Black();
+        this.caveFill.intensity = 0.3;
+        this.caveFill.setEnabled(false);
         this.apply(true);
     }
 
@@ -116,6 +127,20 @@ export class Atmosphere {
             om.setVector3("sunDir", this.lightDir);
             om.setColor3("sunColor", Color3.Lerp(new Color3(1, 0.86, 0.68), warm, low * 0.8).scale(5 * day + 0.3 * (1 - day) * up));
         }
+        if (this.ug) {
+            this.sun.intensity = 0;
+            this.sun.setEnabled(false);
+            this.moon.setEnabled(false);
+            this.scene.environmentIntensity = 0;
+            this.caveFill.setEnabled(true);
+            this.scene.fogMode = Scene.FOGMODE_EXP2;
+            this.scene.fogDensity = 0.013;
+            this.scene.fogColor = new Color3(0.012, 0.016, 0.03);
+            return;
+        }
+        this.sun.setEnabled(true);
+        this.caveFill.setEnabled(false);
+        this.scene.fogMode = Scene.FOGMODE_NONE;
         // re-capture the sky lighting every ~20 game minutes (or straight away when time jumps)
         const step = Math.abs(this.hour - this.lastCapture);
         if ((force || step > 0.33) && !this.capturing) void this.capture();

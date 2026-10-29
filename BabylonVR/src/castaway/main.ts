@@ -16,6 +16,9 @@ import { Ocean } from "../island/ocean";
 import { createSky } from "../island/sky";
 import { Input } from "./core/input";
 import { Chat } from "./net/chat";
+import * as THREE from "three";
+import { planSites, SurfaceSites } from "./world/sites";
+import { CaveView } from "./world/caveView";
 import { getOutfit, onOutfitChange, setPlayerOutfit } from "./net/outfit";
 import { SKINS } from "./net/playerModel";
 import { setupCustomise, setNameLocked } from "./ui/customise";
@@ -109,7 +112,8 @@ async function main() {
     await nextFrame();
     const spawn = findSpawn();
     const springSpots = planSprings(spawn);
-    const vegetation = new Vegetation(scene, q, [{ x: spawn.x, z: spawn.z, r: 7 }, ...springSpots]);
+    const sitePlan = planSites(spawn, springSpots);
+    const vegetation = new Vegetation(scene, q, [{ x: spawn.x, z: spawn.z, r: 7 }, ...springSpots, ...sitePlan.map((p) => ({ x: p.x, z: p.z, r: p.r }))]);
 
     progress(0.8, "Waking the wind…");
     await nextFrame();
@@ -132,6 +136,10 @@ async function main() {
     const clock = new Atmosphere(scene, sun, skybox, env, ocean, sunMesh);
     if (params.has("hour")) clock.hour = parseFloat(params.get("hour")!);
     const game = new Game({ scene, camera, player, vegetation, input, spawn, springSpots, shadows: q.shadows, clock });
+    // ruined huts and shipwrecks with chests, and the caves under the island
+    const sites = new SurfaceSites(game.ugRoot as unknown as THREE.Scene, sitePlan, vegetation.colliders, q.shadows);
+    game.under.sites = sites;
+    const caves = new CaveView(scene, game, clock, q.shadows);
     game.building.onTerrain = (x0, z0, x1, z1) => {
         terrain.refresh(x0, z0, x1, z1);
         vegetation.reseat(x0, z0, x1, z1);
@@ -209,6 +217,7 @@ async function main() {
                 player.look.set(-Math.sin(player.yaw) * cp, Math.sin(player.pitch), -Math.cos(player.yaw) * cp);
             }
             game.update(dt, true);
+            game.under.sites?.update(dt);
             Wind.push[0].set(player.pos.x, player.pos.y, player.pos.z, 0.9);
         } else {
             // the menu: a slow look along the beach
@@ -216,6 +225,7 @@ async function main() {
             camera.position.set(spawn.x, heightAt(spawn.x, spawn.z) + 2.2, spawn.z);
             camera.rotation.set(-0.05, spawn.yaw + Math.sin(t * 0.05) * 0.6, 0);
         }
+        caves.update();
         vegetation.update(player.pos.x, player.pos.z);
         syncCasters();
     });
@@ -568,7 +578,7 @@ async function main() {
     // a hidden tab stops rendering: keep the room in step anyway (a host who alt-tabs must not freeze everyone else)
     setInterval(() => { if (document.hidden) sync?.update(0.1); }, 100);
 
-    Object.assign(window as unknown as Record<string, unknown>, { Wind, scene, engine, game, player, vegetation, terrain, ocean, input, clock, camera, getSync: () => sync, doSave });
+    Object.assign(window as unknown as Record<string, unknown>, { Wind, scene, engine, game, player, sites, caves, heightAt, vegetation, terrain, ocean, input, clock, camera, getSync: () => sync, doSave });
 }
 
 main().catch((e) => {
