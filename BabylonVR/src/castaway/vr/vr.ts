@@ -20,6 +20,7 @@ import { buildGorillaHand } from "../campaign/gorilla";
 import { buildPaw, type Coat } from "../world/cats";
 import type { Player } from "../world/player";
 import { VRPanel } from "./panel";
+import { VRPaint } from "./paintvr";
 
 const SNAP = Math.PI / 6;
 /** a cat is about a quarter of your size; its paws are drawn bigger than life so you can see them */
@@ -62,6 +63,8 @@ export class CastawayVR {
     private turnArmed = true;
     private slotArmed = true;
     readonly panel: VRPanel;
+    /** painting a picture: the canvas on the wall, the palette above the right hand */
+    readonly paint: VRPaint;
     private yawOffset = 0;
     /** the guitar is held by the neck in the left hand (the right one strums) */
     private guitar: TransformNode | null = null;
@@ -87,6 +90,12 @@ export class CastawayVR {
     ) {
         const base = xr.baseExperience;
         this.panel = new VRPanel(scene, game);
+        this.paint = new VRPaint(scene);
+        game.vr.paint = (p, done) => {
+            // the palette goes on the right hand when both controllers are there (the left one points at it)
+            const L = this.hands.get("left"), R = this.hands.get("right");
+            this.paint.start(p, game.paintings, L && R ? R.src.grip ?? R.src.pointer : null, done);
+        };
         this.zone3.matrixAutoUpdate = false;
         this.handMirror = new ThreeMirror(scene, this.handHolder, null, false, { tag: { keepUnderground: true } });
         base.onStateChangedObservable.add((s) => {
@@ -112,6 +121,7 @@ export class CastawayVR {
                 game.vr.head = game.vr.headDir = null;
                 player.vr = false;
                 this.panel.setVisible(false);
+                if (this.paint.active) this.paint.cancel();
                 document.body.classList.remove("in-vr");
             }
         });
@@ -218,6 +228,24 @@ export class CastawayVR {
         input.move.y = -sy;
         const lGrip = btn(L, 1), lTrig = val(L, 0) > 0.6;
 
+        // ---- painting a picture: walk with the left stick; the right hand is the brush, the left one picks from the palette
+        if (this.paint.active) {
+            if (R) {
+                const ptr = R.src.pointer, d = ptr.getDirection(Vector3.Forward(true));
+                const trig = val(R, 0), a = btn(R, 4), b = btn(R, 5);
+                const lp = L?.src.pointer;
+                this.paint.update({
+                    o: ptr.absolutePosition, d,
+                    po: lp ? lp.absolutePosition : null, pd: lp ? lp.getDirection(Vector3.Forward(true)) : null, pickDown: !!L && lTrig && !L.trig,
+                    trig, trigDown: trig > 0.6 && !R.trig, undo: b && !R.b, swap: a && !R.a,
+                    stick: axis(R, 3) || axis(R, 1), dt, haptic: (s) => this.pulse("right", s),
+                });
+                R.trig = trig > 0.6; R.a = a; R.b = b; R.sq = btn(R, 1);
+                if (L) L.trig = lTrig;
+            }
+            this.endInput(dt, L, R);
+            return;
+        }
         // ---- the secret level (a floating screen): left stick runs left / right, A, B, X, Y or either trigger jumps, grip runs fast
         if (game.warp.inLevel) {
             const rawX = axis(L, 2) || axis(L, 0) || axis(R, 2) || axis(R, 0);

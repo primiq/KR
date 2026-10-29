@@ -150,7 +150,7 @@ export class Game {
     /** multiplayer: friends and pings for the map (set by net/sync) */
     mapExtras: { friends?: () => { x: number; z: number; name: string; color: string }[]; pings?: () => { x: number; z: number; name: string; color: string; age: number }[] } = {};
     /** VR: aim comes from the hand, not the head; the VR rig fills this in every frame */
-    readonly vr = { active: false, eye: new Vector3(), dir: new Vector3(0, 0, -1), head: null as Vector3 | null, headDir: null as Vector3 | null, haptic: null as null | ((strength: number) => void) };
+    readonly vr = { active: false, eye: new Vector3(), dir: new Vector3(0, 0, -1), head: null as Vector3 | null, headDir: null as Vector3 | null, haptic: null as null | ((strength: number) => void), paint: null as null | ((p: Painting, done: (data: string | null) => void) => void) };
     /** multiplayer glue (set by net/sync) */
     netId = 0;
     net: {
@@ -599,6 +599,18 @@ export class Game {
         const user = this.net.inUse?.({ nid: p.nid } as Structure);
         if (user) { this.hud.message(`${user} is painting this`); this.sfx.denied(); return; }
         this.paintingNid = p.nid;
+        // in VR you paint straight onto the picture on the wall
+        if (this.vr.active && this.vr.paint) {
+            const before = p.data;
+            this.hud.message("Paint with the right trigger (squeeze harder for a thicker line). Palette above your right hand. Right stick: size · B: undo · A: eraser.");
+            this.vr.paint(p, (data) => {
+                this.paintingNid = null;
+                if (!this.paintings.list.includes(p)) return;
+                if (data !== null) { this.paintings.setData(p, data); this.sfx.place(); this.hud.message("Saved. Everybody can see your picture."); }
+                else this.paintings.setData(p, before, true);     // cancelled: put the old picture back
+            });
+            return;
+        }
         this.input.uiOpen = true;
         if (document.pointerLockElement) document.exitPointerLock();
         this.painter.show("Paint a picture", p.data, (data) => {
