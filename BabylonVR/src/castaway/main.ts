@@ -30,7 +30,13 @@ import { CatHome } from "./world/catroom";
 import { HideIsle } from "./world/hideisle";
 import { TileTrial } from "./world/tiletrial";
 import { FPPaws, PLAYER_COATS } from "./world/cats";
-import { HUMAN } from "./world/player";
+import { HUMAN, CAT, GORILLA } from "./world/player";
+import { Narrator } from "./game/narrator";
+import { Campaign } from "./campaign/campaign";
+import { Shop } from "./campaign/shop";
+import { Museum } from "./campaign/museum";
+import { FPGorilla } from "./campaign/gorilla";
+import { Mosquito, setListener } from "./campaign/mosquito";
 import { ThreeMirror } from "./render/mirror";
 import { Dolphins } from "./world/dolphins";
 import { SEA } from "./world/waves";
@@ -196,6 +202,57 @@ async function main() {
         paws.root.visible = on && !vrActive();
     };
     game.under.onCat = catMode;
+    // ---- Banana or Salmon: the narrator and the co-op campaign behind the yellow door in the secret room
+    const narrator = new Narrator();
+    narrator.ctx = () => game.sfx.context; narrator.duck = (k) => game.sfx.setDuck(k); narrator.muted = () => game.sfx.muted;
+    const camp = new Campaign(game.natureRoot as unknown as THREE.Scene, narrator, game.sfx, player); game.under.camp = camp;
+    camp.addMission(new Shop(game.natureRoot as unknown as THREE.Scene)); camp.addMission(new Museum(game.natureRoot as unknown as THREE.Scene));
+    // the gorilla's own arms ride on the camera, like the cat's paws
+    const fpGor = new FPGorilla(); fpGor.root.visible = false; pawRig.add(fpGor.root);
+    // the narrator is a mosquito that flies around you (its voice comes from where it is)
+    const mozzie = new Mosquito(game.natureRoot as unknown as THREE.Scene);
+    mozzie.group.userData.babylonTag = { keepUnderground: true };
+    narrator.source = () => (mozzie.group.visible ? mozzie.pos : null);
+    mozzie.clamp = (p) => {
+        const sp = player.cave as any; if (!sp?.push) return;
+        const o = { x: 0, z: 0, nx: 0, nz: 0 };
+        sp.push(p.x - sp.ox, p.z - sp.oz, 0.08, p.y - sp.oy, 0.05, o); p.x = o.x + sp.ox; p.z = o.z + sp.oz;
+        p.y = Math.max(p.y, sp.floor(p.x, p.z, p.y) + 0.1); p.y = Math.min(p.y, sp.ceiling(p.x, p.z, p.y) - 0.1);
+    };
+    // the WebAudio listener follows the Babylon camera (through a three.js stand-in)
+    const earCam = new THREE.PerspectiveCamera(); earCam.matrixAutoUpdate = false;
+    const eyeT = new THREE.Vector3();
+    camp.send = (e) => sync?.session.sendEvent(e);
+    camp.myId = () => sync?.session.myId ?? 0;
+    camp.owner = () => !sync || sync.session.isHost;
+    camp.others = () => {
+        const out: { id: number; name: string; x: number; y: number; z: number; yaw: number; flags: number; hand: THREE.Vector3 | null }[] = [];
+        if (sync) for (const a of sync.avatars.positions) {
+            const st = sync.session.states.get(a.id); if (!st) continue;
+            const r = st.v && st.v.r ? st.v.r : null;
+            out.push({ id: a.id, name: a.name, x: a.x, y: a.y, z: a.z, yaw: st.yaw, flags: st.flags, hand: r ? new THREE.Vector3(a.x + r[0], a.y + r[1], a.z + r[2]) : null });
+        }
+        return out;
+    };
+    camp.say = (t) => game.hud.message(t);
+    camp.fade = (on, text) => game.hud.fade(on, text ?? "");
+    camp.haptic = (v) => game.vr.haptic?.(v);
+    camp.inVR = () => vrActive();
+    camp.carryAt = (out) => {
+        const d = player.look, dy = Math.max(-0.4, Math.min(0.4, d.y));
+        if (camp.species === "c") out.set(player.pos.x + d.x * 0.3, player.pos.y + 0.05, player.pos.z + d.z * 0.3);
+        else out.set(player.eye.x + d.x * 0.85, player.eye.y - 0.55 + dy * 0.5, player.eye.z + d.z * 0.85);
+    };
+    camp.onEmote = () => { game.swings++; if (camp.species === "c") paws.swing(); };
+    camp.onBeat = () => fpGor.thump();
+    camp.onBody = (sp) => {
+        player.body = sp === "g" ? GORILLA : sp === "c" ? CAT : HUMAN; player.climbing = false;
+        camera.minZ = sp === "c" ? 0.04 : 0.1;
+        catMode(sp === "c");
+        fpGor.root.visible = sp === "g" && !vrActive();
+    };
+    /** a campaign cat (not the cat house) */
+    const campCat = () => camp.active && (camp.flags & 32768) !== 0;
     let mouseSend = 0;
     // Hideaway Isle (hide and seek, the green door) and the Chamber of Tiles (the copper door)
     const hide = new HideIsle(game.natureRoot as unknown as THREE.Scene, q.shadows);
@@ -319,6 +376,8 @@ async function main() {
             if (hide.active && !hide.contains(player.pos.x, player.pos.z)) { hide.leave(player); player.teleport(player.pos.x, heightAt(player.pos.x, player.pos.z), player.pos.z, player.yaw); }
             if (!trial.active && trial.contains(player.pos.x, player.pos.z) && sky.exitTo) { const e = sky.exitTo; player.teleport(e.x, e.y, e.z, e.yaw); }
             if (trial.active && !trial.contains(player.pos.x, player.pos.z)) { trial.leave(player); player.teleport(player.pos.x, heightAt(player.pos.x, player.pos.z), player.pos.z, player.yaw); }
+            if (!camp.active && camp.contains(player.pos.x, player.pos.z) && sky.exitTo) { const e = sky.exitTo; player.teleport(e.x, e.y, e.z, e.yaw); }
+            if (camp.active && !camp.contains(player.pos.x, player.pos.z)) { camp.leave(); player.teleport(player.pos.x, heightAt(player.pos.x, player.pos.z), player.pos.z, player.yaw); }
             if (air.driving && game.stats.dead) air.exitCar(player);
             if (air.active) air.pre(dt, { gas: Math.max(-1, Math.min(1, input.move.y)), steer: Math.max(-1, Math.min(1, input.move.x)), hand: input.jumpHeld, boost: input.wantsSprint }, player, vrActive());
             if (!game.uiBlocking) player.update(dt, input);
@@ -342,6 +401,18 @@ async function main() {
             if (sync) sync.avatars.three.labelsOff = hide.active;
             game.sfx.setDeaf(hide.deaf);
             trial.update(dt, player, now / 1000);
+            camp.update(dt, now / 1000);
+            mozzie.group.visible = camp.active;
+            narrator.update(dt);
+            {
+                const ctx = game.sfx.context;
+                earCam.matrix.fromArray(camera.getWorldMatrix().m as unknown as number[]); earCam.matrixWorldNeedsUpdate = true;
+                if (ctx && mozzie.group.visible) setListener(ctx, earCam);
+                eyeT.set(player.eye.x, player.eye.y, player.eye.z);
+                mozzie.update(dt, eyeT, player.yaw, narrator.narrating, camp.species === "c" && camp.where !== "choice", ctx, game.sfx.muted || !narrator.voiceOn);
+            }
+            fpGor.root.visible = camp.active && camp.species === "g" && camp.where !== "choice" && !vrActive();
+            if (fpGor.root.visible) fpGor.update(dt, Math.hypot(player.vel.x, player.vel.z));
             if (cats && !game.under.active) cats.update(dt, player.pos.x, player.pos.z, player.pos.y);
             dive.update(dt, player, input.move, game.stats.dead);
             const sy = sync;
@@ -361,14 +432,14 @@ async function main() {
                     cat.landed = false;
                 }
                 cat.ghost = cat.active && player.climbing;
-                paws.root.visible = cat.active && !vrActive();
-                if (cat.active) paws.update(dt, Math.hypot(player.vel.x, player.vel.z), player.vel.y, player.sprinting);
+                paws.root.visible = (cat.active || campCat()) && !vrActive();
+                if (cat.active || campCat()) paws.update(dt, Math.hypot(player.vel.x, player.vel.z), player.vel.y, player.sprinting);
             }
             dolphins.update(dt, player.pos.x, player.pos.z, player.yaw, game.under.active);
             ocean.bio = BIO.value;
             clock.curse = game.druids.curse;
             // waking up on the beach after the wreck: the world swims into focus
-            canvas.style.filter = game.eyeBlur > 0.05 ? `blur(${game.eyeBlur.toFixed(1)}px)` : "";
+            canvas.style.filter = (camp.nightVision && !vrActive() ? "brightness(1.45) contrast(1.08) saturate(0.6) sepia(0.25) hue-rotate(55deg)" : "") + (game.eyeBlur > 0.05 ? ` blur(${game.eyeBlur.toFixed(1)}px)` : "");
             Wind.push[0].set(player.pos.x, player.pos.y, player.pos.z, 0.9);
         } else {
             // the menu: a slow look along the beach
@@ -733,7 +804,7 @@ async function main() {
     // a hidden tab stops rendering: keep the room in step anyway (a host who alt-tabs must not freeze everyone else)
     setInterval(() => { if (document.hidden) sync?.update(0.1); }, 100);
 
-    Object.assign(window as unknown as Record<string, unknown>, { Wind, scene, engine, game, player, sites, caves, heightAt, weather, cats, sky, dive, air, cat, vegetation, terrain, ocean, input, clock, camera, getSync: () => sync, doSave });
+    Object.assign(window as unknown as Record<string, unknown>, { Wind, scene, engine, game, player, sites, caves, heightAt, weather, cats, sky, dive, air, cat, vegetation, terrain, ocean, input, clock, camera, getSync: () => sync, doSave, camp, narrator, mozzie });
 }
 
 main().catch((e) => {

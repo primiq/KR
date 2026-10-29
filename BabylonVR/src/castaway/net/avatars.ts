@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import type { Scene } from '@babylonjs/core';
 import { ThreeMirror } from '../render/mirror';
+import { GorillaBody } from '../campaign/gorilla';
 import { poseLeg, buildCat, PLAYER_COATS } from '../world/cats';
 import type { PState } from './session';
 import { heightAt } from '../world/island';
@@ -180,6 +181,7 @@ class Avatar {
   onStep: ((x: number, y: number, z: number) => void) | null = null;
 
   private armorCode = 0; private armorParts: THREE.Object3D[] = []; private shadowsOn = false;
+  private gor: GorillaBody | null = null;
   private cat: CatBody | null = null;
   private tagS0: THREE.Vector3 | null = null; private barS0: THREE.Vector3 | null = null;
 
@@ -203,6 +205,24 @@ class Avatar {
     this.group.frustumCulled = false;
   }
 
+  /** Banana or Salmon: this player is a gorilla */
+  private showGorilla(on: boolean) {
+    if (on && !this.gor) { this.gor = new GorillaBody(this.shadowsOn); this.group.add(this.gor.root); }
+    if (this.gor) this.gor.root.visible = on;
+    this.R.rig.visible = !on && !this.cat?.root.visible;
+    this.tag.position.y = on ? 2.3 : TAG_Y; this.bar.sprite.position.y = (on ? 2.3 : TAG_Y) - 0.14;
+    if (on) this.setVR(false);
+  }
+  private updateGorilla(dt: number, s: PState) {
+    if (!this.gor?.root.visible) this.showGorilla(true);
+    const inv = 1 / Math.max(dt, 1e-3);
+    const vx = (this.cur.x - this.prev.x) * inv, vy = (this.cur.y - this.prev.y) * inv, vz = (this.cur.z - this.prev.z) * inv;
+    const kv = Math.min(1, dt * 10);
+    this.vel.x += (vx - this.vel.x) * kv; this.vel.y += (vy - this.vel.y) * kv; this.vel.z += (vz - this.vel.z) * kv;
+    if (this.lastSwing !== s.swing) { if (this.lastSwing >= 0) this.gor!.thump(); this.lastSwing = s.swing; }
+    this.gor!.update(dt, Math.hypot(this.vel.x, this.vel.z), this.vel.y, this.pitch);
+    this.bar.draw(s.hp);
+  }
   private showCat(on: boolean) {
     if (on && !this.cat) { this.cat = new CatBody(this.id, this.shadowsOn); this.group.add(this.cat.root); }
     if (this.cat) this.cat.root.visible = on;
@@ -278,6 +298,8 @@ class Avatar {
     this.spd += (s.spd - this.spd) * Math.min(1, dt * 8);
     this.group.position.copy(this.cur);
     this.group.rotation.set(0, this.yaw, 0);
+    if ((s.flags & 16384) !== 0) { if (this.cat?.root.visible) this.showCat(false); this.updateGorilla(dt, s); return; }
+    if (this.gor?.root.visible) this.showGorilla(false);
     if ((s.flags & 16) !== 0) { this.updateCat(dt, s); return; }
     if (this.cat?.root.visible) this.showCat(false);
     this.setHeld((s.flags & 64) ? "" : s.item);

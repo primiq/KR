@@ -1,0 +1,85 @@
+{
+ "narrator": {
+  "name": "en-GB-Chirp3-HD-Algieba",
+  "languageCode": "en-GB",
+  "speakingRate": 0.97
+ },
+ "cashier": {
+  "name": "en-GB-Chirp3-HD-Leda",
+  "languageCode": "en-GB",
+  "speakingRate": 1.0
+ },
+ "guard": {
+  "name": "en-GB-Chirp3-HD-Algenib",
+  "languageCode": "en-GB",
+  "speakingRate": 0.92
+ },
+ "_candidates": {
+  "narrator": [
+   {
+    "name": "en-GB-Chirp3-HD-Charon",
+    "languageCode": "en-GB"
+   },
+   {
+    "name": "en-GB-Chirp3-HD-Algieba",
+    "languageCode": "en-GB"
+   },
+   {
+    "name": "en-GB-Chirp3-HD-Sadaltager",
+    "languageCode": "en-GB"
+   },
+   {
+    "name": "en-GB-Chirp3-HD-Sulafat",
+    "languageCode": "en-GB"
+   },
+   {
+    "name": "en-GB-Chirp3-HD-Aoede",
+    "languageCode": "en-GB"
+   },
+   {
+    "name": "en-GB-Studio-B",
+    "languageCode": "en-GB"
+   },
+   {
+    "name": "en-GB-Studio-C",
+    "languageCode": "en-GB"
+   }
+  ],
+  "cashier": [
+   {
+    "name": "en-GB-Chirp3-HD-Leda",
+    "languageCode": "en-GB"
+   },
+   {
+    "name": "en-GB-Chirp3-HD-Kore",
+    "languageCode": "en-GB"
+   },
+   {
+    "name": "en-GB-Chirp3-HD-Puck",
+    "languageCode": "en-GB"
+   },
+   {
+    "name": "en-GB-Neural2-C",
+    "languageCode": "en-GB"
+   }
+  ],
+  "guard": [
+   {
+    "name": "en-GB-Chirp3-HD-Algenib",
+    "languageCode": "en-GB"
+   },
+   {
+    "name": "en-GB-Chirp3-HD-Fenrir",
+    "languageCode": "en-GB"
+   },
+   {
+    "name": "en-GB-Chirp3-HD-Rasalgethi",
+    "languageCode": "en-GB"
+   },
+   {
+    "name": "en-US-Chirp3-HD-Orus",
+    "languageCode": "en-US"
+   }
+  ]
+ }
+}

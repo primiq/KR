@@ -13,6 +13,7 @@ import type { Airstrip } from '../world/airstrip';
 import type { Car } from './cars';
 import type { CatHome } from '../world/catroom';
 import type { HideIsle, HideTarget } from '../world/hideisle';
+import type { Campaign, CampTarget } from '../campaign/campaign';
 import type { TileTrial, TrialTarget } from '../world/tiletrial';
 import { CAT, HUMAN } from '../world/player';
 import { rayGround } from './building';
@@ -51,6 +52,8 @@ export type UgTarget =
   | { kind: 'catdoor'; dist: number }
   | { kind: 'catexit'; dist: number }
   | { kind: 'hidedoor'; dist: number }
+  | { kind: 'campdoor'; dist: number }
+  | { kind: 'camp'; t: CampTarget; dist: number }
   | { kind: 'hide'; t: HideTarget; dist: number }
   | { kind: 'trialdoor'; dist: number }
   | { kind: 'trial'; t: TrialTarget; dist: number };
@@ -74,6 +77,8 @@ export class Underground {
   cat: CatHome | null = null;
   /** Hideaway Isle (hide and seek) and the Chamber of Tiles (set by main) */
   hide: HideIsle | null = null;
+  /** Banana or Salmon, the co-op campaign behind the yellow door (set by main) */
+  camp: Campaign | null = null;
   trial: TileTrial | null = null;
   /** cat house entered / left (main swaps the body, the paws and the multiplayer flag) */
   onCat: ((on: boolean) => void) | null = null;
@@ -229,6 +234,10 @@ export class Underground {
     if (ht2 != null && (!best || ht2 < (best as UgTarget).dist)) best = { kind: 'hidedoor', dist: ht2 };
     const tt2 = this.sky?.pickTrial(eye, dir, Math.max(reach, 3.2), assist);
     if (tt2 != null && (!best || tt2 < (best as UgTarget).dist)) best = { kind: 'trialdoor', dist: tt2 };
+    const cd3 = this.sky?.pickCamp(eye, dir, Math.max(reach, 3.2), assist);
+    if (cd3 != null && (!best || cd3 < (best as UgTarget).dist)) best = { kind: 'campdoor', dist: cd3 };
+    const cp = this.camp?.pick(eye, dir, reach, assist);
+    if (cp && (cp.t.w === 'm' && cp.t.t.w === 'held' || !best || cp.dist < (best as UgTarget).dist)) best = { kind: 'camp', t: cp.t, dist: cp.dist };
     const tp = this.trial?.pick(eye, dir, reach, assist);
     if (tp && (!best || tp.dist < (best as UgTarget).dist)) best = { kind: 'trial', t: tp.t, dist: tp.dist };
     const hp = this.hide?.pick(eye, dir, reach, assist);
@@ -254,6 +263,8 @@ export class Underground {
         if (t.ore.kind === 'diamond' && !pick) return { name: nm, hint: 'Needs a pickaxe', ok: false };
         return { name: nm, hint: '<b>Click</b> mine', ok: true };
       }
+      case 'campdoor': return { name: 'Banana or Salmon', hint: '<b>E</b> open · a co-op adventure', ok: true };
+      case 'camp': return this.camp!.prompt(t.t);
       case 'hidedoor': return { name: 'Green door', hint: '<b>E</b> open · hide & seek island', ok: true };
       case 'hide': return this.hide!.prompt(t.t);
       case 'trialdoor': return { name: 'Copper door', hint: '<b>E</b> open · the Chamber of Tiles', ok: true };
@@ -281,6 +292,8 @@ export class Underground {
       case 'chest': this.openChest(t.chest); break;
       case 'loot': this.openSiteChest(t.chest); break;
       case 'clouddoor': this.sky?.openCloud(); break;
+      case 'campdoor': if (this.sky && this.camp) { this.sky.depart(); this.camp.enter(); this.h.sfx.creak(); } break;
+      case 'camp': { if (this.camp?.interact(t.t) === 'exit' && this.sky) { this.camp.leave(); this.sky.enter(this.h.player, 'camp'); this.h.message('Back in the secret room.'); this.h.sfx.creak(); } break; }
       case 'hidedoor': if (this.sky && this.hide) { this.sky.depart(); this.hide.enter(this.h.player); this.h.sfx.creak(); } break;
       case 'trialdoor': if (this.sky && this.trial) { this.sky.depart(); this.trial.enter(this.h.player); this.h.sfx.creak(); } break;
       case 'trial': { if (this.trial?.interact(t.t) === 'exit' && this.sky) { this.trial.leave(this.h.player); this.sky.enter(this.h.player, 'trial'); this.h.message('Back in the secret room.'); this.h.sfx.creak(); } break; }

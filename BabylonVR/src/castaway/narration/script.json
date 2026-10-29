@@ -1,0 +1,380 @@
+{
+ "note": "Every spoken line. Edit the text, then run: node scripts/make-narration.mjs (only changed lines are regenerated). subtitle (optional) overrides the on-screen text; ssml (optional) overrides the spoken text for SSML voices.",
+ "lines": [
+  {
+   "id": "mozzie_hello",
+   "voice": "narrator",
+   "text": "Bzzz! Hello there. Yes, up here. I'm the mosquito, and I'll be your narrator today. Please don't swat me."
+  },
+  {
+   "id": "choose_welcome",
+   "voice": "narrator",
+   "text": "Welcome, friends. Before we begin, one very important question."
+  },
+  {
+   "id": "choose_question",
+   "voice": "narrator",
+   "text": "Do you prefer a banana... or a salmon?"
+  },
+  {
+   "id": "choose_banana",
+   "voice": "narrator",
+   "text": "A gorilla! Strong, brave, and a little bit hungry."
+  },
+  {
+   "id": "choose_salmon",
+   "voice": "narrator",
+   "text": "A cat! Quick, clever, and suspiciously fond of fish."
+  },
+  {
+   "id": "choose_wait",
+   "voice": "narrator",
+   "text": "Splendid. Now we just wait for everybody else to make up their minds."
+  },
+  {
+   "id": "choose_countdown",
+   "voice": "narrator",
+   "text": "Wonderful. Hold on to your tails. Three... two... one..."
+  },
+  {
+   "id": "hub_welcome",
+   "voice": "narrator",
+   "text": "Welcome to the cosy room. Put your feet up. When you are ready, click the television to start your first mission."
+  },
+  {
+   "id": "hub_next",
+   "voice": "narrator",
+   "text": "Back already? Splendid work. Click the television when you are ready for the next mission."
+  },
+  {
+   "id": "hub_ready",
+   "voice": "narrator",
+   "text": "Ready! Now everybody else needs to press the television too."
+  },
+  {
+   "id": "hub_go",
+   "voice": "narrator",
+   "text": "Everybody is ready. Off we go!"
+  },
+  {
+   "id": "hub_alldone",
+   "voice": "narrator",
+   "text": "Every mission complete! You are officially the finest gorilla and cat team in the whole wide world."
+  },
+  {
+   "id": "hub_inprogress",
+   "voice": "narrator",
+   "text": "Your friends are already out on a mission. Make yourself comfortable. You can join the next one."
+  },
+  {
+   "id": "hub_reset_ask",
+   "voice": "narrator",
+   "text": "Are you sure? Press the red button again to forget everything and choose all over again."
+  },
+  {
+   "id": "hub_reset_vote",
+   "voice": "narrator",
+   "text": "One vote to start over. Everybody in the room needs to press the red button."
+  },
+  {
+   "id": "hub_reset_done",
+   "voice": "narrator",
+   "text": "Right then. A clean slate. Back to the big question!"
+  },
+  {
+   "id": "hub_leave",
+   "voice": "narrator",
+   "text": "See you soon. Don't worry, your progress is saved."
+  },
+  {
+   "id": "hub_soon",
+   "voice": "narrator",
+   "text": "That mission isn't built yet. Come back after the next update!"
+  },
+  {
+   "id": "beat",
+   "voice": "narrator",
+   "text": "Ha! Very impressive."
+  },
+  {
+   "id": "mission_go",
+   "voice": "narrator",
+   "text": "Three... two... one... go!"
+  },
+  {
+   "id": "medal_gold",
+   "voice": "narrator",
+   "text": "A gold medal! Absolutely flawless."
+  },
+  {
+   "id": "medal_silver",
+   "voice": "narrator",
+   "text": "A silver medal. Very respectable."
+  },
+  {
+   "id": "medal_bronze",
+   "voice": "narrator",
+   "text": "A bronze medal. You got there in the end, and that is what counts."
+  },
+  {
+   "id": "solo_help",
+   "voice": "narrator",
+   "text": "Just you today? Then you get a little extra help. Cats can jump twice in the air, and gorillas can squeeze an arm into small places."
+  },
+  {
+   "id": "too_heavy",
+   "voice": "narrator",
+   "text": "That is far too heavy for a cat. Perhaps a gorilla could help."
+  },
+  {
+   "id": "need_cat",
+   "voice": "narrator",
+   "text": "Your big gorilla hands won't fit in there. Something small and furry might."
+  },
+  {
+   "id": "toss",
+   "voice": "narrator",
+   "text": "Up you go!"
+  },
+  {
+   "id": "m1_intro",
+   "voice": "narrator",
+   "text": "Mission one. The Odd Shopping List. Somebody has sent you to Bootle's Chemist with a very peculiar list. Find the five items, put them on the till, and pay. Gorillas, mind the shelves."
+  },
+  {
+   "id": "m1_list",
+   "voice": "narrator",
+   "text": "The list says: one tin of sardines. One bottle of bubble bath. A jar of glitter. A travel size mouthwash. And... one fluffy sock. Just the one."
+  },
+  {
+   "id": "m1_hello",
+   "voice": "cashier",
+   "text": "Hello! Oh. You're a gorilla. And... a cat. Well, I don't judge. Put your shopping on the belt when you're ready."
+  },
+  {
+   "id": "m1_scan",
+   "voice": "narrator",
+   "text": "Beep! That one is ticked off the list."
+  },
+  {
+   "id": "m1_scan_last",
+   "voice": "narrator",
+   "text": "That's everything on the list! Let's see what the cashier makes of it."
+  },
+  {
+   "id": "m1_total",
+   "voice": "cashier",
+   "text": "Well, that's a strange selection of items... That will be five dollars, please."
+  },
+  {
+   "id": "m1_money",
+   "voice": "narrator",
+   "text": "Five dollars. Hmm. Neither gorillas nor cats carry wallets. There must be some coins lying around this shop."
+  },
+  {
+   "id": "m1_coin",
+   "voice": "cashier",
+   "text": "One dollar. Thank you."
+  },
+  {
+   "id": "m1_paid",
+   "voice": "cashier",
+   "text": "That's five dollars exactly. Thank you very much, and do come again. Possibly wearing trousers."
+  },
+  {
+   "id": "m1_outro",
+   "voice": "narrator",
+   "text": "Mission complete! The odd shopping is done. Let's head back to the cosy room."
+  },
+  {
+   "id": "m1_hint_fridge",
+   "voice": "narrator",
+   "text": "I think I saw something fishy at the back of the meal deal fridge. The door is awfully heavy, though."
+  },
+  {
+   "id": "m1_hint_cabinet",
+   "voice": "narrator",
+   "text": "Something is sitting on top of the tall pharmacy cabinet. Only somebody tall could reach it. Or somebody thrown."
+  },
+  {
+   "id": "m1_hint_tape",
+   "voice": "narrator",
+   "text": "There's a box in the stockroom taped up very tightly. A strong pair of hands could rip it open."
+  },
+  {
+   "id": "m1_hint_shelf",
+   "voice": "narrator",
+   "text": "I think I hear something rolling about under the toiletries shelf. Something small could crawl under there."
+  },
+  {
+   "id": "m1_hint_vent",
+   "voice": "narrator",
+   "text": "There's a draught coming from the air vent in the stockroom. And is that... a sock?"
+  },
+  {
+   "id": "m1_hint_vending",
+   "voice": "narrator",
+   "text": "That vending machine looks like it would give up a coin, if somebody gave it a good shake."
+  },
+  {
+   "id": "m1_hint_pallet",
+   "voice": "narrator",
+   "text": "Somebody has pushed a heavy pallet against the stockroom wall. What's behind it, I wonder?"
+  },
+  {
+   "id": "m1_hint_booth",
+   "voice": "narrator",
+   "text": "People are always dropping things under the seat of a photo booth."
+  },
+  {
+   "id": "m1_hint_boxes",
+   "voice": "narrator",
+   "text": "Those stacked boxes in the stockroom. The bottom one has a little flap, but the ones on top are terribly heavy."
+  },
+  {
+   "id": "m1_hint_sweets",
+   "voice": "narrator",
+   "text": "Have you checked the pick and mix?"
+  },
+  {
+   "id": "m2_intro",
+   "voice": "narrator",
+   "text": "Mission two. Night at the Museum Gift Shop. It's long after closing time. The Golden Banana and the Golden Fish have been locked in the vault. Get them back before the night guard finishes his rounds at dawn. And stay quiet."
+  },
+  {
+   "id": "m2_beams",
+   "voice": "narrator",
+   "text": "Sensor beams! Gorillas, don't touch them. Something small might slip underneath and find a way to switch them off."
+  },
+  {
+   "id": "m2_beams_off",
+   "voice": "narrator",
+   "text": "Click. The beams are off. Nicely done."
+  },
+  {
+   "id": "m2_beam_touch",
+   "voice": "narrator",
+   "text": "Careful! Touch those beams and you'll wake the whole building."
+  },
+  {
+   "id": "m2_climb",
+   "voice": "narrator",
+   "text": "The way on is up on that catwalk. Gorillas are rather good at climbing ropes."
+  },
+  {
+   "id": "m2_ladder",
+   "voice": "narrator",
+   "text": "A ladder! Very thoughtful. Up you come, cat."
+  },
+  {
+   "id": "m2_guard",
+   "voice": "narrator",
+   "text": "That's the night guard. Stay out of his torchlight. A loud noise somewhere else might distract him."
+  },
+  {
+   "id": "m2_caught",
+   "voice": "narrator",
+   "text": "Caught! Never mind. Back to the start of the gallery."
+  },
+  {
+   "id": "m2_statues",
+   "voice": "narrator",
+   "text": "Four statues, all looking different ways. I wonder what happens if they all face the vault. They look very heavy."
+  },
+  {
+   "id": "m2_statues_done",
+   "voice": "narrator",
+   "text": "A rumble! The vault's outer gate is open."
+  },
+  {
+   "id": "m2_code",
+   "voice": "narrator",
+   "text": "The vault door needs a four symbol code. Somebody small might find it written somewhere hidden. Perhaps behind a painting."
+  },
+  {
+   "id": "m2_code_wrong",
+   "voice": "narrator",
+   "text": "Bzzt. Wrong code. Try again."
+  },
+  {
+   "id": "m2_vault",
+   "voice": "narrator",
+   "text": "The vault is open! There they are. The Golden Banana, and the Golden Fish."
+  },
+  {
+   "id": "m2_alarm",
+   "voice": "narrator",
+   "text": "Oh dear. That was the alarm. Run! Back the way you came, quickly!"
+  },
+  {
+   "id": "m2_shelf",
+   "voice": "narrator",
+   "text": "The shelves are falling! A gorilla could hold one up while the cat runs underneath."
+  },
+  {
+   "id": "m2_timeout",
+   "voice": "narrator",
+   "text": "The guards have blocked the way! Never mind. Back to the vault, and try again, faster this time."
+  },
+  {
+   "id": "m2_outro",
+   "voice": "narrator",
+   "text": "You made it out just as the sun came up. The Golden Banana and the Golden Fish are safe. The guard says it must have been the pipes. Mission complete!"
+  },
+  {
+   "id": "m2_hint_switch",
+   "voice": "narrator",
+   "text": "There's a little switch at floor level behind those beams. Paw sized."
+  },
+  {
+   "id": "m2_hint_lever",
+   "voice": "narrator",
+   "text": "At the top of the rope there's a lever. I wonder what it does."
+  },
+  {
+   "id": "m2_hint_drum",
+   "voice": "narrator",
+   "text": "That big drum by the door would make a very loud noise."
+  },
+  {
+   "id": "m2_hint_vent",
+   "voice": "narrator",
+   "text": "The air vent runs right over the guard's head. Cats love air vents."
+  },
+  {
+   "id": "m2_hint_statues",
+   "voice": "narrator",
+   "text": "The statues need to face the vault door. Push them round, one quarter turn at a time."
+  },
+  {
+   "id": "g_hmm",
+   "voice": "guard",
+   "text": "Hmm? Who's there?"
+  },
+  {
+   "id": "g_caught",
+   "voice": "guard",
+   "text": "Oi! You're not supposed to be in here. Back you go."
+  },
+  {
+   "id": "g_noise",
+   "voice": "guard",
+   "text": "What was that noise? I'd better go and have a look."
+  },
+  {
+   "id": "g_nothing",
+   "voice": "guard",
+   "text": "Nothing there. Must have been the pipes."
+  },
+  {
+   "id": "g_yawn",
+   "voice": "guard",
+   "text": "Ohh, what a long night. Three more rounds till dawn."
+  },
+  {
+   "id": "loc_choose",
+   "voice": "narrator",
+   "text": "Bzzz. Welcome to the Locations room. Every screen is a real place. Choose a location, and in you go."
+  }
+ ]
+}

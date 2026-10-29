@@ -296,6 +296,10 @@ come from Castaway. Rendering, materials, the ocean and the VR controls are rebu
   hide-and-seek round where hiders crouch in boxes and the seeker tags them, and the copper door
   opens the Chamber of Tiles, where a screen shows a symbol and every tile that doesn't match drops into the pit. Survive
   ten rounds to win.
+- **Banana or Salmon:** the yellow door in the secret room starts a co-op campaign, voiced by a
+  mosquito narrator. Pick the banana to play as a gorilla or the salmon to play as a cat, then
+  plan heists from the cosy room: the supermarket and the night-time museum, where the cat slips
+  under the laser beams and the gorilla moves the heavy things.
 - **The stone circle:** touch two stones of one colour on the hilltop and something answers. Red
   summons Mario under a cursed pink sky. Lead him to the warp pipe by the old hut and everyone
   jumps into a secret side-scrolling level together. Blue calls an alien invasion that everyone

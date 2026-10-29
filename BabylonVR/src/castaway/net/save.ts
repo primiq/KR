@@ -32,3 +32,9 @@ export function eraseSaves() {
   } catch { /* ignore */ }
 }
 
+
+/** Banana or Salmon: the campaign progress (the host's / solo player's is the shared one) and the animal this browser picked */
+export interface CampaignSave { v: 1; done: number[]; best: Record<number, { t: number; c: number; medal: string }>; mine?: 'g' | 'c' | null }
+const CAMPAIGN = 'castaway.campaign';
+export const loadCampaign = (): CampaignSave | null => { const c = get(CAMPAIGN); return c && c.v === 1 ? c : null; };
+export const saveCampaign = (c: CampaignSave) => put(CAMPAIGN, c);

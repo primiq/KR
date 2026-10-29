@@ -40,6 +40,9 @@ export class Player {
     canJump = true;
     body: Body = HUMAN;
     sprinting = false;
+    /** jumps allowed in the air before landing again (the campaign's solo cat helper) */
+    extraJumps = 0;
+    private airLeft = 0;
     moving = false;
     jumped = false;
     diving = false;
@@ -266,6 +269,8 @@ export class Player {
                 this.vel.z += (wishZ * sp - this.vel.z) * Math.min(1, accel * dt);
                 this.vel.y -= 16 * dt;
                 if (this.body.climb) this.catClaws(dt, input, my);
+                if (this.onGround) this.airLeft = this.extraJumps;
+                else if (this.jumpBuf > 0 && this.airLeft > 0 && this.groundGrace <= 0 && !this.climbing && this.canJump) { this.airLeft--; this.vel.y = this.body.jump * 0.9; this.jumped = true; this.jumpBuf = 0; }
                 if (this.jumpBuf > 0 && (this.onGround || this.groundGrace > 0) && this.vel.y < 1 && this.canJump && !this.climbing) {
                     this.vel.y = this.body.jump * (1 - 0.3 * wading);
                     if (this.body.cat) { this.vel.x += wishX * 1.1; this.vel.z += wishZ * 1.1; }
