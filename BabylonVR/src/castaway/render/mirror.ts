@@ -1,6 +1,7 @@
 import { Color3, Constants, DynamicTexture, type Material, Matrix, Mesh, MeshBuilder, PBRMaterial, Quaternion, type Scene, StandardMaterial } from "@babylonjs/core";
 import * as THREE from "three";
 import { meshFromThree } from "./geometry";
+import { VColorGlowPlugin } from "./vcGlow";
 import { shadowCasters } from "./inst";
 
 export interface MirrorOptions {
@@ -45,6 +46,7 @@ export class ThreeMirror {
     private mats = new Map<THREE.Material, Material>();
     private sprites = new Map<THREE.Sprite, SpriteView>();
     private skins = new Map<THREE.SkinnedMesh, SkinView>();
+    private liveMats: { m: THREE.MeshStandardMaterial; p: PBRMaterial }[] = [];
     private live: { map: THREE.Texture; tex: DynamicTexture; version: number }[] = [];
     private frame = 0;
     private ids = new WeakMap<object, number>();
@@ -134,6 +136,9 @@ export class ThreeMirror {
                 if (!m.depthWrite) p.disableDepthWrite = true;
             }
             if (m.polygonOffset) p.zOffset = m.polygonOffsetFactor;
+            // glow from the vertex colours; emissive / opacity that the game changes over time (a town's windows at night)
+            if (m.userData.vcGlow) new VColorGlowPlugin(p, m.userData.vcGlow);
+            if (m.userData.liveEmissive) this.liveMats.push({ m: anyM, p });
             b = p;
         } else {
             const s = new StandardMaterial(`mirror_basic${this.id(m)}`, this.scene);
@@ -313,6 +318,7 @@ export class ThreeMirror {
             if (b.n) { b.mesh.thinInstanceBufferUpdated("matrix"); if (b.col) b.mesh.thinInstanceBufferUpdated("color"); }
         }
         for (const v of this.skins.values()) if (v.seen !== this.frame) v.mesh.setEnabled(false);
+        for (const { m, p } of this.liveMats) { const k = m.emissiveIntensity; p.emissiveColor.set(m.emissive.r * k, m.emissive.g * k, m.emissive.b * k); if (m.transparent) p.alpha = m.opacity; }
         for (const l of this.live) if (l.map.version !== l.version) { l.version = l.map.version; l.tex.update(l.map.flipY !== false); }
         for (const [s, v] of this.sprites) {
             if (v.seen === this.frame) continue;

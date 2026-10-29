@@ -32,6 +32,10 @@ import { TileTrial } from "./world/tiletrial";
 import { FPPaws, PLAYER_COATS } from "./world/cats";
 import { HUMAN, CAT, GORILLA } from "./world/player";
 import { Narrator } from "./game/narrator";
+import { LocationsRoom } from "./world/locationsroom";
+import { Town } from "./world/town";
+import { LOCATIONS } from "./world/locations";
+import { F_LEVEL } from "./world/warp";
 import { Campaign } from "./campaign/campaign";
 import { Shop } from "./campaign/shop";
 import { Museum } from "./campaign/museum";
@@ -251,6 +255,24 @@ async function main() {
         catMode(sp === "c");
         fpGor.root.visible = sp === "g" && !vrActive();
     };
+    // Locations, Locations: the monitor room (the levels themselves come with the baked map data)
+    const locs = new LocationsRoom(game.natureRoot as unknown as THREE.Scene); game.under.locs = locs;
+    locs.say = (t) => game.hud.message(t);
+    game.under.onLocs = () => narrator.say("loc_choose", { interrupt: true });
+    // each real place is built the first time somebody goes there; while you are in one the island is switched off
+    const towns = LOCATIONS.map((l, i) => (l.status === "ready" ? new Town(game.natureRoot as unknown as THREE.Scene, l, i, q.shadows, q.name === "low") : null));
+    for (const t of towns) if (t) { t.group.userData.babylonTag = { town: true }; t.sfx = { chirp: (v) => game.sfx.chirp(v), cricket: (v) => game.sfx.cricket(v), setHum: (v) => game.sfx.setHum(v) }; }
+    locs.onVisit = (_l, i) => {
+        const t = towns[i]; if (!t) return;
+        narrator.stop(); game.hud.fade(true, LOCATIONS[i].name);
+        setTimeout(() => { locs.leave(player); t.enter(player); game.under.town = t; caves.hideWorld(true); game.hud.fade(false); game.sfx.creak(); }, 450);
+    };
+    game.under.onTownExit = () => {
+        const t = game.under.town; if (!t) return;
+        t.leave(player); game.under.town = null; caves.hideWorld(false); locs.enter(player, t.index);
+    };
+    /** which special place a player is in, from their state flags ('' = none of these) */
+    const placeOf = (f: number) => (f & 131072 ? `L${(f >> 18) & 15}` : f & 65536 ? "R" : "");
     /** a campaign cat (not the cat house) */
     const campCat = () => camp.active && (camp.flags & 32768) !== 0;
     let mouseSend = 0;
@@ -378,6 +400,13 @@ async function main() {
             if (trial.active && !trial.contains(player.pos.x, player.pos.z)) { trial.leave(player); player.teleport(player.pos.x, heightAt(player.pos.x, player.pos.z), player.pos.z, player.yaw); }
             if (!camp.active && camp.contains(player.pos.x, player.pos.z) && sky.exitTo) { const e = sky.exitTo; player.teleport(e.x, e.y, e.z, e.yaw); }
             if (camp.active && !camp.contains(player.pos.x, player.pos.z)) { camp.leave(); player.teleport(player.pos.x, heightAt(player.pos.x, player.pos.z), player.pos.z, player.yaw); }
+            for (const t of towns) {
+                if (!t) continue;
+                if (!t.active && t.contains(player.pos.x, player.pos.z) && sky.exitTo) { const e = sky.exitTo; player.teleport(e.x, e.y, e.z, e.yaw); }
+                if (t.active && !t.contains(player.pos.x, player.pos.z)) { t.leave(player); if (game.under.town === t) game.under.town = null; caves.hideWorld(false); player.teleport(player.pos.x, heightAt(player.pos.x, player.pos.z), player.pos.z, player.yaw); }
+            }
+            if (!locs.active && locs.contains(player.pos.x, player.pos.z) && sky.exitTo) { const e = sky.exitTo; player.teleport(e.x, e.y, e.z, e.yaw); }
+            if (locs.active && !locs.contains(player.pos.x, player.pos.z)) { locs.leave(player); player.teleport(player.pos.x, heightAt(player.pos.x, player.pos.z), player.pos.z, player.yaw); }
             if (air.driving && game.stats.dead) air.exitCar(player);
             if (air.active) air.pre(dt, { gas: Math.max(-1, Math.min(1, input.move.y)), steer: Math.max(-1, Math.min(1, input.move.x)), hand: input.jumpHeld, boost: input.wantsSprint }, player, vrActive());
             if (!game.uiBlocking) player.update(dt, input);
@@ -402,7 +431,10 @@ async function main() {
             game.sfx.setDeaf(hide.deaf);
             trial.update(dt, player, now / 1000);
             camp.update(dt, now / 1000);
-            mozzie.group.visible = camp.active;
+            locs.update(dt);
+            game.under.town?.update(dt, now / 1000, clock.sunDir.y, player);
+            if (sync) { const mine = placeOf((locs.active ? 65536 : 0) | (game.under.town?.active ? 131072 | (game.under.town.index << 18) : 0)); sync.avatars.three.hideIf = (f) => { if ((f & F_LEVEL) !== 0) return true; const p = placeOf(f); return p !== mine && (p !== "" || mine !== ""); }; }
+            mozzie.group.visible = camp.active || locs.active;
             narrator.update(dt);
             {
                 const ctx = game.sfx.context;
@@ -804,7 +836,7 @@ async function main() {
     // a hidden tab stops rendering: keep the room in step anyway (a host who alt-tabs must not freeze everyone else)
     setInterval(() => { if (document.hidden) sync?.update(0.1); }, 100);
 
-    Object.assign(window as unknown as Record<string, unknown>, { Wind, scene, engine, game, player, sites, caves, heightAt, weather, cats, sky, dive, air, cat, vegetation, terrain, ocean, input, clock, camera, getSync: () => sync, doSave, camp, narrator, mozzie });
+    Object.assign(window as unknown as Record<string, unknown>, { Wind, scene, engine, game, player, sites, caves, heightAt, weather, cats, sky, dive, air, cat, vegetation, terrain, ocean, input, clock, camera, getSync: () => sync, doSave, camp, narrator, mozzie, locs, towns });
 }
 
 main().catch((e) => {

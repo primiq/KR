@@ -131,6 +131,22 @@ export class CaveView {
         this.clock.underground = on;
     }
 
+    private townStash = new Map<AbstractMesh, number>();
+    /** in a town (Locations, Locations) everything but the town, the sky and the people is switched off, like in the caves */
+    hideWorld(on: boolean) {
+        if (on) {
+            if (this.townStash.size) return;
+            for (const m of this.scene.meshes) {
+                if (keep(m) || m.metadata?.town || SKY.has(m.name)) continue;
+                this.townStash.set(m, m.layerMask);
+                m.layerMask = 0;
+            }
+        } else {
+            for (const [m, mask] of this.townStash) if (!m.isDisposed()) m.layerMask = mask;
+            this.townStash.clear();
+        }
+    }
+
     /** every frame, after the game has updated */
     update() {
         this.mirror.sync();
@@ -145,6 +161,8 @@ export class CaveView {
         });
     }
 }
+
+const SKY = new Set(["skyBox", "stars", "moonDisc", "clouds"]);
 
 function keep(m: AbstractMesh) {
     for (let n: { metadata?: { keepUnderground?: boolean } | null; parent?: unknown; getClassName?: () => string } | null = m; n; n = (n.parent as typeof n) ?? null) {

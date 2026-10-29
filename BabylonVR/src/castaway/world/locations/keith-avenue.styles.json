@@ -1,0 +1,30 @@
+{
+ "note": "Written from the reference photos (Street View, Aug 2008, taken outside number 25). Only descriptions live here, never pictures.",
+ "defaults": {
+  "comment": "The street's general look: 1980s/90s Scottish suburb on a slope. Harled (roughcast) walls, white to beige, with red-brown brick bases; concrete tile roofs in dark grey or red-brown, mostly hipped; brown timber/uPVC windows; front lawns, block-paved or gravel drives, timber fences; tall grey lamp posts; a dark conifer wood on the hill behind.",
+  "walls": ["#ece8df", "#d9cbb4", "#cbb79a", "#e6ddd0"],
+  "base": "#9c4a32",
+  "roofs": ["#4a4a4c", "#5b3a32", "#6e3b2e", "#3f3f42"],
+  "roofShape": "hipped",
+  "windows": { "frame": "#6b4426", "glass": "#2c3a44" },
+  "road": { "asphalt": "#4b4f55", "patch": "#3c3f44", "markings": ["20"] },
+  "pavement": "#55595e",
+  "kerb": "#b9b6ae",
+  "drive": ["#a8655c", "#9d9890"],
+  "fence": "#5a3a24",
+  "backdrop": "dense dark conifer woodland on the rising ground behind the houses"
+ },
+ "buildings": [
+  {
+   "match": "house-25-keith-avenue-and-left-neighbour",
+   "address": { "street": "Keith Avenue", "housenumber": "25" },
+   "levels": 2,
+   "wall": "#e9e6df",
+   "base": { "colour": "#a24a32", "storeys": 1, "kind": "garage", "door": "#2f6b4f" },
+   "roof": { "shape": "hipped", "colour": "#3f3f42" },
+   "windows": { "style": "picture", "frame": "#3a2a20" },
+   "features": ["balcony-iron", "number-plaque"],
+   "plaque": "25"
+  }
+ ]
+}

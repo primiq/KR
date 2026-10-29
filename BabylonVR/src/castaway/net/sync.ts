@@ -487,7 +487,7 @@ export class WorldSync {
         const st: PState = {
             x: p.pos.x, y: p.pos.y, z: p.pos.z, yaw: p.yaw, pitch: p.pitch,
             spd: Math.hypot(p.vel.x, p.vel.z), item: held ? held.id : "", swing: g.swings,
-            flags: (p.sprinting ? 1 : 0) | (p.mode === "swim" ? 2 : 0) | (g.stats.dead ? 4 : 0) | (g.isSleeping ? 8 : 0) | (g.drinking ? 32 : 0) | (g.warp.inLevel ? F_LEVEL : 0) | (g.slide.riding ? 536870912 : 0) | (g.under.air?.driving ? 64 : 0) | (g.under.cat?.active ? 16 : 0) | (g.under.hide?.active ? 128 : 0) | ((g.under.hide?.hiddenMe ?? -1) >= 0 ? 256 : 0) | (g.under.trial?.active ? 512 : 0) | (g.under.trial?.inRoom ? 1024 : 0) | (g.under.camp?.flags ?? 0) | (g.dive?.active ? 2048 : 0) | (g.dive?.active && g.dive.phase === "chute" ? 4096 : 0),
+            flags: (p.sprinting ? 1 : 0) | (p.mode === "swim" ? 2 : 0) | (g.stats.dead ? 4 : 0) | (g.isSleeping ? 8 : 0) | (g.drinking ? 32 : 0) | (g.warp.inLevel ? F_LEVEL : 0) | (g.slide.riding ? 536870912 : 0) | (g.under.air?.driving ? 64 : 0) | (g.under.cat?.active ? 16 : 0) | (g.under.hide?.active ? 128 : 0) | ((g.under.hide?.hiddenMe ?? -1) >= 0 ? 256 : 0) | (g.under.trial?.active ? 512 : 0) | (g.under.trial?.inRoom ? 1024 : 0) | (g.under.camp?.flags ?? 0) | (g.under.locs?.active ? 65536 : 0) | (g.under.town?.active ? 131072 | (g.under.town.index << 18) : 0) | (g.dive?.active ? 2048 : 0) | (g.dive?.active && g.dive.phase === "chute" ? 4096 : 0),
             hp: g.stats.health, arm: g.armorCode,
         };
         const pose = this.vrPose?.() ?? null;

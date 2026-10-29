@@ -14,6 +14,8 @@ import type { Car } from './cars';
 import type { CatHome } from '../world/catroom';
 import type { HideIsle, HideTarget } from '../world/hideisle';
 import type { Campaign, CampTarget } from '../campaign/campaign';
+import type { LocationsRoom, LocTarget } from '../world/locationsroom';
+import type { Town } from '../world/town';
 import type { TileTrial, TrialTarget } from '../world/tiletrial';
 import { CAT, HUMAN } from '../world/player';
 import { rayGround } from './building';
@@ -53,6 +55,9 @@ export type UgTarget =
   | { kind: 'catexit'; dist: number }
   | { kind: 'hidedoor'; dist: number }
   | { kind: 'campdoor'; dist: number }
+  | { kind: 'locdoor'; dist: number }
+  | { kind: 'locroom'; t: LocTarget; dist: number }
+  | { kind: 'townexit'; dist: number }
   | { kind: 'camp'; t: CampTarget; dist: number }
   | { kind: 'hide'; t: HideTarget; dist: number }
   | { kind: 'trialdoor'; dist: number }
@@ -79,6 +84,13 @@ export class Underground {
   hide: HideIsle | null = null;
   /** Banana or Salmon, the co-op campaign behind the yellow door (set by main) */
   camp: Campaign | null = null;
+  /** Locations, Locations: the monitor room and the real place you are in (set by main) */
+  locs: LocationsRoom | null = null;
+  town: Town | null = null;
+  /** leaving a town through its doorway (main puts you back in the Locations room) */
+  onTownExit: (() => void) | null = null;
+  /** the Locations room was entered (the narrator says hello) */
+  onLocs: (() => void) | null = null;
   trial: TileTrial | null = null;
   /** cat house entered / left (main swaps the body, the paws and the multiplayer flag) */
   onCat: ((on: boolean) => void) | null = null;
@@ -236,6 +248,12 @@ export class Underground {
     if (tt2 != null && (!best || tt2 < (best as UgTarget).dist)) best = { kind: 'trialdoor', dist: tt2 };
     const cd3 = this.sky?.pickCamp(eye, dir, Math.max(reach, 3.2), assist);
     if (cd3 != null && (!best || cd3 < (best as UgTarget).dist)) best = { kind: 'campdoor', dist: cd3 };
+    const ld = this.sky?.pickLoc(eye, dir, Math.max(reach, 3.2), assist);
+    if (ld != null && (!best || ld < (best as UgTarget).dist)) best = { kind: 'locdoor', dist: ld };
+    const te = this.town?.pick(eye, dir, reach, assist);
+    if (te != null && (!best || te < (best as UgTarget).dist)) best = { kind: 'townexit', dist: te };
+    const lp = this.locs?.pick(eye, dir, reach, assist);
+    if (lp && (!best || lp.dist < (best as UgTarget).dist)) best = { kind: 'locroom', t: lp.t, dist: lp.dist };
     const cp = this.camp?.pick(eye, dir, reach, assist);
     if (cp && (cp.t.w === 'm' && cp.t.t.w === 'held' || !best || cp.dist < (best as UgTarget).dist)) best = { kind: 'camp', t: cp.t, dist: cp.dist };
     const tp = this.trial?.pick(eye, dir, reach, assist);
@@ -263,6 +281,9 @@ export class Underground {
         if (t.ore.kind === 'diamond' && !pick) return { name: nm, hint: 'Needs a pickaxe', ok: false };
         return { name: nm, hint: '<b>Click</b> mine', ok: true };
       }
+      case 'locdoor': return { name: 'Locations, Locations', hint: '<b>E</b> open · real places', ok: true };
+      case 'locroom': return this.locs!.prompt(t.t);
+      case 'townexit': return { name: 'Exit to Locations', hint: '<b>E</b> / click · back to the Locations room', ok: true };
       case 'campdoor': return { name: 'Banana or Salmon', hint: '<b>E</b> open · a co-op adventure', ok: true };
       case 'camp': return this.camp!.prompt(t.t);
       case 'hidedoor': return { name: 'Green door', hint: '<b>E</b> open · hide & seek island', ok: true };
@@ -292,6 +313,9 @@ export class Underground {
       case 'chest': this.openChest(t.chest); break;
       case 'loot': this.openSiteChest(t.chest); break;
       case 'clouddoor': this.sky?.openCloud(); break;
+      case 'townexit': this.onTownExit?.(); this.h.sfx.creak(); break;
+      case 'locdoor': if (this.sky && this.locs) { this.sky.depart(); this.locs.enter(this.h.player); this.onLocs?.(); this.h.sfx.creak(); } break;
+      case 'locroom': { if (this.locs?.interact(t.t) === 'exit' && this.sky) { this.locs.leave(this.h.player); this.sky.enter(this.h.player, 'loc'); this.h.message('Back in the secret room.'); this.h.sfx.creak(); } break; }
       case 'campdoor': if (this.sky && this.camp) { this.sky.depart(); this.camp.enter(); this.h.sfx.creak(); } break;
       case 'camp': { if (this.camp?.interact(t.t) === 'exit' && this.sky) { this.camp.leave(); this.sky.enter(this.h.player, 'camp'); this.h.message('Back in the secret room.'); this.h.sfx.creak(); } break; }
       case 'hidedoor': if (this.sky && this.hide) { this.sky.depart(); this.hide.enter(this.h.player); this.h.sfx.creak(); } break;

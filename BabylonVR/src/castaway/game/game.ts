@@ -395,7 +395,7 @@ export class Game {
             prompt: (t) => { this.fishPrompt = t; },
         });
         this.player.onLand = (v) => {
-            if (this.stats.dead || this.under.camp?.active) return;
+            if (this.stats.dead || this.under.camp?.active || this.under.town?.active) return;
             const d = (v - 14) * 6;
             if (d < 1) return;
             this.stats.hurt(d, "fall");
@@ -775,8 +775,8 @@ export class Game {
         if (!active) { view.visible(false); return; }
         view.visible(!stats.dead && !this.vr.active && !this.warp.inLevel && !this.invaders.seated && !this.under.cat?.active && !this.under.camp?.active);
 
-        const calm = !!this.under.camp?.active;
-        stats.godMode = player.mode === "fly" || calm;      // no hunger, thirst or falls in the campaign
+        const calm = !!this.under.camp?.active || !!this.under.locs?.active || !!this.under.town?.active;
+        stats.godMode = player.mode === "fly" || calm;      // no hunger, thirst or falls in the campaign or the Locations places
         if (!stats.dead && !calm) stats.update({ dt, moving: player.moving && player.mode !== "fly", sprinting: player.sprinting && player.mode !== "fly", swimming: player.mode === "swim", jumped: player.jumped, underwater: player.underwater });
         if (stats.dead && !this.deathHandled) this.onDeath();
         hud.setVitals(stats);
@@ -1010,6 +1010,7 @@ export class Game {
 
         // Banana or Salmon: click picks things up, throws them, beats your chest
         if (ug.camp?.active) { if (input.attackQueued) { input.attackQueued = false; ug.camp.click(ugT?.kind === "camp" ? ugT.t : null); } input.attackHeld = false; }
+        if ((ug.locs?.active || ug.town?.active) && input.attackQueued && (ugT?.kind === "locroom" || ugT?.kind === "townexit")) { input.attackQueued = false; ug.interact(ugT); }
         // hide & seek: clicking works as well as E for tagging a player or opening a box
         if (ug.active && ugT?.kind === "hide" && input.attackQueued && (ugT.t.w === "tag" || ugT.t.w === "box")) { input.attackQueued = false; ug.interact(ugT); }
         // cat house: click is a pounce, G is a meow
