@@ -108,7 +108,9 @@ export class CastawayVR {
                 // the headset keeps a lighter post chain: bloom and the vignette only
                 pipeline.samples = 1;
                 pipeline.addCamera(base.camera);
-                base.camera.minZ = 0.05;
+                // (10 cm, as on a screen: headsets often give a 16-bit depth buffer, and at 5 cm the room decorations a centimetre or
+                //  two apart fought a few metres away)
+                base.camera.minZ = 0.1;
                 base.camera.maxZ = 1600;
                 this.placeRig(true);
                 game.vr.haptic = (k) => this.pulse("right", k);

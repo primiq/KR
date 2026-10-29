@@ -202,7 +202,9 @@ async function main() {
 
     const camera = new UniversalCamera("cam", player.eye.clone(), scene);
     camera.inputs.clear();
-    camera.minZ = 0.08;
+    // (Castaway's 10 cm near plane: depth precision goes with it, and a closer one let the door plates and trims of the secret
+    //  rooms, a centimetre or two apart, flicker on GPUs with a shallower depth buffer)
+    camera.minZ = 0.1;
     camera.maxZ = 1600;
     camera.fov = 1.2;
     scene.activeCamera = camera;
