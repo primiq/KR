@@ -60,7 +60,9 @@ import { Game } from "./game/game";
 import { planSprings } from "./game/resources";
 import { driveWind, Wind } from "./render/foliage";
 import { shadowCasters } from "./render/inst";
-import { cutBounds, findSpawn, heightAt, SPAWN_THETA, TERRAIN_SIZE } from "./world/island";
+import { CLASSIC, cutBounds, findSpawn, heightAt, SPAWN_THETA, TERRAIN_SIZE } from "./world/island";
+import { Waterfall } from "./world/waterfall";
+import { Seabed } from "./world/seabed";
 import { Player } from "./world/player";
 import { Terrain } from "./world/terrain";
 import { Atmosphere } from "./world/atmosphere";
@@ -165,6 +167,10 @@ async function main() {
     const sites = new SurfaceSites(game.ugRoot as unknown as THREE.Scene, sitePlan, vegetation.colliders, q.shadows);
     game.under.sites = sites;
     const caves = new CaveView(scene, game, clock, q.shadows);
+    // the mountain stream and its waterfall (the new island only)
+    // the sea floor: rocks, kelp, seagrass, corals and shells (only near the sea; nothing of it exists inland)
+    const seabed = new Seabed(scene, clock, () => sun.diffuse, q);
+    const waterfall = CLASSIC ? null : new Waterfall(scene, game.natureRoot, clock, q.name === "low");
     // the sea's own surface for things far out (whales, ships, dolphins)
     SEA.surface = (x, z) => ocean.surfaceAt(x, z);
     const dolphins = new Dolphins(game.natureRoot, (x, z) => ocean.surfaceAt(x, z));
@@ -466,6 +472,11 @@ async function main() {
                 cat.ghost = cat.active && player.climbing;
                 paws.root.visible = (cat.active || campCat()) && !vrActive();
                 if (cat.active || campCat()) paws.update(dt, Math.hypot(player.vel.x, player.vel.z), player.vel.y, player.sprinting);
+            }
+            waterfall?.update(dt, player.pos.x, player.pos.z, game.under.active);
+            {
+                const onIsland = !game.under.active && Math.abs(player.pos.x) < 600 && Math.abs(player.pos.z) < 600 && player.pos.y < 120;
+                seabed.update(dt, player.pos.x, player.pos.z, camera.position, player.underwater, onIsland && (player.underwater || heightAt(player.pos.x, player.pos.z) < 8));
             }
             dolphins.update(dt, player.pos.x, player.pos.z, player.yaw, game.under.active);
             ocean.bio = BIO.value;
@@ -836,7 +847,7 @@ async function main() {
     // a hidden tab stops rendering: keep the room in step anyway (a host who alt-tabs must not freeze everyone else)
     setInterval(() => { if (document.hidden) sync?.update(0.1); }, 100);
 
-    Object.assign(window as unknown as Record<string, unknown>, { Wind, scene, engine, game, player, sites, caves, heightAt, weather, cats, sky, dive, air, cat, vegetation, terrain, ocean, input, clock, camera, getSync: () => sync, doSave, camp, narrator, mozzie, locs, towns });
+    Object.assign(window as unknown as Record<string, unknown>, { Wind, scene, engine, game, player, sites, caves, heightAt, weather, cats, sky, dive, air, cat, vegetation, terrain, ocean, input, clock, camera, getSync: () => sync, doSave, camp, narrator, mozzie, locs, towns, waterfall, seabed });
 }
 
 main().catch((e) => {

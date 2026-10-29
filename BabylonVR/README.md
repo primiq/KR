@@ -316,7 +316,9 @@ come from Castaway. Rendering, materials, the ocean and the VR controls are rebu
   sea heaves, lightning flashes and thunder rolls, and a rainbow can follow the rain.
 - **The sea:** schools of fish swim in the lagoon and scatter when you come close, and on some
   nights the surf glows blue. Whales surface and breach far out, dolphins leap, and now and then
-  a ship passes on the horizon.
+  a ship passes on the horizon. Under the water the sea floor has rocks, kelp forests and
+  seagrass swaying in the current, corals, urchins, starfish and shells, with shafts of sunlight
+  and drifting specks. On the new island (`?new`) a mountain stream runs down to a waterfall.
 - **Day and night:** a 25-minute day with a moving sun, stars and moon. Sleep in a bed at night.
 - **Characters:** Castaway's player models, outfits and armour, with walk, swim and swing
   animation. **Customise character** on the menu picks your look, which other players see.
