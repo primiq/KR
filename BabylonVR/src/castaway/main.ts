@@ -103,6 +103,58 @@ async function main() {
     scene.autoClear = false;
     driveWind(scene);
 
+    // ---- the menu comes first: nothing of the island is built until you start a game (single player or a room)
+    setupCustomise();
+    $("mp-open").addEventListener("click", () => $("mp-panel").classList.toggle("hidden"));
+    const tab = (host: boolean) => {
+        $("mp-tab-host").classList.toggle("on", host);
+        $("mp-tab-join").classList.toggle("on", !host);
+        $("mp-pane-host").classList.toggle("hidden", !host);
+        $("mp-pane-join").classList.toggle("hidden", host);
+    };
+    $("mp-tab-host").addEventListener("click", () => tab(true));
+    $("mp-tab-join").addEventListener("click", () => tab(false));
+    $<HTMLInputElement>("mp-name").value = getPref("name") ?? "";
+    // an invite link: ?join=CODE opens the join tab with the code filled in
+    if (params.get("join")) { $("mp-panel").classList.remove("hidden"); tab(false); $<HTMLInputElement>("mp-code").value = cleanCode(params.get("join")!); }
+    const saved = loadWorld();
+    {
+        const cb = $("continue"), pb = $("play");
+        if (saved) {
+            cb.classList.remove("hidden");
+            cb.textContent = `Continue · ${new Date(saved.savedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+            pb.textContent = "New island";
+        }
+        // (the headset check is cheap; the XR session itself is set up with the island)
+        void navigator.xr?.isSessionSupported("immersive-vr").then((ok) => { if (ok) { $("play-vr").classList.remove("hidden"); $("mp-vr-opt").classList.remove("hidden"); } }).catch(() => {});
+    }
+    $("loading").classList.add("hidden");
+    $("menu").classList.remove("hidden");
+    /** which start button was pressed (its action runs once the island is built) */
+    let startWith = params.has("go") || params.has("auto") ? "auto" : "";
+    if (!startWith) {
+        await new Promise<void>((res) => {
+            const ids = ["continue", "play", "play-vr", "mp-host", "mp-join"];
+            let armed = 0;
+            const h = (e: Event) => {
+                const id = (e.currentTarget as HTMLElement).id;
+                e.stopImmediatePropagation(); e.preventDefault();
+                if (id === "mp-join" && cleanCode($<HTMLInputElement>("mp-code").value).length < 5) { $("mp-status").textContent = "Enter the 5-letter room code"; $("mp-status").classList.add("err"); return; }
+                // a new island over a saved one: a second press confirms, as in Castaway
+                if (id === "play" && saved && Date.now() > armed) {
+                    armed = Date.now() + 4000;
+                    const pb = $("play"); pb.textContent = "Tap again: erase saved island";
+                    setTimeout(() => { if (Date.now() >= armed) pb.textContent = "New island"; }, 4100);
+                    return;
+                }
+                startWith = id;
+                for (const b of ids) $(b).removeEventListener("click", h, true);
+                res();
+            };
+            for (const b of ids) $(b).addEventListener("click", h, true);
+        });
+    }
+    $("menu").classList.add("hidden");
     $("loading").classList.remove("hidden");
     progress(0.05, "Painting the sky…");
     await nextFrame();
@@ -505,15 +557,12 @@ async function main() {
     engine.runRenderLoop(() => scene.render());
 
     // ---- saving: the world belongs to the host (or the solo player); each player's character is saved per world
-    const saved = loadWorld();
     let wid = newWorldId();
     let sync: WorldSync | null = null;
     let noSave = false;
     const nameEl = $<HTMLInputElement>("mp-name");
-    nameEl.value = getPref("name") ?? "";
     const myName = () => { const n = nameEl.value.trim().slice(0, 14) || `Castaway ${Math.floor(10 + Math.random() * 90)}`; setPref("name", nameEl.value.trim()); return n; };
     const charId = () => (sync && !sync.session.isHost ? guestKey(wid, myName()) : wid);
-    setupCustomise();
     /** your look changed (customise screen): the first-person hands and everybody else in the room */
     const applyOutfit = () => {
         const o = getOutfit();
@@ -556,7 +605,6 @@ async function main() {
 
     // ---- menus
     $("loading").classList.add("hidden");
-    $("menu").classList.remove("hidden");
     document.body.classList.remove("prestart");
     const contBtn = $("continue"), playBtn = $("play");
     let armed = 0;
@@ -822,15 +870,6 @@ async function main() {
             },
         };
     }
-    $("mp-open").addEventListener("click", () => $("mp-panel").classList.toggle("hidden"));
-    const tab = (host: boolean) => {
-        $("mp-tab-host").classList.toggle("on", host);
-        $("mp-tab-join").classList.toggle("on", !host);
-        $("mp-pane-host").classList.toggle("hidden", !host);
-        $("mp-pane-join").classList.toggle("hidden", host);
-    };
-    $("mp-tab-host").addEventListener("click", () => tab(true));
-    $("mp-tab-join").addEventListener("click", () => tab(false));
     if (vrMode) $("mp-vr-opt").classList.remove("hidden");
     $("mp-host").addEventListener("click", () => void doHost($<HTMLInputElement>("mp-vr").checked));
     $("mp-join").addEventListener("click", () => void doJoin(codeEl.value, $<HTMLInputElement>("mp-vr").checked));
@@ -842,16 +881,18 @@ async function main() {
         apply();
         for (const el of [tu, tn, tp]) el.addEventListener("change", apply);
     }
-    // an invite link: ?join=CODE opens the join tab with the code filled in
-    const inv = params.get("join");
-    if (inv) {
-        $("mp-panel").classList.remove("hidden");
-        tab(false);
-        codeEl.value = cleanCode(inv);
-        if (params.has("auto")) void doJoin(codeEl.value);
-    }
+    if (params.get("join") && params.has("auto")) void doJoin(codeEl.value);
     if (params.has("host") && params.has("auto")) void doHost();
     if (params.has("go") && !params.has("auto")) begin();
+    // the start button that was pressed in the menu: the island is built now, carry it out
+    const vrBox = () => $<HTMLInputElement>("mp-vr").checked;
+    switch (startWith) {
+        case "continue": if (loadSaved()) ready(false, "Your island is ready."); break;
+        case "play": if (saved) eraseSaves(); ready(false); break;
+        case "play-vr": if (saved) loadSaved(); ready(true); break;
+        case "mp-host": void doHost(vrBox()); break;
+        case "mp-join": void doJoin(codeEl.value, vrBox()); break;
+    }
 
     // multiplayer runs every frame (also while a menu is open)
     scene.onAfterRenderObservable.add(() => sync?.update(Math.min(0.05, engine.getDeltaTime() / 1000)));

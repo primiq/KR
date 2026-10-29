@@ -1,15 +1,15 @@
-# Babylon VR Playground
+# Castaway and the Babylon VR Playground
 
-A WebXR-first physics playground built on **Babylon.js 9** and **Havok** physics. Pick a
-location from the start screen or the in-VR menu:
+The build's main page (`index.html`) is **Castaway**: a Babylon.js rebuild of the multiplayer island
+survival game, with harvesting, inventory, crafting, grid building and online co-op. See
+[Castaway](#castaway) below and `CASTAWAY_PORT.md` for the port's task list.
+
+`playground.html` is a WebXR-first physics playground built on **Babylon.js 9** and **Havok**
+physics. Pick a location from its start screen or the in-VR menu:
 
 - **Sponza Atrium:** the Crytek Sponza courtyard.
 - **Deep Forest:** a procedurally grown forest with a clearing and a pond.
 - **Desert Island:** a palm-covered island in an open sea with interactive water.
-
-It also hosts **Castaway** (`castaway.html`): a Babylon.js rebuild of the multiplayer island survival
-game, with harvesting, inventory, crafting, grid building and online co-op. See
-[Castaway](#castaway) below and `CASTAWAY_PORT.md` for the port's task list.
 
 Open it in a VR headset browser and you play it in VR with controllers or your bare hands.
 On a phone or tablet you get touch controls. On a desktop it runs as a first-person game with
@@ -265,7 +265,7 @@ colliders, and held objects each have their own Havok collision filter. This mea
 
 ## Castaway
 
-`castaway.html` is a like-for-like port of **Castaway** (the three.js island survival game) to
+`index.html` is a like-for-like port of **Castaway** (the three.js island survival game) to
 Babylon.js. The rules, item and recipe data, island height field, seeds and multiplayer protocol
 come from Castaway. Rendering, materials, the ocean and the VR controls are rebuilt on Babylon.
 
@@ -341,5 +341,5 @@ come from Castaway. Rendering, materials, the ocean and the VR controls are rebu
   | Y | Next building piece |
   | Left stick click | Bag |
 
-Testing tip: `castaway.html?net=local` uses a BroadcastChannel transport, so two tabs of the
+Testing tip: `index.html?net=local` uses a BroadcastChannel transport, so two tabs of the
 same browser can play together without any network.

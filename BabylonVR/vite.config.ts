@@ -18,7 +18,7 @@ export default defineConfig(({ mode }) => ({
         target: "es2022",
         assetsDir: "bundle",
         chunkSizeWarningLimit: 8000,
-        // Two pages: the VR playground and the Castaway survival game.
-        rollupOptions: { input: { main: fileURLToPath(new URL("./index.html", import.meta.url)), castaway: fileURLToPath(new URL("./castaway.html", import.meta.url)) } },
+        // Two pages: the Castaway survival game (the main page) and the VR playground.
+        rollupOptions: { input: { main: fileURLToPath(new URL("./index.html", import.meta.url)), playground: fileURLToPath(new URL("./playground.html", import.meta.url)) } },
     },
 }));

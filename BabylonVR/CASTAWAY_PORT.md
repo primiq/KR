@@ -6,7 +6,7 @@ on Babylon.js, inside this repo, so that it runs faster, looks better and works 
 Rules:
 
 - `primiq/castaway` is **read-only reference**. Nothing in it is ever modified.
-- Everything is built here, under `BabylonVR/src/castaway/`, as its own page: `castaway.html`.
+- Everything is built here, under `BabylonVR/src/castaway/`, as the main page: `index.html` (the VR playground moved to `playground.html`).
 - Work lands on `master`.
 
 Engine-agnostic Castaway code (items, recipes, inventory, survival rules, island height field,
@@ -23,7 +23,7 @@ Everything that renders, animates or simulates is rebuilt on Babylon:
 
 | # | Task | Status |
 |---|---|---|
-| 1 | Game shell: `castaway.html`, menu, engine, quality tiers, desktop/touch/VR entry | done |
+| 1 | Game shell: `index.html`, menu, engine, quality tiers, desktop/touch/VR entry | done |
 | 2 | Island terrain (ported height field, chunked LOD terrain, ocean), vegetation and harvestable resource nodes | done |
 | 3 | Items, inventory, hotbar, bag and HUD (Babylon GUI, same UI in VR) | done |
 | 4 | Harvesting: swing tools, fell trees, mine rocks, pickups, regrowth, springs, berries | done |
