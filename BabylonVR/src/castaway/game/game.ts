@@ -29,6 +29,7 @@ import { Offshore } from "../world/offshore";
 import { Druids } from "../world/druids";
 import { druidMaterial } from "../world/druidView";
 import { Warp } from "../world/warp";
+import { Invaders } from "../world/invaders";
 import { Twins } from "./twins";
 import { type Door, Doors } from "./doors";
 import { type FrameAim, type Painting, Paintings } from "./paintings";
@@ -51,7 +52,7 @@ export interface GameOpts {
     springSpots: Zone[];
     shadows: boolean;
     /** day / night: the hour now (0..24) and a way to set it (sleeping) */
-    clock: { hour: number; day?: number };
+    clock: { hour: number; day?: number; dawn?: number };
 }
 
 const HOLD_TIME = 0.9;
@@ -98,6 +99,10 @@ export class Game {
     /** Mario's warp pipe and the secret level */
     readonly warp: Warp;
     private pipeHinted = false;
+    /** the blue stones' call: the alien invasion, fought from laser cannons round the circle */
+    readonly invaders: Invaders;
+    private ivEye = new THREE.Vector3();
+    private ivDir = new THREE.Vector3();
     /** doors hung in doorways, and pictures on the walls (with the paint editor) */
     readonly doors: Doors;
     readonly paintings: Paintings;
@@ -259,6 +264,27 @@ export class Game {
             }
             this.sfx.pipe8();
             this.hud.message("You pop out of the pipe, back on the island.");
+        };
+        this.invaders = new Invaders(this.natureRoot);
+        {
+            const C = this.druids.centre, a0 = 0.26; // (the ring's gap: the entrance, towards the sunrise)
+            this.invaders.setSite(C.x, C.y, C.z, Math.atan2(-Math.cos(a0), -Math.sin(a0)));
+        }
+        this.invaders.say = (t) => this.hud.message(t);
+        this.invaders.sfx = this.sfx;
+        this.invaders.onJolt = () => { this.player.shake(0.7); this.vr.haptic?.(1); };
+        this.druids.busy = () => this.invaders.running;
+        this.druids.onCall = (c) => { if (c === "blue") this.invaders.hostStart(this.druids.players().map((q) => q.id)); };
+        this.invaders.onSeat = (x, y, z, yaw) => {
+            const p = this.player;
+            this.invaders.setHome({ x: p.pos.x, y: p.pos.y, z: p.pos.z, yaw: p.yaw });
+            if (this.hud.inventoryOpen) this.setInventory(false);
+            p.teleport(x, y, z, yaw); p.pitch = 0.45;
+            p.ride = () => { if (!this.invaders.seated) return false; p.pos.set(x, y, z); return true; };
+        };
+        this.invaders.onRelease = () => {
+            const h = this.invaders.homeSpot, p = this.player;
+            if (h) p.teleport(h.x, h.y + 0.05, h.z, h.yaw);
         };
         this.warp.onFinished = () => {
             this.druids.setPhase("idle");
@@ -710,14 +736,14 @@ export class Game {
             this.wasSwim = swim;
         }
         if (!active) { view.visible(false); return; }
-        view.visible(!stats.dead && !this.vr.active && !this.warp.inLevel);
+        view.visible(!stats.dead && !this.vr.active && !this.warp.inLevel && !this.invaders.seated);
 
         stats.godMode = player.mode === "fly";
         if (!stats.dead) stats.update({ dt, moving: player.moving && player.mode !== "fly", sprinting: player.sprinting && player.mode !== "fly", swimming: player.mode === "swim", jumped: player.jumped, underwater: player.underwater });
         if (stats.dead && !this.deathHandled) this.onDeath();
         hud.setVitals(stats);
 
-        if (stats.dead || this.sleeping || this.warp.inLevel) { hud.setPrompt(null); this.hideBuildUi(); return; }
+        if (stats.dead || this.sleeping || this.warp.inLevel || this.invaders.seated) { hud.setPrompt(null); this.hideBuildUi(); return; }
 
         if (hud.inventoryOpen) {
             hud.setPrompt(null);
@@ -946,7 +972,7 @@ export class Game {
 
     /** VR: a trigger pull (swung = false) or a real swing of the arm (swung = true). */
     vrPrimary(swung: boolean) {
-        if (this.stats.dead || this.sleeping || this.hud.inventoryOpen || this.warp.inLevel) return;
+        if (this.stats.dead || this.sleeping || this.hud.inventoryOpen || this.warp.inLevel || this.invaders.seated) return;
         const held = this.equipped, def = held ? ITEMS[held.id] : null;
         if (def?.tool && def.tool.model !== "rod") {
             if (this.vrCd > 0) return;
@@ -1244,6 +1270,17 @@ export class Game {
             wx.update(dt, this.vr.active ? this.vr.eye : p.eye, local, this.roofed, p.underwater);
             this.druids.update(dt, me, onIsland && !p.cave);
             this.updateWarp(dt);
+            // the alien invasion: the cannon points where you look (your head in VR); click / trigger fires
+            {
+                const iv = this.invaders, inp = this.input;
+                const e = this.vr.active ? this.vr.head ?? this.vr.eye : p.eye;
+                this.ivEye.set(e.x, e.y, e.z);
+                if (this.vr.active) { const d = this.vr.headDir ?? this.vr.dir; this.ivDir.set(d.x, d.y, d.z); }
+                else { const cp = Math.cos(p.pitch); this.ivDir.set(-Math.sin(p.yaw) * cp, Math.sin(p.pitch), -Math.cos(p.yaw) * cp); }
+                iv.update(dt, this.ivEye, this.ivDir, iv.seated && !this.stats.dead && (inp.attackHeld || inp.attackQueued));
+                if (iv.seated) inp.attackQueued = false;
+                this.clock.dawn = iv.sky;
+            }
             this.offshore.tick(hour, wx.kind === 0);
             this.offshore.update(dt, me, performance.now() / 1000, wx.rough, 1 - (this.clock.day ?? 1), !onIsland || !!p.cave);
             this.sfx.setWeather(local && !p.underwater ? wx.rain : 0, local ? Math.max(0, Math.min(1, (wx.wind - 1.4) / 2.8)) : 0, this.roofed, dt);

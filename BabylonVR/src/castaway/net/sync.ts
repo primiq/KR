@@ -98,6 +98,14 @@ export class WorldSync {
             w.present = (pid) => pid === session.myId || session.players.has(pid);
             w.who = (pid) => ({ name: session.players.get(pid)?.name ?? (pid === session.myId ? "You" : "Friend"), color: playerColor(pid) });
         }
+        // the alien invasion: the host marches the ships and decides the hits; everybody shoots and sees everybody's lasers
+        {
+            const iv = game.invaders;
+            iv.remote = !session.isHost; iv.myId = session.myId;
+            iv.onEvent = (e) => session.sendEvent({ k: "iv", ...e });
+            iv.who = (pid) => ({ name: session.players.get(pid)?.name ?? (pid === session.myId ? "You" : "Friend"), color: playerColor(pid) });
+            iv.aimOf = (pid) => { const st = session.states.get(pid); return st ? { yaw: st.yaw, pitch: st.pitch } : null; };
+        }
         // gone down the warp pipe (the secret level): their body is not on the island
         this.avatars.three.hideIf = (flags) => (flags & F_LEVEL) !== 0;
         // weather, whales and ships: the host decides, the others follow
@@ -205,6 +213,7 @@ export class WorldSync {
         if (this.game.twins.remote) this.game.twins.promote();
         if (this.game.weather) { this.game.weather.remote = false; this.game.weather.onChange = null; }
         this.game.offshore.remote = false; this.game.offshore.onWhale = this.game.offshore.onShip = null;
+        { const iv = this.game.invaders; iv.remote = false; iv.onEvent = null; iv.myId = 0; iv.aimOf = () => null; iv.who = (pid) => ({ name: pid === 0 ? "You" : "Friend", color: "#ffd23f" }); }
         { const w = this.game.warp; w.remote = false; w.onEvent = null; w.present = () => true; w.who = () => ({ name: "You", color: "#3cb043" }); w.myId = 0; }
         { const dr = this.game.druids; dr.remote = false; dr.onTouch = null; dr.onPhase = null; dr.onHit = null; dr.players = () => [{ id: 0, x: this.game.player.pos.x, y: this.game.player.pos.y, z: this.game.player.pos.z }]; }
         if (this.orig) { f.onSound = this.orig.sound; f.onBlood = this.orig.blood; f.onKill = this.orig.kill; this.orig = null; }
@@ -328,6 +337,7 @@ export class WorldSync {
             case "sh": { const q = this.session.isHost ? g.stalkers.list[e.i] : undefined; if (q) g.stalkers.hit(q, e.x, e.z); break; }
             case "wh": if (!this.session.isHost) g.offshore.startWhale(+e.x, +e.z, +e.h, +e.s); break;
             case "sx": if (!this.session.isHost && !g.offshore.shipActive) g.offshore.startShip(+e.a, e.d < 0 ? -1 : 1, +e.p || 0); break;
+            case "iv": g.invaders.net(e, from); break;
             case "ml": g.warp.net(e, from); break;
             case "mp": this.addPing(from, this.session.players.get(from)?.name ?? "Someone", playerColor(from), e.x, e.z); break;
         }

@@ -26,6 +26,8 @@ export class Atmosphere {
     flash = 0;
     /** 0..1: the sky bleeds dark pink while Mario is being summoned (world/druids) */
     curse = 0;
+    /** 0..1: the alien invasion's burning sunrise, whatever the hour (world/invaders) */
+    dawn = 0;
     wet = 0;
     private lastOvercast = 0;
     private clouds: Mesh;
@@ -182,6 +184,18 @@ export class Atmosphere {
             this.cloudMat.emissiveColor.set(g * 0.92 * (1 - k) + pr * k, g * 0.95 * (1 - k) + pg * k, g * 1.02 * (1 - k) + pb * k);
             this.cloudMat.alpha = Math.min(0.94, Math.max(ov * 1.05, cu * 0.8));
             this.sun.intensity *= 1 - 0.5 * cu;
+        }
+        // the alien invasion: a burning orange sky and a low warm light, whatever the hour
+        const dw = this.dawn;
+        if (dw > 0.001) {
+            this.clouds.setEnabled(true);
+            const ce = this.cloudMat.emissiveColor;
+            ce.set(ce.r + (1.0 * 0.85 - ce.r) * dw, ce.g + (0.32 * 0.85 - ce.g) * dw, ce.b + (0.14 * 0.85 - ce.b) * dw);
+            this.cloudMat.alpha = Math.max(this.cloudMat.alpha * (ov > 0.01 || cu > 0.01 ? 1 : 0), dw * 0.9);
+            this.sun.setEnabled(true);
+            this.sun.diffuse = Color3.Lerp(this.sun.diffuse, new Color3(1.0, 0.55, 0.28), dw * 0.8);
+            this.sun.intensity += (2.2 - this.sun.intensity) * dw;
+            this.scene.environmentIntensity += (0.6 - this.scene.environmentIntensity) * dw;
         }
         this.flashLight.intensity = this.flash * 1.6;
         this.flashLight.setEnabled(this.flash > 0.01);

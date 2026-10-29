@@ -290,7 +290,8 @@ come from Castaway. Rendering, materials, the ocean and the VR controls are rebu
   cats. At night something watches from the trees.
 - **The stone circle:** touch two stones of one colour on the hilltop and something answers. Red
   summons Mario under a cursed pink sky. Lead him to the warp pipe by the old hut and everyone
-  jumps into a secret side-scrolling level together.
+  jumps into a secret side-scrolling level together. Blue calls an alien invasion that everyone
+  fights off from laser cannons round the circle.
 - **Weather:** showers and the odd storm, decided by the host. The sky greys, the palms bend, the
   sea heaves, lightning flashes and thunder rolls, and a rainbow can follow the rain.
 - **The sea:** schools of fish swim in the lagoon and scatter when you come close, and on some
