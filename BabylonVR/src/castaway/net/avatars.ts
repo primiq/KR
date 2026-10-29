@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import type { Scene } from '@babylonjs/core';
 import { ThreeMirror } from '../render/mirror';
+import { poseLeg, buildCat, PLAYER_COATS } from '../world/cats';
 import type { PState } from './session';
 import { heightAt } from '../world/island';
 import { ITEMS, type ItemId } from '../game/items';
@@ -97,6 +98,40 @@ function swingFor(id: string): string {
   return 'hit';
 }
 
+class CatBody {
+  readonly root = new THREE.Group();
+  private c: ReturnType<typeof buildCat>;
+  private phase = 0; private swat = 9; private air = 0; private crouch = 0; private t = Math.random() * 20;
+  constructor(id: number, shadows: boolean) {
+    this.c = buildCat(PLAYER_COATS[id % PLAYER_COATS.length], shadows);
+    this.c.root.rotation.y = Math.PI;           // the model faces +z, a player's yaw 0 faces -z
+    this.root.add(this.c.root);
+  }
+  hit() { this.swat = 0; }
+  update(dt: number, spd: number, vy: number, pitch: number, sprint: boolean) {
+    const c = this.c; this.t += dt;
+    this.swat += dt * 3.2;
+    const gallop = spd > 2.4, sw = Math.min(1, spd / 1.2);
+    this.phase += spd * dt * (gallop ? 5.2 : 7.5);
+    this.air += (((Math.abs(vy) > 1.2) ? 1 : 0) - this.air) * Math.min(1, dt * 12);
+    this.crouch += ((sprint && spd < 0.3 ? 1 : 0) - this.crouch) * Math.min(1, dt * 6);
+    const a = (gallop ? 0.95 : 0.6) * sw * (1 - this.air * 0.6);
+    c.torso.position.y = 0.255 - this.crouch * 0.05 + (gallop ? Math.abs(Math.sin(this.phase)) * 0.03 : 0);
+    c.torso.rotation.x = Math.max(-0.5, Math.min(0.5, -vy * 0.05)) * this.air;
+    c.legs.forEach((l, i) => {
+      const front = i < 2, diag = i === 0 || i === 3 ? 0 : Math.PI;
+      let r = Math.sin(this.phase + (gallop ? (front ? 0 : 0.9) + (i % 2) * 0.3 : diag)) * a;
+      if (this.air > 0.1) r = r * (1 - this.air) + (front ? -0.9 : 0.8) * this.air;
+      if (front && i === 1 && this.swat < 1) r = -1.5 * Math.sin(Math.min(1, this.swat) * Math.PI);     // the swat
+      poseLeg(l, c.torso, r);
+    });
+    c.head.rotation.x = Math.max(-0.7, Math.min(0.7, -pitch * 0.8));
+    c.tail.rotation.x = -1.05 + (gallop ? 0.35 : 0) - this.air * 0.5;
+    c.tail.rotation.z = Math.sin(this.t * 2.2) * 0.3;
+    c.tailTip.rotation.x = 0.5 + Math.sin(this.t * 2.2 - 0.8) * 0.1;
+  }
+}
+
 class Avatar {
   readonly group = new THREE.Group();
   private R: PlayerRig;
@@ -145,6 +180,8 @@ class Avatar {
   onStep: ((x: number, y: number, z: number) => void) | null = null;
 
   private armorCode = 0; private armorParts: THREE.Object3D[] = []; private shadowsOn = false;
+  private cat: CatBody | null = null;
+  private tagS0: THREE.Vector3 | null = null; private barS0: THREE.Vector3 | null = null;
 
   /** what this avatar was built from, so it can be rebuilt when the player changes their look or name */
   readonly key: string;
@@ -164,6 +201,26 @@ class Avatar {
     this.tag = tag; this.bar.sprite.position.set(0, TAG_Y - 0.14, 0);
     this.group.add(this.R.rig, tag, this.bar.sprite);
     this.group.frustumCulled = false;
+  }
+
+  private showCat(on: boolean) {
+    if (on && !this.cat) { this.cat = new CatBody(this.id, this.shadowsOn); this.group.add(this.cat.root); }
+    if (this.cat) this.cat.root.visible = on;
+    this.R.rig.visible = !on;
+    this.tag.position.y = on ? 0.62 : TAG_Y; this.bar.sprite.position.y = (on ? 0.62 : TAG_Y) - 0.07;
+    this.tagS0 ??= this.tag.scale.clone(); this.barS0 ??= this.bar.sprite.scale.clone();
+    this.tag.scale.copy(this.tagS0).multiplyScalar(on ? 0.3 : 1); this.bar.sprite.scale.copy(this.barS0).multiplyScalar(on ? 0.3 : 1);
+    if (on) this.setVR(false);
+  }
+  private updateCat(dt: number, s: PState) {
+    if (!this.cat?.root.visible) this.showCat(true);
+    const inv = 1 / Math.max(dt, 1e-3);
+    const vx = (this.cur.x - this.prev.x) * inv, vy = (this.cur.y - this.prev.y) * inv, vz = (this.cur.z - this.prev.z) * inv;
+    const kv = Math.min(1, dt * 10);
+    this.vel.x += (vx - this.vel.x) * kv; this.vel.y += (vy - this.vel.y) * kv; this.vel.z += (vz - this.vel.z) * kv;
+    if (this.lastSwing !== s.swing) { if (this.lastSwing >= 0) this.cat!.hit(); this.lastSwing = s.swing; }
+    this.cat!.update(dt, Math.hypot(this.vel.x, this.vel.z), this.vel.y, this.pitch, (s.flags & 1) !== 0);
+    this.bar.draw(s.hp);
   }
 
   /** tiers worn as one number: head*100 + chest*10 + legs (each 0..3) */
@@ -221,6 +278,8 @@ class Avatar {
     this.spd += (s.spd - this.spd) * Math.min(1, dt * 8);
     this.group.position.copy(this.cur);
     this.group.rotation.set(0, this.yaw, 0);
+    if ((s.flags & 16) !== 0) { this.updateCat(dt, s); return; }
+    if (this.cat?.root.visible) this.showCat(false);
     this.setHeld((s.flags & 64) ? "" : s.item);
     this.setArmor(s.arm ?? 0);
     this.bar.draw(s.hp);

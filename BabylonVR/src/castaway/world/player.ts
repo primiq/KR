@@ -9,8 +9,12 @@ export type Mode = "walk" | "swim" | "fly";
 /** steepest walkable rise over run (about 55 degrees) */
 const SLOPE_BLOCK = 1.45;
 
-export interface Body { eye: number; radius: number; walk: number; run: number; jump: number; step: number; height: number }
+/** how big and how strong the body is: people by default, a cat in the cat house */
+export interface Body { eye: number; radius: number; walk: number; run: number; jump: number; step: number; height: number; cat?: boolean; /** can cling to climbable things (cats: posts; gorillas: ropes) */ climb?: boolean }
 export const HUMAN: Body = { eye: 1.68, radius: 0.38, walk: 4.1, run: 7.0, jump: 5.6, step: 0.8, height: 1.75 };
+export const CAT: Body = { eye: 0.33, radius: 0.15, walk: 1.5, run: 3.5, jump: 7.3, step: 0.14, height: 0.36, cat: true, climb: true };
+/** Banana or Salmon: the gorilla (big, strong, a bit slower, climbs ropes hand over hand) */
+export const GORILLA: Body = { eye: 1.92, radius: 0.46, walk: 3.6, run: 6.4, jump: 5.4, step: 0.8, height: 2.0, climb: true };
 
 /** Buildings: floors to stand on and walls to bump into. */
 export interface WorldShape {
@@ -53,7 +57,16 @@ export class Player {
     /** something moves the body itself this frame (the skydive): like `ride`, but set and cleared by its owner */
     seated = false;
     /** underground: the cave replaces the island's ground, walls and water */
-    cave: { floor(x: number, z: number, y: number): number; resolve(x: number, z: number, r: number, feetY: number, out: { x: number; z: number }): void } | null = null;
+    cave: {
+        floor(x: number, z: number, y: number): number; resolve(x: number, z: number, r: number, feetY: number, out: { x: number; z: number }): void;
+        /** cat house: a post you can cling to here (top = how high it goes), and the lowest ceiling above you */
+        climbAt?(x: number, z: number, y: number): { top: number; cx: number; cz: number; hx?: number; hz?: number } | null; ceiling?(x: number, z: number, y: number): number;
+    } | null = null;
+    /** cat: clinging to a scratching post (hold jump near it, W/S to climb) */
+    climbing = false;
+    /** VR: a grip is squeezed (cling to a post), and how far the paws pulled the body this frame */
+    clingHeld = false;
+    readonly pull = new Vector3();
     /** sea surface height (waves) at a point */
     surfaceAt: (x: number, z: number) => number = () => 0;
     /** camera shake output (radians / metres), read by the camera rig */
@@ -91,6 +104,7 @@ export class Player {
     private gnd(x: number, z: number) { return this.cave ? this.cave.floor(x, z, this.pos.y) : this.world ? this.world.ground(x, z, this.pos.y) : heightAt(x, z); }
 
     respawn(x: number, z: number, yaw: number) {
+        this.climbing = false;
         this.pos.set(x, this.gnd(x, z), z);
         this.lastY = this.pos.y;
         this.stepOffset = 0;
@@ -102,6 +116,7 @@ export class Player {
     }
 
     teleport(x: number, y: number, z: number, yaw: number) {
+        this.climbing = false;
         this.pos.set(x, y, z);
         this.lastY = y;
         this.stepOffset = 0;
@@ -113,6 +128,38 @@ export class Player {
 
     /** Camera shake (0..1+). Decays by itself. */
     shake(amount: number) { this.shakeAmp = Math.min(2.5, Math.max(this.shakeAmp, amount)); }
+
+    /** cat claws: hold jump (or squeeze a grip in VR) beside a scratching post to cling to it; W/S climbs, jump again lets go */
+    private catClaws(dt: number, input: Input, my: number) {
+        const cl = this.cave?.climbAt?.(this.pos.x, this.pos.z, this.pos.y) ?? null;
+        const grip = input.jumpHeld || this.clingHeld;
+        if (!this.climbing) {
+            if (cl && grip && (!this.onGround || my > 0.2 || this.clingHeld) && this.pos.y < cl.top - 0.05) this.climbing = true;
+            if (!this.climbing) return;
+            // claws in: this frame only grabs (the press that did it must not also count as letting go)
+            this.vel.set(0, 0.3, 0); this.jumpBuf = 0; input.jumpQueued = false; this.onGround = false;
+            return;
+        }
+        if (!cl || (!grip && !input.jumpHeld)) { this.climbing = false; return; }
+        // up and down the post; in VR the paws do the pulling
+        const up = this.pull.y !== 0 ? this.pull.y / Math.max(dt, 1e-3) : my * 2.4;
+        this.vel.x = this.vel.z = 0;
+        if (cl.hx !== undefined && cl.hz !== undefined) { const k = Math.min(1, dt * 6); this.pos.x += (cl.hx - this.pos.x) * k; this.pos.z += (cl.hz - this.pos.z) * k; }
+        this.vel.y = Math.max(-3, Math.min(3, up)) + 16 * dt; // cancel this frame's gravity
+        this.pull.y = 0;
+        this.onGround = false;
+        if (this.vel.y > 0.3 && this.pos.y >= cl.top - 0.12) { // over the top: haul yourself onto the platform
+            this.climbing = false; this.pos.y = cl.top; this.vel.set(0, 0, 0);
+            this.pos.x += (cl.cx - this.pos.x) * 0.9; this.pos.z += (cl.cz - this.pos.z) * 0.9;
+            this.onGround = true; this.lastY = this.pos.y; this.stepOffset = 0;
+            return;
+        }
+        if (input.jumpQueued) { // let go with a kick off the post
+            this.climbing = false; this.vel.y = 4.2;
+            this.vel.x = Math.sin(this.yaw) * 2.2; this.vel.z = Math.cos(this.yaw) * 2.2;
+            input.jumpQueued = false; this.jumpBuf = 0;
+        }
+    }
 
     update(dt: number, input: Input) {
         this.time += dt;
@@ -214,12 +261,14 @@ export class Player {
                 const wading = smoothstep(0.1, 1.2, this.waterDepth);
                 const base = sprintNow ? this.body.run : this.body.walk;
                 const sp = base * (1 - 0.3 * wading);
-                const accel = this.onGround ? 14 : 4;
+                const accel = this.onGround ? (this.body.cat ? 22 : 14) : (this.body.cat ? 9 : 4);
                 this.vel.x += (wishX * sp - this.vel.x) * Math.min(1, accel * dt);
                 this.vel.z += (wishZ * sp - this.vel.z) * Math.min(1, accel * dt);
                 this.vel.y -= 16 * dt;
-                if (this.jumpBuf > 0 && (this.onGround || this.groundGrace > 0) && this.vel.y < 1 && this.canJump) {
+                if (this.body.climb) this.catClaws(dt, input, my);
+                if (this.jumpBuf > 0 && (this.onGround || this.groundGrace > 0) && this.vel.y < 1 && this.canJump && !this.climbing) {
                     this.vel.y = this.body.jump * (1 - 0.3 * wading);
+                    if (this.body.cat) { this.vel.x += wishX * 1.1; this.vel.z += wishZ * 1.1; }
                     this.onGround = false;
                     this.jumped = true;
                     this.jumpBuf = 0;
@@ -257,9 +306,16 @@ export class Player {
                 const climb = gNew - this.pos.y;
                 if (this.onGround && climb > this.body.step + 1.2 * Math.hypot(this.vel.x, this.vel.z) * dt) {
                     const gx = this.gnd(nx, this.pos.z) - this.pos.y, gz = this.gnd(this.pos.x, nz) - this.pos.y;
-                    if (gx > 0.6) { nx = this.pos.x; this.vel.x = 0; }
-                    if (gz > 0.6) { nz = this.pos.z; this.vel.z = 0; }
+                    const lim = this.body.cat ? 0.12 : 0.6;
+                    if (gx > lim) { nx = this.pos.x; this.vel.x = 0; }
+                    if (gz > lim) { nz = this.pos.z; this.vel.z = 0; }
                 }
+            }
+            if (this.body.cat && (this.pull.x !== 0 || this.pull.z !== 0)) {
+                // VR cat: the paws drag the body along
+                nx = this.pos.x + this.pull.x; nz = this.pos.z + this.pull.z;
+                this.vel.x = Math.max(-6, Math.min(6, this.pull.x / Math.max(dt, 1e-3))); this.vel.z = Math.max(-6, Math.min(6, this.pull.z / Math.max(dt, 1e-3)));
+                this.pull.x = this.pull.z = 0;
             }
             if (this.cave) this.cave.resolve(nx, nz, this.body.radius, this.pos.y, this.tmp);
             else this.colliders.resolve(nx, nz, this.body.radius, this.tmp);
@@ -276,11 +332,18 @@ export class Player {
             this.pos.x = nx;
             this.pos.z = nz;
             this.pos.y += this.vel.y * dt;
+            if (this.cave?.ceiling) {
+                const c = this.cave.ceiling(this.pos.x, this.pos.z, this.pos.y) - this.body.height;
+                if (this.pos.y > c && this.vel.y > 0) { this.pos.y = Math.max(c, this.pos.y - this.vel.y * dt); this.vel.y = 0; }
+            }
 
             const g = this.gnd(this.pos.x, this.pos.z);
             if (this.mode === "swim") {
                 if (this.pos.y < g) { this.pos.y = g; this.vel.y = Math.max(0, this.vel.y); }
+            } else if (this.climbing && this.vel.y > 0) {
+                this.onGround = false; // hauling up a post: the ground is not holding you
             } else if (this.pos.y <= g) {
+                this.climbing = false;
                 if (!this.onGround && this.vel.y < -14) this.onLand?.(-this.vel.y);
                 this.pos.y = g;
                 this.vel.y = Math.max(0, this.vel.y);

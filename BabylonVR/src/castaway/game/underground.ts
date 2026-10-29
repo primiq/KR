@@ -11,6 +11,8 @@ import type { SurfaceSites, SiteChest } from '../world/sites';
 import type { SkyRoom } from '../world/skyroom';
 import type { Airstrip } from '../world/airstrip';
 import type { Car } from './cars';
+import type { CatHome } from '../world/catroom';
+import { CAT, HUMAN } from '../world/player';
 import { rayGround } from './building';
 import type { ItemId } from './items';
 import { ITEMS } from './items';
@@ -43,7 +45,9 @@ export type UgTarget =
   | { kind: 'clouddoor'; dist: number }
   | { kind: 'airdoor'; dist: number }
   | { kind: 'airexit'; dist: number }
-  | { kind: 'car'; car: Car; dist: number };
+  | { kind: 'car'; car: Car; dist: number }
+  | { kind: 'catdoor'; dist: number }
+  | { kind: 'catexit'; dist: number };
 
 const DIG_HITS = 6;
 
@@ -60,6 +64,10 @@ export class Underground {
   sky: SkyRoom | null = null;
   /** the airstrip island (set by main) */
   air: Airstrip | null = null;
+  /** the cat house (set by main) */
+  cat: CatHome | null = null;
+  /** cat house entered / left (main swaps the body, the paws and the multiplayer flag) */
+  onCat: ((on: boolean) => void) | null = null;
   private surf = new THREE.Group();
   private hintCd = 0;
   private marks: { crack: THREE.Group; pit: THREE.Group }[] = [];
@@ -208,6 +216,10 @@ export class Underground {
     if (cd2 != null && (!best || cd2 < (best as UgTarget).dist)) best = { kind: 'clouddoor', dist: cd2 };
     const at = this.sky?.pickAir(eye, dir, Math.max(reach, 3.2), assist);
     if (at != null && (!best || at < (best as UgTarget).dist)) best = { kind: 'airdoor', dist: at };
+    const kt = this.sky?.pickCat(eye, dir, Math.max(reach, 3.2), assist);
+    if (kt != null && (!best || kt < (best as UgTarget).dist)) best = { kind: 'catdoor', dist: kt };
+    const kx = this.cat?.pickDoor(eye, dir, Math.max(reach, 3.2), assist);
+    if (kx != null && (!best || kx < (best as UgTarget).dist)) best = { kind: 'catexit', dist: kx };
     const ct = this.air?.pickCar(eye, dir, Math.max(reach, 4.2), assist);
     if (ct && (!best || ct.dist < (best as UgTarget).dist)) best = { kind: 'car', car: ct.car, dist: ct.dist };
     const et = this.air?.pickDoor(eye, dir, Math.max(reach, 3.2), assist);
@@ -225,6 +237,8 @@ export class Underground {
         if (t.ore.kind === 'diamond' && !pick) return { name: nm, hint: 'Needs a pickaxe', ok: false };
         return { name: nm, hint: '<b>Click</b> mine', ok: true };
       }
+      case 'catdoor': return { name: 'Door with a paw print', hint: '<b>E</b> open · become a cat', ok: true };
+      case 'catexit': return { name: 'Kitchen door', hint: '<b>E</b> back to the secret room', ok: true };
       case 'airdoor': return { name: 'Door to the airstrip', hint: '<b>E</b> open', ok: true };
       case 'airexit': return { name: 'Door back home', hint: '<b>E</b> go back to the secret room', ok: true };
       case 'car': return t.car.driver !== null || this.air?.remote.has(t.car.index) ? { name: t.car.spec.name, hint: 'Someone is driving it', ok: false } : { name: t.car.spec.name, hint: `<b>E</b> drive · ${t.car.spec.blurb}`, ok: true };
@@ -246,6 +260,8 @@ export class Underground {
       case 'chest': this.openChest(t.chest); break;
       case 'loot': this.openSiteChest(t.chest); break;
       case 'clouddoor': this.sky?.openCloud(); break;
+      case 'catdoor': if (this.sky && this.cat) { this.sky.depart(); this.cat.enter(this.h.player, CAT); this.onCat?.(true); this.h.message('You are a cat now. Jump on things (hold Space at a scratching post to climb), pounce with click, chase the mouse!'); this.h.sfx.creak(); } break;
+      case 'catexit': if (this.sky && this.cat) { this.cat.leave(this.h.player, HUMAN); this.onCat?.(false); this.sky.enter(this.h.player, 'cat'); this.h.message('Back on two legs.'); this.h.sfx.creak(); } break;
       case 'airdoor': if (this.sky && this.air) { this.sky.depart(); this.air.enter(this.h.player); this.h.message('Welcome to the airstrip. Find a car and drive!'); this.h.sfx.creak(); } break;
       case 'airexit': if (this.sky && this.air) { this.air.leave(this.h.player); this.sky.enter(this.h.player, 'air'); this.h.sfx.creak(); } break;
       case 'car': if (this.air?.enterCar(t.car, this.h.player)) { this.h.message(`${t.car.spec.name}: W/S gas and brake · A/D steer · Space handbrake · Shift boost · E to get out`); this.onEvent?.({ k: 'cr', i: t.car.index, on: 1 }); } else { this.h.message('Someone is already in that car'); this.h.sfx.denied(); } break;

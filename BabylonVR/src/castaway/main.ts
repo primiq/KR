@@ -26,6 +26,10 @@ import { Cats } from "./world/cats";
 import { SkyRoom } from "./world/skyroom";
 import { Skydive } from "./world/skydive";
 import { Airstrip } from "./world/airstrip";
+import { CatHome } from "./world/catroom";
+import { FPPaws, PLAYER_COATS } from "./world/cats";
+import { HUMAN } from "./world/player";
+import { ThreeMirror } from "./render/mirror";
 import { Dolphins } from "./world/dolphins";
 import { SEA } from "./world/waves";
 import { getOutfit, onOutfitChange, setPlayerOutfit } from "./net/outfit";
@@ -172,6 +176,34 @@ async function main() {
     game.under.air = air;
     air.sfx = { engine: (v) => game.sfx.engine(v), boing: (v) => game.sfx.boing(v), crash: (v) => game.sfx.crash(v) };
     const carCam = new THREE.PerspectiveCamera();
+    // the cat house (the paw-print door): everyone who goes through it is a cat
+    const camProxy = { set near(v: number) { camera.minZ = v; }, get near() { return camera.minZ; }, updateProjectionMatrix() { /* (Babylon reads minZ every frame) */ } };
+    const cat = new CatHome(game.natureRoot as unknown as THREE.Scene, q.shadows, camProxy as unknown as THREE.PerspectiveCamera);
+    game.under.cat = cat;
+    // the cat's own paws in front of the camera: a three.js rig that follows the Babylon camera, drawn by its own mirror
+    const pawHolder = new THREE.Scene(), pawRig = new THREE.Group();
+    pawRig.matrixAutoUpdate = false;
+    pawHolder.add(pawRig);
+    let paws = new FPPaws(PLAYER_COATS[0], q.shadows);
+    pawRig.add(paws.root);
+    const pawMirror = new ThreeMirror(scene, pawHolder, null, false, { tag: { keepUnderground: true } });
+    const catMode = (on: boolean) => {
+        pawRig.remove(paws.root);
+        paws = new FPPaws(PLAYER_COATS[game.netId % PLAYER_COATS.length], q.shadows);
+        pawRig.add(paws.root);
+        paws.root.visible = on && !vrActive();
+    };
+    game.under.onCat = catMode;
+    let mouseSend = 0;
+    cat.onSqueak = () => game.sfx.meow(0.35);
+    cat.onCatch = () => { game.hud.message(`You caught the mouse! (${cat.caught})`); sync?.session.sendEvent({ k: "mc", n: sync.session.name }); };
+    cat.onBonk = (id) => {
+        game.sfx.meow(0.35); game.vr.haptic?.(0.7);
+        if (id !== null && id !== (sync?.session.myId ?? 0)) sync?.session.sendEvent({ k: "mh", t: id, n: sync.session.name });
+        else game.hud.message("Bonk!");
+    };
+    game.onPounce = () => paws.swing();
+    game.onMeow = () => { sync?.session.sendEvent({ k: "mw", x: +player.pos.x.toFixed(1), z: +player.pos.z.toFixed(1) }); };
     // the island's cats
     const cats = params.has("nocats") ? null : new Cats(game.natureRoot, vegetation.colliders, q.shadows, () => game.fauna.animals);
     if (cats) {
@@ -259,6 +291,8 @@ async function main() {
             // the airstrip: keep people from being stranded there, then drive the cars
             if (!air.active && air.contains(player.pos.x, player.pos.z) && sky.exitTo) { const e = sky.exitTo; player.teleport(e.x, e.y, e.z, e.yaw); }
             if (air.active && !air.contains(player.pos.x, player.pos.z)) { air.leave(player); player.teleport(player.pos.x, heightAt(player.pos.x, player.pos.z), player.pos.z, player.yaw); }
+            if (!cat.active && cat.contains(player.pos.x, player.pos.z) && sky.exitTo) { const e = sky.exitTo; player.teleport(e.x, e.y, e.z, e.yaw); }
+            if (cat.active && !cat.contains(player.pos.x, player.pos.z)) { cat.leave(player, HUMAN); catMode(false); player.teleport(player.pos.x, heightAt(player.pos.x, player.pos.z), player.pos.z, player.yaw); }
             if (air.driving && game.stats.dead) air.exitCar(player);
             if (air.active) air.pre(dt, { gas: Math.max(-1, Math.min(1, input.move.y)), steer: Math.max(-1, Math.min(1, input.move.x)), hand: input.jumpHeld, boost: input.wantsSprint }, player, vrActive());
             if (!game.uiBlocking) player.update(dt, input);
@@ -283,6 +317,23 @@ async function main() {
             const sy = sync;
             if (sy) dive.updateRemote(sy.avatars.positions.map((a) => { const st = sy.session.states.get(a.id); return { id: a.id, x: a.x, y: a.y, z: a.z, yaw: st?.yaw ?? 0, flags: st?.flags ?? 0 }; }));
             sky.update(dt, player, (x, z) => heightAt(x, z));
+            {
+                // the cat house: the host keeps the mouse and the ball going; everybody in it simulates the same toys
+                const host = !sync || sync.session.isHost;
+                if (cat.active || (host && sync)) {
+                    const list: { id: number; x: number; z: number; y: number }[] = [];
+                    if (cat.active) list.push({ id: sync?.session.myId ?? 0, x: player.pos.x, y: player.pos.y, z: player.pos.z });
+                    if (sync) for (const a of sync.avatars.positions) { const st = sync.session.states.get(a.id); if (st && (st.flags & 16)) list.push({ id: a.id, x: a.x, y: a.y, z: a.z }); }
+                    cat.update(dt, list, host);
+                    // the mouse in my paws (or flying after a throw): tell the others where it is
+                    mouseSend -= dt;
+                    if (sync && (cat.landed || (cat.mouseMine && mouseSend <= 0))) { sync.session.sendEvent({ k: "mt", r: cat.exportThrow() }); mouseSend = 0.08; }
+                    cat.landed = false;
+                }
+                cat.ghost = cat.active && player.climbing;
+                paws.root.visible = cat.active && !vrActive();
+                if (cat.active) paws.update(dt, Math.hypot(player.vel.x, player.vel.z), player.vel.y, player.sprinting);
+            }
             dolphins.update(dt, player.pos.x, player.pos.z, player.yaw, game.under.active);
             ocean.bio = BIO.value;
             clock.curse = game.druids.curse;
@@ -296,6 +347,10 @@ async function main() {
             camera.rotation.set(-0.05, spawn.yaw + Math.sin(t * 0.05) * 0.6, 0);
         }
         caves.update();
+        // the paws ride on the camera
+        pawRig.matrix.fromArray(camera.getWorldMatrix().m as unknown as number[]);
+        pawRig.matrixWorldNeedsUpdate = true;
+        pawMirror.sync();
         vegetation.update(player.pos.x, player.pos.z);
         syncCasters();
     });
@@ -648,7 +703,7 @@ async function main() {
     // a hidden tab stops rendering: keep the room in step anyway (a host who alt-tabs must not freeze everyone else)
     setInterval(() => { if (document.hidden) sync?.update(0.1); }, 100);
 
-    Object.assign(window as unknown as Record<string, unknown>, { Wind, scene, engine, game, player, sites, caves, heightAt, weather, cats, sky, dive, air, vegetation, terrain, ocean, input, clock, camera, getSync: () => sync, doSave });
+    Object.assign(window as unknown as Record<string, unknown>, { Wind, scene, engine, game, player, sites, caves, heightAt, weather, cats, sky, dive, air, cat, vegetation, terrain, ocean, input, clock, camera, getSync: () => sync, doSave });
 }
 
 main().catch((e) => {

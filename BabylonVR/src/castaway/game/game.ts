@@ -204,7 +204,7 @@ export class Game {
 
     get armorPct() { let t = 0; for (const s of this.worn.slots) if (s) t += ITEMS[s.id].armor?.def ?? 0; return Math.min(75, t); }
     get armorCode() { let c = 0; for (const s of this.worn.slots) c = c * 10 + (s ? ITEMS[s.id].armor?.tier ?? 0 : 0); return c; }
-    get equipped() { return this.inv.slots[this.hud.selected]; }
+    get equipped() { return this.under?.cat?.active ? undefined : this.inv.slots[this.hud.selected]; }
     get equippedDef() { const e = this.equipped; return e ? ITEMS[e.id] : null; }
     get uiBlocking() { return this.hud.inventoryOpen || this.map.open || this.stats.dead || this.sleeping || this.painter.open; }
     get isSleeping() { return this.sleeping; }
@@ -699,7 +699,7 @@ export class Game {
 
     update(dt: number, active: boolean) {
         const { player, stats, input, hud, view } = this;
-        this.hurtCd -= dt; this.vrCd -= dt; this.eatCd -= dt; this.seaCd -= dt; this.drinkCd -= dt;
+        this.hurtCd -= dt; this.vrCd -= dt; this.meowCd -= dt; this.eatCd -= dt; this.seaCd -= dt; this.drinkCd -= dt;
         this.resources.update(dt, player.pos.x, player.pos.z);
         this.saplings.update(dt);
         this.doors.update(dt);
@@ -773,7 +773,7 @@ export class Game {
             this.wasSwim = swim;
         }
         if (!active) { view.visible(false); return; }
-        view.visible(!stats.dead && !this.vr.active && !this.warp.inLevel && !this.invaders.seated);
+        view.visible(!stats.dead && !this.vr.active && !this.warp.inLevel && !this.invaders.seated && !this.under.cat?.active);
 
         stats.godMode = player.mode === "fly";
         if (!stats.dead) stats.update({ dt, moving: player.moving && player.mode !== "fly", sprinting: player.sprinting && player.mode !== "fly", swimming: player.mode === "swim", jumped: player.jumped, underwater: player.underwater });
@@ -1007,6 +1007,12 @@ export class Game {
             } else this.updatePrompt(t, def);
         }
 
+        // cat house: click is a pounce, G is a meow
+        if (ug.cat?.active) {
+            if (input.attackQueued) { input.attackQueued = false; this.pounce(); }
+            if (input.meowQueued) { input.meowQueued = false; this.meow(); }
+        }
+        input.meowQueued = false;
         // primary action: swing a tool, or eat held food
         if (input.attackQueued || input.attackHeld) {
             if (def?.tool?.model === "rod") {
@@ -1055,9 +1061,30 @@ export class Game {
         input.interactQueued = false;
     }
 
+    /** cat house: leap forward and swat; catches the mouse if it is close enough */
+    pounce() {
+        const cat = this.under.cat, p = this.player;
+        if (!cat?.active || this.stats.dead) return;
+        this.swings++;
+        this.onPounce?.();
+        const fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw);
+        if (p.onGround) { p.vel.x += fx * 2.3; p.vel.z += fz * 2.3; p.vel.y = 3.4; p.onGround = false; }
+        else { p.vel.x += fx * 1.6; p.vel.z += fz * 1.6; }
+        this.sfx.swing();
+        if (cat.swat(p.pos.x, p.pos.z, p.yaw)) this.vr.haptic?.(0.8);
+    }
+    meow() {
+        if (!this.under.cat?.active || this.meowCd > 0) return;
+        this.meowCd = 0.8; this.sfx.meow(0.9); this.onMeow?.();
+    }
+    meowCd = 0;
+    onPounce: (() => void) | null = null;
+    onMeow: (() => void) | null = null;
+
     /** VR: a trigger pull (swung = false) or a real swing of the arm (swung = true). */
     vrPrimary(swung: boolean) {
         if (this.stats.dead || this.sleeping || this.hud.inventoryOpen || this.warp.inLevel || this.invaders.seated || this.under.air?.driving) return;
+        if (this.under.cat?.active) { if (!swung) this.pounce(); return; }
         const held = this.equipped, def = held ? ITEMS[held.id] : null;
         if (def?.tool && def.tool.model !== "rod") {
             if (this.vrCd > 0) return;
