@@ -3,6 +3,7 @@ import {
     Color4,
     DefaultRenderingPipeline,
     Engine,
+    ColorCurves,
     ImageProcessingConfiguration,
     type Mesh,
     Quaternion,
@@ -15,6 +16,7 @@ import {
 import { createSun } from "../environment";
 import { Ocean } from "../island/ocean";
 import { createSky } from "../island/sky";
+import type { SkyMaterial } from "@babylonjs/materials";
 import { Input } from "./core/input";
 import { Chat } from "./net/chat";
 import * as THREE from "three";
@@ -160,6 +162,14 @@ async function main() {
     await nextFrame();
     const SUN = sunDirection();
     const { skybox, env } = await createSky(scene, SUN, q.tier);
+    {
+        // Castaway's clear tropical sky: little haze and glare, so the blue overhead is deep and the clouds stand out against it
+        const sm = skybox.material as SkyMaterial;
+        sm.turbidity = 2.2;
+        sm.rayleigh = 1.6;
+        sm.mieCoefficient = 0.0032;
+        sm.mieDirectionalG = 0.82;
+    }
     const { sun, shadows, sunMesh } = createSun(scene, SUN.clone(), 6.5, q.tier, q.name === "high" ? 90 : 60);
     sun.diffuse = new Color3(1, 0.9, 0.76);
     if (!q.shadows) shadows.getShadowMap()!.refreshRate = 0;
@@ -170,6 +180,11 @@ async function main() {
     ip.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES;
     ip.exposure = 1.0;
     ip.contrast = 1.15;
+    // richer colour: a tropical island should be saturated (the sea, the greens, the sunsets)
+    ip.colorCurvesEnabled = true;
+    const curves = new ColorCurves();
+    curves.globalSaturation = 32;
+    ip.colorCurves = curves;
 
     progress(0.2, "Raising the island…");
     await nextFrame();
@@ -214,7 +229,7 @@ async function main() {
         if (locked) { $("menu").classList.add("hidden"); $("hud").classList.remove("hidden"); }
         else if (input.enabled && !game.uiBlocking && !vrActive()) { $("menu").classList.remove("hidden"); $("hud").classList.add("hidden"); input.enabled = false; inGameMenu(); }
     });
-    const clock = new Atmosphere(scene, sun, skybox, env, ocean, sunMesh);
+    const clock = new Atmosphere(scene, sun, skybox, env, ocean, sunMesh, q.name === "low");
     if (params.has("hour")) clock.hour = parseFloat(params.get("hour")!);
     progress(0.82, "Washing the castaway ashore…");
     await nextFrame();
@@ -414,6 +429,14 @@ async function main() {
         for (const m of shadowCasters) list.push(m as Mesh);
     };
 
+    // ---- the sea mirrors the island, the trees, the clouds, the moon and the stars (medium and high quality; off in a headset)
+    const seaRefl = q.name === "low" ? null : ocean.enableReflection(q.name === "high" ? 0.5 : 0.35, q.name === "high" ? 1 : 2, (m) => {
+        const n = m.name;
+        if (n === "grass" || n.startsWith("sea_") || n === "seaShafts" || n === "seaSnow" || n === "rain" || n === "fallsPool" || n === "falls") return false;
+        const md = m.metadata as { viewModel?: boolean; mirrorSelf?: boolean } | null;
+        return !md?.viewModel && !md?.mirrorSelf;
+    });
+    let seaReflOn = !!seaRefl;
     // ---- post processing (flat screens; the headset gets a lighter chain)
     const pipeline = new DefaultRenderingPipeline("castawayPipeline", true, scene, [camera]);
     pipeline.samples = q.name === "low" ? 1 : 4;
@@ -558,6 +581,15 @@ async function main() {
             }
             dolphins.update(dt, player.pos.x, player.pos.z, player.yaw, game.under.active);
             ocean.bio = BIO.value;
+            if (seaRefl) {
+                // (paused, not drawn at all, where the sea cannot be seen: in a headset, underground, out in the far places)
+                const want = !vrActive() && !game.under.active && Math.abs(player.pos.x) < 2000 && Math.abs(player.pos.z) < 2000;
+                if (want !== seaReflOn) {
+                    seaReflOn = want; ocean.reflectOn = want;
+                    const list = scene.customRenderTargets, i = list.indexOf(seaRefl);
+                    if (want && i < 0) list.push(seaRefl); else if (!want && i >= 0) list.splice(i, 1);
+                }
+            }
             clock.curse = game.druids.curse;
             // waking up on the beach after the wreck: the world swims into focus
             canvas.style.filter = (camp.nightVision && !vrActive() ? "brightness(1.45) contrast(1.08) saturate(0.6) sepia(0.25) hue-rotate(55deg)" : "") + (game.eyeBlur > 0.05 ? ` blur(${game.eyeBlur.toFixed(1)}px)` : "");

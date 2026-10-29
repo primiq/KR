@@ -162,7 +162,7 @@ export class CaveView {
     }
 }
 
-const SKY = new Set(["skyBox", "stars", "moonDisc", "clouds"]);
+const SKY = new Set(["skyBox", "stars", "moonDisc", "clouds", "skyNight", "skyStars", "skyMoon", "skyClouds"]);
 
 function keep(m: AbstractMesh) {
     for (let n: { metadata?: { keepUnderground?: boolean } | null; parent?: unknown; getClassName?: () => string } | null = m; n; n = (n.parent as typeof n) ?? null) {

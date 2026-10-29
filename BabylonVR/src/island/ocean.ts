@@ -1,5 +1,8 @@
 import {
+    type AbstractMesh,
     type BaseTexture,
+    MirrorTexture,
+    Plane,
     Color3,
     Color4,
     Constants,
@@ -123,6 +126,9 @@ const FRAGMENT = `
 precision highp float;
 uniform samplerCube envMap;
 uniform sampler2D ripples;
+uniform sampler2D reflTex;
+uniform float useRefl;
+uniform vec2 screenSize;
 uniform vec4 rippleRect;
 uniform vec2 rippleTexel;
 uniform vec3 cameraPos;
@@ -177,6 +183,14 @@ void main(void) {
     vec3 R = reflect(-V, N);
     R.y = abs(R.y);
     vec3 refl = textureCube(envMap, R).rgb;
+    // the planar reflection (the island, the trees, the clouds, the moon and stars), when it is on: sampled where this point
+    // is on screen, nudged by the waves (less far away, where the ripples are smaller than a pixel)
+    if (useRefl > 0.5 && !under) {
+        vec2 suv = gl_FragCoord.xy / screenSize + N.xz * (0.035 / (1.0 + dist * 0.02));
+        vec2 edge = smoothstep(vec2(0.0), vec2(0.04), suv) * smoothstep(vec2(1.0), vec2(0.96), suv);
+        vec3 pr = texture2D(reflTex, clamp(suv, 0.002, 0.998)).rgb;
+        refl = mix(refl, pr, edge.x * edge.y);
+    }
 
     // Sun glitter: a sharp core plus a broad sheen.
     vec3 L = -sunDir;
@@ -235,6 +249,25 @@ export class Ocean {
     daylight = 1;
     /** 0..1: the sea glows where it breaks (Castaway's bioluminescent nights) */
     bio = 0;
+    /** the planar reflection, when turned on (enableReflection) */
+    private reflection: MirrorTexture | null = null;
+    /** the reflection can be paused (in a headset, underground...) without throwing it away */
+    reflectOn = true;
+
+    /**
+     * Mirror the scene in the sea: a reduced-size HDR render of what `include` picks, reflected about sea level, refreshed
+     * every `refreshRate` frames. Without it the sea reflects only the sky's cube map.
+     */
+    enableReflection(ratio: number, refreshRate: number, include: (m: AbstractMesh) => boolean) {
+        const mt = new MirrorTexture("oceanReflection", { ratio }, this.scene, false, Constants.TEXTURETYPE_HALF_FLOAT);
+        mt.mirrorPlane = new Plane(0, -1, 0, -0.05);
+        mt.refreshRate = refreshRate;
+        mt.renderListPredicate = (m) => m !== this.mesh && m.isEnabled() && include(m);
+        mt.clearColor = new Color4(0, 0, 0, 1);
+        this.reflection = mt;
+        this.scene.customRenderTargets.push(mt);
+        return mt;
+    }
 
     constructor(
         private readonly scene: Scene,
@@ -282,8 +315,8 @@ export class Ocean {
             { vertex: "ocean", fragment: "ocean" },
             {
                 attributes: ["position"],
-                uniforms: ["world", "viewProjection", "time", "waveA", "waveB", "seabedRect", "rippleRect", "rippleTexel", "cameraPos", "sunDir", "sunColor", "shallowColor", "deepColor", "daylight", "bio"],
-                samplers: ["seabed", "ripples", "envMap"],
+                uniforms: ["world", "viewProjection", "time", "waveA", "waveB", "seabedRect", "rippleRect", "rippleTexel", "cameraPos", "sunDir", "sunColor", "shallowColor", "deepColor", "daylight", "bio", "useRefl", "screenSize"],
+                samplers: ["seabed", "ripples", "envMap", "reflTex"],
                 defines: [`#define NUM_WAVES ${n}`],
                 needAlphaBlending: true,
             },
@@ -309,6 +342,12 @@ export class Ocean {
             e.setFloat4("rippleRect", r.origin.x, r.origin.y, r.worldSize, r.enabled ? 1 : 0);
             e.setFloat2("rippleTexel", 1 / r.size, 1 / r.size);
             e.setTexture("ripples", r.texture);
+            const rf = this.reflection;
+            const on = !!rf && this.reflectOn;
+            e.setFloat("useRefl", on ? 1 : 0);
+            e.setTexture("reflTex", rf ?? r.texture);
+            const eng = scene.getEngine();
+            e.setFloat2("screenSize", eng.getRenderWidth(), eng.getRenderHeight());
         });
         this.mesh.material = mat;
 

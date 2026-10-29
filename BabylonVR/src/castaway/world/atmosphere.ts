@@ -2,6 +2,7 @@ import { type BaseTexture, Color3, HemisphericLight, Scene, CubeMapToSphericalPo
 import type { SkyMaterial } from "@babylonjs/materials";
 import { lerp, smoothstep } from "../core/noise";
 import { SPAWN_THETA } from "./island";
+import { SkyDeco } from "./skyDeco";
 
 /**
  * Castaway's day: a 25-minute cycle (nights pass faster), the sun's path turned so it rises over the sea ahead of
@@ -38,6 +39,9 @@ export class Atmosphere {
     private stars: Mesh;
     private moonDisc: Mesh;
     private capturing = false;
+    /** the clouds, the night sky with its stars and the Milky Way, and the moon */
+    readonly deco: SkyDeco;
+    private low = 0;
 
     constructor(
         private readonly scene: Scene,
@@ -46,6 +50,7 @@ export class Atmosphere {
         private readonly env: RenderTargetTexture,
         private readonly ocean: { mesh: Mesh; daylight: number } | null,
         private readonly sunDisc: Mesh | null,
+        lite = false,
     ) {
         this.moon = new DirectionalLight("moon", new Vector3(0, -1, 0), scene);
         this.moon.diffuse = new Color3(0.62, 0.74, 1.0);
@@ -110,7 +115,12 @@ export class Atmosphere {
         this.flashLight.groundColor = new Color3(0.3, 0.32, 0.4);
         this.flashLight.specular = Color3.Black();
         this.flashLight.setEnabled(false);
+        // (the old point stars and flat moon disc stay built but hidden: SkyDeco draws the night sky now)
+        this.stars.setEnabled(false);
+        this.moonDisc.setEnabled(false);
+        this.deco = new SkyDeco(scene, lite);
         this.apply(true);
+        this.deco.update(0, this.hour, this.sunDir, this.day, this.low, this.overcast);
     }
 
     addHours(h: number) { this.hour = (this.hour + h + 24) % 24; this.apply(true); }
@@ -119,6 +129,7 @@ export class Atmosphere {
         const night = this.hour >= 19.5 || this.hour < 5.5;
         this.hour = (this.hour + (dt * 24 * (night ? 1.7 : 0.93)) / this.dayLength) % 24;
         this.apply(false);
+        if (!this.ug) this.deco.update(dt, this.hour, this.sunDir, this.day, this.low, this.overcast);
     }
 
     private apply(force: boolean) {
@@ -128,6 +139,7 @@ export class Atmosphere {
         const sy = this.sunDir.y;
         const day = smoothstep(-0.1, 0.2, sy), low = 1 - smoothstep(0.02, 0.5, sy);
         this.day = day;
+        this.low = low;
         // the light comes from the sun by day and from the moon by night (keeps shadows pointing the right way)
         this.lightDir.copyFrom(this.sunDir).scaleInPlace(-1);
         this.sun.direction.copyFrom(sy > -0.02 ? this.lightDir : this.lightDir.scale(-1));
@@ -140,10 +152,7 @@ export class Atmosphere {
         this.moon.setEnabled(this.moon.intensity > 0.01);
         this.scene.environmentIntensity = lerp(0.12, 1, day);
         const night = 1 - smoothstep(-0.2, 0.05, sy);
-        this.stars.visibility = night;
-        this.stars.setEnabled(night > 0.01);
-        this.moonDisc.position = this.sunDir.scale(-120);
-        this.moonDisc.setEnabled(my > -0.05);
+        void night;
         const sm = this.sky.material as SkyMaterial;
         sm.sunPosition = this.sunDir.scale(100);
         if (this.sunDisc) {
