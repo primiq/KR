@@ -30,9 +30,9 @@ Everything that renders, animates or simulates is rebuilt on Babylon:
 | 5 | Crafting, stations (workbench, campfire, furnace, bed, box) and grid building | done |
 | 6 | Multiplayer: PeerJS transport, session, world sync, avatars, chat, pings, host migration | done |
 | 7 | Saving and loading worlds | done |
-| 8 | Survival loop: vitals, day/night, death, sleep | in progress (day/night, vitals, death and sleep work) |
+| 8 | Survival loop: vitals, day/night, death, sleep | done |
 | 9 | VR-first controls and menus (wrist hotbar, panels, arm-swing hits, hand-held tools) | in progress (controls, held tools, arm swings, wrist HUD, bag/craft panel) |
-| 10 | Wildlife, fishing, cooking and map | |
+| 10 | Wildlife, fishing, cooking and map | done |
 | 11 | Characters: player models, customisation, procedural animation | |
 | 12 | World content: caves, airstrip, cars, balloons, tower, cat house, hide-and-seek, tiles, campaign, narrator, Keith Avenue, paintings, weather, ships | |
 | 13 | Audio, polish and performance pass | |

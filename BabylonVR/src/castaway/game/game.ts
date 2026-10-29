@@ -14,6 +14,12 @@ import { type HitFx, Resources, type Target } from "./resources";
 import { Stats } from "./survival";
 import { type PlaceAim, STRUCT_NAME, type Structure, StructureManager } from "./structures";
 import { ViewModel } from "./viewmodel";
+import { Fishing } from "./fishing";
+import { type Animal, Fauna, type FaunaTarget } from "./fauna";
+import * as THREE from "three";
+import { ThreeMirror } from "../render/mirror";
+import { PBRMaterial, Color3 } from "@babylonjs/core";
+import { MapView, type MapMarkers } from "../ui/map";
 
 export interface GameOpts {
     scene: Scene;
@@ -45,12 +51,24 @@ export class Game {
     readonly player: Player;
     /** armor worn: head, chest, legs */
     readonly worn = new Inventory(3, 0);
+    readonly fishing: Fishing;
+    readonly fauna: Fauna;
+    private faunaMirror: ThreeMirror;
+    readonly map: MapView;
+    private fishPrompt: string | null = null;
+    private deathMark: { x: number; z: number } | null = null;
+    /** multiplayer: friends and pings for the map (set by net/sync) */
+    mapExtras: { friends?: () => { x: number; z: number; name: string; color: string }[]; pings?: () => { x: number; z: number; name: string; color: string; age: number }[] } = {};
     /** VR: aim comes from the hand, not the head; the VR rig fills this in every frame */
     readonly vr = { active: false, eye: new Vector3(), dir: new Vector3(0, 0, -1), haptic: null as null | ((strength: number) => void) };
     /** multiplayer glue (set by net/sync) */
     netId = 0;
     net: {
         hitPlayer?: (id: number, dmg: number) => void;
+        hitAnimal?: (idx: number, dmg: number, px: number, pz: number) => void;
+        hurtRemote?: (target: number, dmg: number, fx: number, fz: number, by: string) => void;
+        /** everyone the animals might go after (multiplayer host) */
+        targets?: () => FaunaTarget[];
         rayPlayer?: (eye: Vector3, dir: Vector3, reach: number) => { id: number; name: string; dist: number } | null;
         inUse?: (s: Structure) => string | null;
         slept?: () => void;
@@ -92,7 +110,7 @@ export class Game {
     get armorCode() { let c = 0; for (const s of this.worn.slots) c = c * 10 + (s ? ITEMS[s.id].armor?.tier ?? 0 : 0); return c; }
     get equipped() { return this.inv.slots[this.hud.selected]; }
     get equippedDef() { const e = this.equipped; return e ? ITEMS[e.id] : null; }
-    get uiBlocking() { return this.hud.inventoryOpen || this.stats.dead || this.sleeping; }
+    get uiBlocking() { return this.hud.inventoryOpen || this.map.open || this.stats.dead || this.sleeping; }
     get isSleeping() { return this.sleeping; }
     get openStruct() { return this.openS; }
     get bedNid() { return this.hasBed ? this.bed!.nid : null; }
@@ -125,6 +143,43 @@ export class Game {
             resolve: (x, z, r, feetY, out) => this.building.resolve(x, z, r, feetY, out),
         };
         this.view.onHit = () => this.swingHit();
+        {
+            // Castaway's wildlife runs on three.js objects; ThreeMirror draws them with Babylon
+            const holder = new THREE.Scene();
+            this.fauna = new Fauna(holder, o.vegetation.colliders, o.shadows, o.spawn, o.shadows ? 1 : 0.7);
+            const fur = new PBRMaterial("fur", o.scene);
+            fur.albedoColor = Color3.White();
+            fur.roughness = 0.86;
+            fur.metallic = 0;
+            this.faunaMirror = new ThreeMirror(o.scene, this.fauna.group, fur, o.shadows);
+            const f = this.fauna;
+            f.onSound = (w, x, z) => {
+                const d = Math.hypot(x - this.player.pos.x, z - this.player.pos.z);
+                this.sfx.animal(w, 1 - d / (w === "gull" ? 90 : w === "roar" || w === "growl" ? 60 : w === "creep" || w === "hiss" ? 34 : w === "sing" ? 42 : 38));
+            };
+            f.onDrop = (id, n, x, y, z) => { this.resources.pickups.spawn(id, n, x, y, z); };
+            f.onBlood = (x, y, z, n) => this.resources.burst(new Vector3(x, y, z), "flesh", n, 3);
+            f.blocked = (x, z, r, y) => this.building.touches(x, z, r, y + 0.3);
+            f.nearFire = (x, z, r) => this.structures.list.some((q) => q.lit && Math.hypot(q.x - x, q.z - z) < r);
+            f.onHurtPlayer = (dmg, fx, fz, by, target) => {
+                if (target !== this.netId) { this.net.hurtRemote?.(target, dmg, fx, fz, by); return; }
+                this.hurtPlayer(dmg, fx, fz, by);
+            };
+        }
+        this.map = new MapView();
+        this.map.onClose = () => this.toggleMap(false);
+        this.fishing = new Fishing(o.scene, () => o.scene.activeCamera!, {
+            message: (m) => this.hud.message(m),
+            splash: (x, y, z, n) => this.resources.burst(new Vector3(x, y, z), "water", n, 3.2),
+            sound: (w) => this.sfx.fish(w),
+            caught: (n) => {
+                this.give("raw_fish", n);
+                this.hud.message(n > 1 ? "You caught two fish!" : "You caught a fish!");
+                this.vr.haptic?.(0.8);
+                this.wearHeld();
+            },
+            prompt: (t) => { this.fishPrompt = t; },
+        });
         this.player.onLand = (v) => {
             if (this.stats.dead) return;
             const d = (v - 14) * 6;
@@ -158,6 +213,7 @@ export class Game {
         this.hud.onChip = () => { if (this.equippedDef?.kind === "plan") this.cyclePiece(1); };
         this.input.onInventory = () => this.toggleInventory();
         this.input.onCraft = () => this.toggleCraft();
+        this.input.onMap = () => this.toggleMap();
         this.input.onMute = () => { this.sfx.setMuted(!this.sfx.muted); this.hud.message(this.sfx.muted ? "Sound off" : "Sound on"); };
         this.stats.onHurt = () => {
             this.hud.flashHurt();
@@ -197,6 +253,15 @@ export class Game {
     }
 
     // ------------------------------------------------------------ menus
+    toggleMap(open = !this.map.open) {
+        if (open && (this.stats.dead || this.sleeping)) return;
+        if (open && this.hud.inventoryOpen) this.setInventory(false);
+        this.map.setOpen(open);
+        this.input.uiOpen = open || this.stats.dead || this.sleeping;
+        if (open) { if (document.pointerLockElement) document.exitPointerLock(); }
+        else if (!this.input.touch && !this.vr.active) this.input.requestLock();
+    }
+
     toggleInventory() {
         if (this.stats.dead || this.sleeping) return;
         this.setInventory(!this.hud.inventoryOpen);
@@ -338,6 +403,8 @@ export class Game {
         this.deathHandled = true;
         this.net.died?.();
         const p = this.player;
+        this.deathMark = { x: p.pos.x, z: p.pos.z };
+        if (this.map.open) this.toggleMap(false);
         let dropped = 0;
         this.inv.slots.forEach((s, i) => {
             if (!s || s.id === "rock") return; // your first rock is yours for good: it never drops
@@ -395,6 +462,25 @@ export class Game {
             this.structures.setHeldLight(torch, this.vr.active ? this.vr.eye : player.eye, dt);
         }
         view.update(dt, Math.hypot(player.vel.x, player.vel.z));
+        this.fishing.update(dt);
+        {
+            const h = this.clock.hour, p = player;
+            this.fauna.update(dt, this.net.targets ? this.net.targets() : [{ id: this.netId, x: p.pos.x, y: p.pos.y, z: p.pos.z, sprint: p.sprinting, yaw: p.yaw }], h < 5.8 || h > 19.5);
+            this.faunaMirror.sync();
+        }
+        if (this.deathMark && !stats.dead && Math.hypot(this.deathMark.x - player.pos.x, this.deathMark.z - player.pos.z) < 5) this.deathMark = null;
+        {
+            const b = this.hasBed ? this.bed! : null;
+            const mk: MapMarkers = {
+                bed: b ? { x: b.x, z: b.z } : null, death: this.deathMark,
+                springs: this.resources.springs.springs,
+                camps: this.structures.list.filter((q) => q !== b && q.kind !== "torch").map((q) => ({ x: q.x, z: q.z, kind: q.kind })),
+                friends: this.mapExtras.friends?.() ?? [], pings: this.mapExtras.pings?.() ?? [],
+            };
+            this.map.update(player.pos.x, player.pos.z, player.yaw, mk);
+        }
+        if (this.fishing.active && (stats.dead || this.sleeping || hud.inventoryOpen || this.equippedDef?.tool?.model !== "rod"
+            || Math.hypot(this.fishing.distanceFrom.x - player.pos.x, this.fishing.distanceFrom.z - player.pos.z) > 26)) this.fishing.cancel(stats.dead || this.sleeping);
         this.drinking = false;
 
         // footsteps, landings and splashes
@@ -563,12 +649,20 @@ export class Game {
             this.runHold(dt, s, () => this.openStructure(s), () => this.pickupStructure(s));
         } else {
             this.runHold(dt, null, () => {}, () => {});
-            this.updatePrompt(t, def);
+            const an = this.fauna.raycast(eye, dir, 4.2, this.assist);
+            const click = `<b>${this.vr.active ? "Swing" : this.input.touch ? "HIT" : "Click"}</b>`;
+            if (this.fishPrompt && def?.tool?.model === "rod") hud.setPrompt(this.fishPrompt, "", true);
+            else if (an && (!t || an.dist < t.dist)) {
+                const a = an.a, hostile = a.kind === "boar" && a.state === "chase";
+                hud.setPrompt(`${a.def.name}  ${Math.max(1, Math.ceil(a.hp))}/${a.def.hp}`, def?.tool && an.dist <= def.tool.reach ? `${click} attack` : an.dist > (def?.tool?.reach ?? 0) ? "Move closer" : "", hostile);
+            } else this.updatePrompt(t, def);
         }
 
         // primary action: swing a tool, or eat held food
         if (input.attackQueued || input.attackHeld) {
-            if (def?.tool && !view.swinging) { view.swing(); this.sfx.swing(); }
+            if (def?.tool?.model === "rod") {
+                if (input.attackQueued && !view.swinging && this.fishing.click(eye, dir)) view.swing();
+            } else if (def?.tool && !view.swinging) { view.swing(); this.sfx.swing(); }
             else if (def?.kind === "food" && this.eatCd <= 0 && input.attackQueued) { this.eatCd = 0.9; this.eatSlot(hud.selected); }
             input.attackQueued = false;
         }
@@ -732,8 +826,9 @@ export class Game {
         }
         if (def.tool.model === "rod") return;
         const t = this.resources.findTarget(eye, this.dir, def.tool.reach, this.assist);
+        const an = this.fauna.raycast(eye, this.dir, def.tool.reach, this.assist);
         const pl = this.net.rayPlayer?.(eye, this.dir, def.tool.reach) ?? null;
-        if (pl && (!t || t.type !== "node" || pl.dist < t.dist)) {
+        if (pl && (!an || pl.dist < an.dist) && (!t || t.type !== "node" || pl.dist < t.dist)) {
             this.net.hitPlayer?.(pl.id, def.tool.dmg * (0.85 + Math.random() * 0.3));
             this.sfx.thwack();
             player.shake(0.35);
@@ -742,6 +837,7 @@ export class Game {
             this.wearHeld();
             return;
         }
+        if (an && (!t || t.type !== "node" || an.dist < t.dist)) { this.hitAnimal(an.a, def.tool.dmg); return; }
         if (!t) { this.sfx.hit("leaf"); return; }
         this.vr.haptic?.(0.55);
         if (t.type !== "node" || t.node.gather === "berries") { this.sfx.hit("leaf"); return; }
@@ -771,6 +867,24 @@ export class Game {
         this.wearHeld();
     }
 
+    private hitAnimal(a: Animal, dmg: number) {
+        const p = this.player;
+        if (this.fauna.remote) { // the host owns the animals
+            this.net.hitAnimal?.(this.fauna.indexOf(a), dmg * (0.85 + Math.random() * 0.3), p.pos.x, p.pos.z);
+            this.fauna.hurtFx(a);
+            this.sfx.thwack();
+            p.shake(0.35);
+            this.wearHeld();
+            return;
+        }
+        const killed = this.fauna.damage(a, dmg * (0.85 + Math.random() * 0.3), p.pos.x, p.pos.z);
+        this.sfx.thwack();
+        this.vr.haptic?.(0.8);
+        p.shake(0.35);
+        if (killed) this.hud.message(`${a.def.name} down. Pick up the meat${a.def.extra ? " and hide" : ""}.`);
+        this.wearHeld();
+    }
+
     private wearHeld() {
         const e = this.equipped;
         if (!e || e.dur === undefined) return;
@@ -779,6 +893,7 @@ export class Game {
             const left = this.equipped;
             this.hud.message(left && left.id === e.id ? `One ${name.toLowerCase()} crumbled (${left.count} left)` : `Your ${name} broke!`);
             this.sfx.tool_break();
+            this.fishing.cancel(true);
         } else if (e.dur === 10 || e.dur === 3) this.hud.message(`Your ${name} is wearing out`);
     }
 }

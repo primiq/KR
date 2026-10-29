@@ -35,7 +35,7 @@
       <button id="quit-menu" class="hidden ghost-btn">Save &amp; back to main menu</button>
       <div class="help" id="help-desktop">
         <b>WASD</b> move &nbsp; <b>Shift</b> sprint &nbsp; <b>Space</b> jump &nbsp; <b>Mouse</b> look<br />
-        <b>Click</b> use tool / place &nbsp; <b>E</b> use (hold: pick up) &nbsp; <b>1-6</b> hotbar &nbsp; <b>Tab</b> bag &nbsp; <b>C</b> craft<br /><b>Q</b> next piece &nbsp; <b>R</b> rotate &nbsp;<b>T</b> / <b>Y</b> time of day &nbsp; <b>N</b> mute &nbsp; <b>F</b> fly (debug) &nbsp; <b>Esc</b> menu
+        <b>Click</b> use tool / place &nbsp; <b>E</b> use (hold: pick up) &nbsp; <b>1-6</b> hotbar &nbsp; <b>Tab</b> bag &nbsp; <b>C</b> craft<br /><b>Q</b> next piece &nbsp; <b>R</b> rotate &nbsp;<b>T</b> / <b>Y</b> time of day &nbsp; <b>M</b> map &nbsp; <b>N</b> mute &nbsp; <b>F</b> fly (debug) &nbsp; <b>Esc</b> menu
       </div>
       <div class="help" id="help-touch">Left stick: move &nbsp; Drag right side: look<br />HIT swings your tool or eats &nbsp; USE picks up and drinks</div>
       <div class="row">
@@ -121,7 +121,24 @@
     </div>
     <button id="btn-bag" aria-label="Inventory"><svg viewBox="0 0 24 24"><path d="M7 8V6a5 5 0 0 1 10 0v2h2l1 13H4L5 8zm2 0h6V6a3 3 0 0 0-6 0z"/></svg></button>
     
+    <button id="btn-map" aria-label="Map"><svg viewBox="0 0 24 24"><path d="M9 3 3 5.5v15L9 18l6 3 6-2.5v-15L15 6zM10 5.4l4 2v11.2l-4-2z"/></svg></button>
     <button id="btn-menu" aria-label="Menu">☰</button>
+  </div>
+
+  <div id="map" class="hidden" role="dialog" aria-label="Map">
+    <div class="map-card">
+      <header>
+        <b>Island map</b>
+        <span class="map-tools">
+          <button id="map-zoom-out" type="button" aria-label="Zoom out">−</button>
+          <button id="map-zoom-in" type="button" aria-label="Zoom in">+</button>
+          <button id="map-center" type="button" aria-label="Centre on me">⌖</button>
+          <button id="map-close" type="button" aria-label="Close">✕</button>
+        </span>
+      </header>
+      <canvas id="map-canvas"></canvas>
+      <footer><i class="lg you"></i>You <i class="lg bed"></i>Bed <i class="lg spring"></i>Spring <i class="lg camp"></i>Camp <i class="lg dead"></i>Where you died<span class="note">Explore to uncover the map. Drag to pan.</span></footer>
+    </div>
   </div>
 
   <div id="inventory" class="hidden" role="dialog" aria-label="Inventory">

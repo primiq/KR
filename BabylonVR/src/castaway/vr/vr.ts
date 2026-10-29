@@ -215,6 +215,8 @@ export class CastawayVR {
             const ptr = R.src.pointer;
             game.vr.eye.copyFrom(ptr.absolutePosition);
             ptr.getDirectionToRef(Vector3.Forward(true), game.vr.dir);
+            // a rod's line runs from its tip, 1.4 m out along the hand
+            game.fishing.tipOverride = id && ITEMS[id].tool?.model === "rod" ? ptr.absolutePosition.add(game.vr.dir.scale(1.4)) : null;
             // hand speed relative to the head (so walking does not count as swinging)
             const rel = grip.absolutePosition.subtract(cam.position);
             if (R.prev) {

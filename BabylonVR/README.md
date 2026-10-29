@@ -277,6 +277,10 @@ come from Castaway. Rendering, materials, the ocean and the VR controls are rebu
   cook and smelt; storage boxes hold your stuff.
 - **Building:** a 3 m grid with foundations on stilts, walls, doorways, opening windows, floors,
   stairs and joined pools, plus upgrading to stone.
+- **Wildlife, fishing and the map:** crabs, boars and jaguars are Castaway's procedurally rigged
+  animals and their AI, with meat and hides to collect. You can cast a rod for fish, cook on a
+  campfire, and use the explored island map (M).
+- **Day and night:** a 25-minute day with a moving sun, stars and moon. Sleep in a bed at night.
 - **Multiplayer:** host a room and share the 5-letter code. It is peer to peer over WebRTC
   (PeerJS), with host migration when the host leaves.
 - **Desktop and touch:** controls as in Castaway.

@@ -2,6 +2,7 @@
 // builds / applies the join snapshot and drives the remote avatars. Ported from Castaway (same event keys).
 import { type Scene, Vector3 } from "@babylonjs/core";
 import type { Game } from "../game/game";
+import type { FaunaTarget } from "../game/fauna";
 import type { Structure } from "../game/structures";
 import { heightAt } from "../world/island";
 import { Avatars, playerColor } from "./avatars";
@@ -22,6 +23,8 @@ export class WorldSync {
     private users = new Map<string, number>();
     /** host: player id -> when they went to bed */
     private votes = new Map<number, number>();
+    private orig: { sound: Game["fauna"]["onSound"]; blood: Game["fauna"]["onBlood"]; kill: Game["fauna"]["onKill"] } | null = null;
+    private lastHitter = 0;
 
     constructor(
         private game: Game,
@@ -53,6 +56,23 @@ export class WorldSync {
         game.netId = id;
         game.net.hitPlayer = (to, dmg) => session.sendEvent({ k: "ph", to, d: +dmg.toFixed(1), x: +game.player.pos.x.toFixed(1), z: +game.player.pos.z.toFixed(1) });
         game.net.rayPlayer = (eye, dir, reach) => this.rayPlayer(eye, dir, reach);
+        // ---- wildlife: the host simulates, clients mirror
+        const fauna = game.fauna;
+        if (!session.isHost) fauna.remote = true;
+        game.net.targets = () => this.targets();
+        game.net.hitAnimal = (i, dmg, px, pz) => session.sendEvent({ k: "ah", i, d: +dmg.toFixed(1), x: +px.toFixed(1), z: +pz.toFixed(1) });
+        game.net.hurtRemote = (to, dmg, fx, fz, by) => session.sendEvent({ k: "hurt", to, d: dmg, x: +fx.toFixed(1), z: +fz.toFixed(1), by });
+        if (session.isHost) {
+            const sound = fauna.onSound, blood = fauna.onBlood;
+            this.orig = { sound, blood, kill: fauna.onKill };
+            fauna.onSound = (w, x, z) => { sound?.(w, x, z); session.sendEvent({ k: "as", w, x: +x.toFixed(1), z: +z.toFixed(1) }); };
+            fauna.onBlood = (x, y, z, n) => { blood?.(x, y, z, n); session.sendEvent({ k: "ab", x: +x.toFixed(1), y: +y.toFixed(1), z: +z.toFixed(1), n }); };
+            fauna.onKill = (a) => session.sendEvent({ k: "ak", i: fauna.indexOf(a), by: this.lastHitter, nm: a.def.name });
+            session.onFast = () => {
+                const near = (x: number, z: number) => this.targets().some((t) => Math.hypot(t.x - x, t.z - z) < 135);
+                session.sendEvent({ k: "an", r: fauna.exportState(near) });
+            };
+        }
 
         // ---- remote events -> world
         session.onEvent = (from, e) => this.apply(from, e);
@@ -84,6 +104,12 @@ export class WorldSync {
         // ---- sleeping: morning comes when enough players have slept
         game.net.slept = () => { if (session.isHost) this.vote(0); else session.sendEvent({ k: "zz" }); };
         game.net.died = () => session.sendEvent({ k: "dd" });
+        game.mapExtras.friends = () => this.avatars.positions.map((a) => ({ x: a.x, z: a.z, name: a.name, color: playerColor(a.id) }));
+        game.mapExtras.pings = () => {
+            const t = performance.now();
+            this.pings = this.pings.filter((p) => t - p.t < 20000);
+            return this.pings.map((p) => ({ x: p.x, z: p.z, name: p.name, color: p.color, age: (t - p.t) / 1000 }));
+        };
         this.avatars.onStep = (x, y, z) => {
             const d = Math.hypot(x - game.player.pos.x, z - game.player.pos.z);
             if (d > 30) return;
@@ -102,6 +128,11 @@ export class WorldSync {
         structures.onPlace = structures.onRemove = null;
         this.game.netId = 0;
         this.game.net = {};
+        this.game.mapExtras = {};
+        const f = this.game.fauna;
+        if (f.remote) f.promote();
+        if (this.orig) { f.onSound = this.orig.sound; f.onBlood = this.orig.blood; f.onKill = this.orig.kill; this.orig = null; }
+        this.session.onFast = null;
         resources.autoRespawn = true;
         resources.others = () => [];
         resources.onRespawn = null;
@@ -166,6 +197,23 @@ export class WorldSync {
             case "sr": { const s = g.structures.list.find((q) => q.nid === e.n); if (s && g.openStruct !== s) g.structures.remove(s, true); break; }
             case "ss": this.applyStation(e); break;
             case "sa": for (const row of e.list) this.applyStation(row); break;
+            case "an": if (!this.session.isHost) g.fauna.importState(e.r); break;
+            case "ah": {
+                const a = this.session.isHost ? g.fauna.animals[e.i] : undefined;
+                if (a && a.state !== "dead") { this.lastHitter = from; g.fauna.damage(a, Math.min(150, e.d), e.x, e.z); }
+                break;
+            }
+            case "as": if (!this.session.isHost) g.fauna.onSound?.(e.w, e.x, e.z); break;
+            case "ab": {
+                if (this.session.isHost) break;
+                r.burst(new Vector3(e.x, e.y, e.z), "flesh", e.n);
+                let best: (typeof g.fauna.animals)[number] | null = null, bd = 2.5;
+                for (const a of g.fauna.animals) { const d = Math.hypot(a.x - e.x, a.z - e.z); if (d < bd) { bd = d; best = a; } }
+                if (best) g.fauna.hurtFx(best);
+                break;
+            }
+            case "ak": if (e.by === this.session.myId && !this.session.isHost) g.hud.message(`${e.nm} down. Pick up the meat.`); break;
+            case "hurt": if (e.to === this.session.myId) g.hurtPlayer(e.d, e.x, e.z, e.by); break;
             case "ph": if (e.to === this.session.myId && this.session.pvp) g.hurtPlayer(e.d, e.x, e.z, this.session.players.get(from)?.name ?? "Someone"); break;
             case "chat": {
                 const name = this.session.players.get(from)?.name ?? "?";
@@ -226,6 +274,19 @@ export class WorldSync {
         const st = this.stationState(open);
         const key = JSON.stringify([st.f, st.i]);
         if (key !== this.lastSent) { this.lastSent = key; this.session.sendEvent({ k: "ss", ...st }); }
+    }
+
+    /** Everyone the animals might go after, local player first. */
+    private targets(): FaunaTarget[] {
+        const p = this.game.player;
+        const out: FaunaTarget[] = [{ id: this.session.myId, x: p.pos.x, y: p.pos.y, z: p.pos.z, sprint: p.sprinting, yaw: p.yaw }];
+        if (this.session.isHost) {
+            for (const [id, st] of this.session.states) {
+                if (id === 0 || st.flags & 4) continue;
+                out.push({ id, x: st.x, y: st.y, z: st.z, sprint: (st.flags & 1) !== 0, yaw: st.yaw });
+            }
+        }
+        return out;
     }
 
     private rayPlayer(eye: Vector3, dir: Vector3, reach: number): { id: number; name: string; dist: number } | null {
