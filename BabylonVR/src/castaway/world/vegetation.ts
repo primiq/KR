@@ -7,6 +7,7 @@ import type { ResNode } from "../game/nodes";
 import { meshFromThree } from "../render/geometry";
 import { Inst } from "../render/inst";
 import { foliageMaterial, rockMaterial } from "../render/materials";
+import { GrassLodPlugin } from "../render/grassLod";
 import { hash3 } from "./geo";
 import { heightAt, inCut, riverDist, rockiness, slopeAt } from "./island";
 import { buildBush, buildDryFrond, buildGrassTuft, buildJungleTree, buildPalm, buildStump } from "./plants";
@@ -167,7 +168,6 @@ export class Vegetation {
     readonly colliders = new ColliderGrid();
     private grassNoise = new Noise2D(77);
     private tiers: { mesh: Inst; cap: number; cell: number; r0: number; r1: number; seed: number; at: { x: number; z: number }; step: number; memo?: GrassMemo }[] = [];
-    private grassR = 1;
     readonly nodes: ResNode[] = [];
     readonly palmPlacements: Placement[] = [];
     readonly perches: { x: number; y: number; z: number; node: ResNode; palm: boolean }[] = [];
@@ -532,7 +532,6 @@ export class Vegetation {
         }
 
         // ---- grass: three rings round the player, each thinning into the next
-        const grassMat = foliageMaterial(scene, "grass", 0.5, true, 0.35);
         const R = q.name === "high" ? [16, 40, 70] : q.name === "medium" ? [12, 30, 50] : [10, 22, 36];
         const C = q.name === "high" ? [0.55, 1.1, 2.0] : q.name === "medium" ? [0.7, 1.4, 2.4] : [0.85, 1.7, 2.8];
         const spec = [
@@ -540,10 +539,13 @@ export class Vegetation {
             { r0: R[0], r1: R[1], cell: C[1], seed: 1, step: 6, far: true },
             { r0: R[1], r1: R[2], cell: C[2], seed: 2, step: 10, far: true },
         ];
-        this.grassR = R[2];
         for (const t of spec) {
-            const inner = t.r0 * 0.65;
-            const cap = Math.min(Math.ceil((Math.PI * (t.r1 ** 2 - inner ** 2)) / t.cell ** 2), 30000);
+            // (the ring is rebuilt every `step` metres: it holds every tuft that can come into it before the next rebuild)
+            const inner = Math.max(0, t.r0 * 0.65 - t.step), outer = t.r1 + t.step;
+            const cap = Math.min(Math.ceil((Math.PI * (outer ** 2 - inner ** 2)) / t.cell ** 2), 40000);
+            // each ring its own material: its size and fade are worked out on the GPU from the real camera distance
+            const grassMat = foliageMaterial(scene, `grass${t.seed}`, 0.5, true, 0.35);
+            if (!grassMat.pluginManager?.getPlugin("GrassLod")) new GrassLodPlugin(grassMat, t.r0, t.r1, R[2]);
             const mesh = new Inst("grass", buildGrassTuft(t.far), grassMat, cap, scene);
             mesh.count = 0;
             mesh.mesh.alwaysSelectAsActiveMesh = true;
@@ -609,11 +611,11 @@ export class Vegetation {
         t.at.x = px;
         t.at.z = pz;
         const { cell, r0, r1, seed } = t;
-        const Rf = this.grassR, inner = r0 * 0.65;
+        const inner = Math.max(0, r0 * 0.65 - t.step), outer = r1 + t.step;
         const arr = t.mesh.array;
         let n = 0;
-        const i0 = Math.floor((px - r1) / cell), i1 = Math.floor((px + r1) / cell);
-        const j0 = Math.floor((pz - r1) / cell), j1 = Math.floor((pz + r1) / cell);
+        const i0 = Math.floor((px - outer) / cell), i1 = Math.floor((px + outer) / cell);
+        const j0 = Math.floor((pz - outer) / cell), j1 = Math.floor((pz + outer) / cell);
         const o1 = seed * 1.7;
         let memo = t.memo;
         if (!memo || memo.idx.size > 160000) memo = t.memo = { idx: new Map(), data: new Float64Array(5 * 4096), n: 0 };
@@ -643,12 +645,10 @@ export class Vegetation {
                 if (at < 0) continue;
                 const D = memo.data, b = at * 5, x = D[b], z = D[b + 1], h = D[b + 2], r3 = D[b + 3], r5 = D[b + 4];
                 const d = Math.hypot(x - px, z - pz);
-                if (d > r1 || d < inner) continue;
-                const fadeIn = r0 > 0 ? sstep(r0 * 0.65, r0, d) : 1;
-                const fadeOut = r1 < Rf ? 1 - sstep(r1 * 0.65, r1, d) : 1 - sstep(r1 * 0.8, r1, d);
-                const share = fadeIn * fadeOut;
-                if (share <= 0 || r5 > share) continue;
-                const sc = (0.7 + 0.7 * r3) * (1 + 1.6 * sstep(8, Rf, d));
+                if (d > outer || d < inner) continue;
+                // (how big it is with distance, and whether it shows in this ring yet: render/grassLod.ts, per frame)
+                void r5;
+                const sc = 0.7 + 0.7 * r3;
                 const rot = r3 * Math.PI * 2, c = Math.cos(rot) * sc, s = Math.sin(rot) * sc;
                 const o = n * 16;
                 arr[o] = c; arr[o + 1] = 0; arr[o + 2] = -s; arr[o + 3] = 0;

@@ -216,6 +216,8 @@ async function main() {
     });
     const clock = new Atmosphere(scene, sun, skybox, env, ocean, sunMesh);
     if (params.has("hour")) clock.hour = parseFloat(params.get("hour")!);
+    progress(0.82, "Washing the castaway ashore…");
+    await nextFrame();
     const game = new Game({ scene, camera, player, vegetation, input, spawn, springSpots, shadows: q.shadows, clock });
     // ruined huts and shipwrecks with chests, and the caves under the island
     const sites = new SurfaceSites(game.ugRoot as unknown as THREE.Scene, sitePlan, vegetation.colliders, q.shadows);
@@ -231,6 +233,8 @@ async function main() {
     if (params.has("nodolphins")) dolphins.enabled = false;
     if (params.has("dolphintest")) { dolphins.wait = 1; dolphins.rate = 0.08; }
     // the secret room behind the odd door in the hut, and the skydive from its cloud door
+    progress(0.85, "Hiding the secret room…");
+    await nextFrame();
     const sky = new SkyRoom(game.natureRoot as unknown as THREE.Scene);
     game.under.sky = sky;
     sky.muted = () => game.sfx.muted;
@@ -266,6 +270,8 @@ async function main() {
         paws.root.visible = on && !vrActive();
     };
     game.under.onCat = catMode;
+    progress(0.87, "Stocking the shop and the museum…");
+    await nextFrame();
     // ---- Banana or Salmon: the narrator and the co-op campaign behind the yellow door in the secret room
     const narrator = new Narrator();
     narrator.ctx = () => game.sfx.context; narrator.duck = (k) => game.sfx.setDuck(k); narrator.muted = () => game.sfx.muted;
@@ -317,6 +323,8 @@ async function main() {
         fpGor.root.visible = sp === "g" && !vrActive();
         vrMode?.setGorilla(sp === "g");
     };
+    progress(0.89, "Tuning the monitors…");
+    await nextFrame();
     // Locations, Locations: the monitor room (the levels themselves come with the baked map data)
     const locs = new LocationsRoom(game.natureRoot as unknown as THREE.Scene); game.under.locs = locs;
     locs.say = (t) => game.hud.message(t);
@@ -367,6 +375,8 @@ async function main() {
     };
     game.onPounce = () => paws.swing();
     game.onMeow = () => { sync?.session.sendEvent({ k: "mw", x: +player.pos.x.toFixed(1), z: +player.pos.z.toFixed(1) }); };
+    progress(0.9, "Waking the cats…");
+    await nextFrame();
     // the island's cats
     const cats = params.has("nocats") ? null : new Cats(game.natureRoot, vegetation.colliders, q.shadows, () => game.fauna.animals);
     if (cats) {
@@ -424,6 +434,8 @@ async function main() {
         ssao.maxZ = 120;
     }
 
+    progress(0.91, "Looking for a headset…");
+    await nextFrame();
     // ---- VR
     let xr: WebXRDefaultExperience | null = null;
     let vrMode: import("./vr/vr").CastawayVR | null = null;
@@ -565,6 +577,20 @@ async function main() {
         syncCasters();
     });
     engine.runRenderLoop(() => scene.render());
+
+    // ---- shaders: the first frames compile hundreds of them (a long freeze with nothing on screen): it happens here instead,
+    //      behind the loading bar, while the render loop draws under it and the bar follows how many meshes are ready
+    {
+        const t0 = performance.now();
+        for (;;) {
+            const ms = scene.meshes.filter((m) => m.isEnabled() && m.isVisible && m.subMeshes?.length && m.material);
+            const ok = ms.filter((m) => m.isReady(true)).length;
+            progress(0.92 + 0.08 * (ok / Math.max(1, ms.length)), `Preparing the island… ${Math.round((100 * ok) / Math.max(1, ms.length))}%`);
+            if (ok >= ms.length * 0.995 || performance.now() - t0 > 45000) break;
+            await new Promise((r) => setTimeout(r, 100));
+        }
+        progress(1, "Ready");
+    }
 
     // ---- saving: the world belongs to the host (or the solo player); each player's character is saved per world
     let wid = newWorldId();
