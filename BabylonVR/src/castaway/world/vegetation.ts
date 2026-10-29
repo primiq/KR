@@ -171,6 +171,9 @@ export class Vegetation {
     readonly nodes: ResNode[] = [];
     readonly palmPlacements: Placement[] = [];
     readonly perches: { x: number; y: number; z: number; node: ResNode; palm: boolean }[] = [];
+    /** planted trees (saplings): a pool of hidden instances and their nodes, added last so the canonical node indices never shift */
+    static readonly PLANT_POOL = 12;
+    readonly plantSlots: { kind: "palm" | "tree"; node: ResNode; used: boolean; set: (x: number, y: number, z: number, rot: number, scale: number) => void; clear: () => void }[] = [];
     private seat: { m: Inst; i: number; mat: THREE.Matrix4; x: number; z: number; g0: number; y0: number; decor: boolean; hidden: boolean }[] = [];
     private cullable: { mesh: Inst; c: THREE.Vector3; r: number; far: boolean; lod: number }[] = [];
     private cullAt = { x: 1e9, z: 1e9 };
@@ -545,6 +548,48 @@ export class Vegetation {
             mesh.count = 0;
             mesh.mesh.alwaysSelectAsActiveMesh = true;
             this.tiers.push({ mesh, cap, cell: t.cell, r0: t.r0, r1: t.r1, seed: t.seed, at: { x: 1e9, z: 1e9 }, step: t.step });
+        }
+
+        // ---- planted trees: a pool of instances (palms, jungle trees), hidden until a sapling is planted
+        for (const [kind, geo, mat, colR, wood] of [["palm", palmGeos[0], palmMat, 0.32, 55], ["tree", treeGeos[0], treeMat, 0.42, 95]] as const) {
+            const n = Vegetation.PLANT_POOL;
+            const mesh = new Inst(`planted_${kind}`, geo, mat, n, scene, shadows);
+            for (let i = 0; i < n; i++) mesh.setMatrixAt(i, ZERO);
+            mesh.instanceMatrix.needsUpdate = true;
+            mesh.mesh.alwaysSelectAsActiveMesh = true;
+            // draw only up to the last slot in use (none at all until somebody plants a tree)
+            const inUse = new Uint8Array(n);
+            const recount = () => { let c = n; while (c > 0 && !inUse[c - 1]) c--; mesh.count = c; };
+            recount();
+            for (let i = 0; i < n; i++) {
+                const ref: InstRef = { mesh, index: i, base: new THREE.Matrix4() };
+                let col: Collider | null = null;
+                const node: ResNode = {
+                    kind, name: kind === "palm" ? "Palm Tree" : "Tree", gather: "wood", pool: this.plantSlots.length,
+                    x: 0, y: 0, z: 0, r: 0.5, offs: [0.9], total: 1, left: 1, depleted: true, respawnAt: Infinity, respawnTime: Infinity,
+                    setDepleted: (d) => { if (d) { hide(ref); if (col) { this.colliders.remove(col); col = null; } } else show(ref, false); },
+                    fall: { geo, mat, base: ref.base },
+                    pose: (ang, ax, az, k) => poser(ref, node.x, node.y, node.z)(ang, ax, az, k),
+                };
+                const slot = {
+                    kind, node, used: false,
+                    set: (x: number, y: number, z: number, rot: number, scale: number) => {
+                        const ratio = node.depleted ? 1 : node.left / node.total;
+                        node.x = x; node.y = y; node.z = z; node.r = Math.max(0.12, 0.55 * scale);
+                        node.offs = [0.9 * scale, 1.8 * scale, 2.7 * scale].filter((_o, k) => k === 0 || scale > 0.5);
+                        node.total = Math.max(4, wood * (0.8 + 0.2 * scale) * scale * scale); node.left = node.total * ratio; node.depleted = false;
+                        dummy.position.set(x, y - 0.1 * scale, z); dummy.rotation.set(0, rot, 0); dummy.scale.setScalar(scale); dummy.updateMatrix();
+                        ref.base.copy(dummy.matrix); mesh.setMatrixAt(i, ref.base); mesh.instanceMatrix.needsUpdate = true;
+                        if (col) this.colliders.remove(col);
+                        col = scale > 0.3 ? { x, z, r: colR * scale } : null;
+                        if (col) this.colliders.add(col);
+                        slot.used = true; inUse[i] = 1; recount();
+                    },
+                    clear: () => { slot.used = false; inUse[i] = 0; recount(); node.depleted = true; node.respawnAt = Infinity; node.setDepleted(true); },
+                };
+                this.plantSlots.push(slot);
+                this.nodes.push(node);
+            }
         }
     }
 

@@ -23,6 +23,7 @@ import { MapView, type MapMarkers } from "../ui/map";
 import { Underground, type UgTarget } from "./underground";
 import { Birds, Flamingos, Footprints, type Walker } from "./nature";
 import { Turtles } from "./turtles";
+import { Saplings } from "./saplings";
 import type { Weather } from "../world/weather";
 import { FISH_WIGGLE, SeaLife } from "../world/sealife";
 import { fishMaterial } from "../render/materials";
@@ -75,6 +76,8 @@ export class Game {
     readonly flowers: Flowers;
     private natureMirror: ThreeMirror;
     private walkers: Walker[] = [];
+    /** saplings people plant, growing into trees */
+    readonly saplings: Saplings;
     /** showers and storms (the host decides; see world/weather). Set by main. */
     weather: Weather | null = null;
     /** schools of fish, and the glowing sea on some nights (the host decides at dusk) */
@@ -202,6 +205,8 @@ export class Game {
             };
         }
         this.turtles = new Turtles(this.natureRoot, o.shadows);
+        this.saplings = new Saplings(o.vegetation, this.resources);
+        this.saplings.onGrow = (p) => this.resources.burst(new Vector3(p.x, p.y + 0.6, p.z), "leaf", 8);
         {
             const q = o.vegetation.q, vr = isProbablyHeadset();
             this.flowers = new Flowers(o.scene, q.name === "low" ? 46 : 60, o.shadows, vr ? 1400 : q.name === "high" ? 3200 : 2400);
@@ -521,6 +526,7 @@ export class Game {
         const { player, stats, input, hud, view } = this;
         this.hurtCd -= dt; this.vrCd -= dt; this.eatCd -= dt; this.seaCd -= dt; this.drinkCd -= dt;
         this.resources.update(dt, player.pos.x, player.pos.z);
+        this.saplings.update(dt);
         this.building.update(dt);
         const ug = this.under;
         this.structures.update(dt, player.pos.x + (ug.active ? 1e6 : 0), player.pos.y, player.pos.z);
@@ -742,6 +748,9 @@ export class Game {
             } else if (def?.flower !== undefined && !t) {
                 const fa = this.flowerAim(eye, dir);
                 hud.setPrompt(def.name, fa.why || `${click} plant it here`, !fa.why);
+            } else if (def?.kind === "seed" && !t) {
+                const sp = this.seedAim(eye, dir);
+                hud.setPrompt("Sapling", sp.why || `${click} plant it here`, !sp.why);
             } else this.updatePrompt(t, def);
         }
 
@@ -757,6 +766,15 @@ export class Game {
                     this.flowers.plant(def.flower, fa.x, fa.y, fa.z);
                     this.inv.takeAt(hud.selected, 1); this.sfx.place(); view.place();
                     this.resources.burst(new Vector3(fa.x, fa.y + 0.05, fa.z), "leaf", 4, 1.2);
+                }
+            }
+            else if (def?.kind === "seed" && input.attackQueued && !ug.active) {
+                const sp = this.seedAim(eye, dir);
+                if (sp.why) { hud.message(sp.why); this.sfx.denied(); }
+                else {
+                    const p = this.saplings.plant(sp.x, sp.y, sp.z);
+                    if (!p) { hud.message("Too many young trees already"); this.sfx.denied(); }
+                    else { this.inv.takeAt(hud.selected, 1); this.sfx.place(); view.place(); this.resources.burst(new Vector3(sp.x, sp.y + 0.1, sp.z), "wood", 6, 2); hud.message("Planted. It will take about a day to grow into a big tree."); }
                 }
             }
             else if (def?.kind === "food" && this.eatCd <= 0 && input.attackQueued) { this.eatCd = 0.9; this.eatSlot(hud.selected); }
@@ -1030,6 +1048,19 @@ export class Game {
             wx.update(dt, this.vr.active ? this.vr.eye : p.eye, local, this.roofed, p.underwater);
             this.sfx.setWeather(local && !p.underwater ? wx.rain : 0, local ? Math.max(0, Math.min(1, (wx.wind - 1.4) / 2.8)) : 0, this.roofed, dt);
         }
+    }
+
+    /** where a sapling would go: the ground along the view ray (natural terrain only) */
+    private seedAim(eye: Vector3, dir: Vector3): { x: number; y: number; z: number; why: string } {
+        let x = 0, y = 0, z = 0, found = false;
+        for (let t = 0.6; t <= 4.4; t += 0.1) {
+            x = eye.x + dir.x * t; y = eye.y + dir.y * t; z = eye.z + dir.z * t;
+            const h = heightAt(x, z);
+            if (y <= h + 0.05) { y = h; found = true; break; }
+        }
+        if (!found) return { x, y, z, why: "Aim at open ground" };
+        if (this.building.ground(x, z, y + 1) > y + 0.25) return { x, y, z, why: "Not on a building" };
+        return { x, y, z, why: this.saplings.check(x, z) };
     }
 
     /** where a flower would go: the ground along the view ray (natural terrain, not on buildings) */

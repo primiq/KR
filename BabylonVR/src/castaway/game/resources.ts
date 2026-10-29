@@ -768,6 +768,9 @@ export class Resources {
     flowers: Flowers | null = null;
     onRespawn: ((n: ResNode) => void) | null = null;
 
+    /** forget a depleted node without bringing it back (a planted tree that was felled leaves its slot free) */
+    release(n: ResNode) { this.depleted.delete(n); }
+
     respawnNode(n: ResNode) {
         if (!n.depleted) return;
         n.depleted = false;

@@ -58,6 +58,7 @@ export class WorldSync {
         game.netId = id;
         game.under.onEvent = (e) => session.sendEvent(e);
         game.flowers.idPrefix = `f${id}-`;
+        game.saplings.onPlant = (p) => session.sendEvent({ k: "pl", s: p.slot, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), r: +p.rot.toFixed(2), a: Math.round(p.age) });
         game.flowers.onPickWild = (i) => session.sendEvent({ k: "fw", i });
         game.flowers.onPlant = (p) => session.sendEvent({ k: "fa", n: p.nid, s: p.k, x: +p.x.toFixed(2), y: +p.y.toFixed(3), z: +p.z.toFixed(2), r: +p.rot.toFixed(2) });
         game.flowers.onUnplant = (p) => session.sendEvent({ k: "fd", n: p.nid });
@@ -147,6 +148,7 @@ export class WorldSync {
         building.onWindow = null;
         structures.onPlace = structures.onRemove = null;
         this.game.under.onEvent = null;
+        this.game.saplings.onPlant = null;
         this.game.flowers.onPickWild = this.game.flowers.onPlant = this.game.flowers.onUnplant = null;
         this.game.netId = 0;
         this.game.net = {};
@@ -261,6 +263,7 @@ export class WorldSync {
             case "fd": g.flowers.unplant(e.n, true); break;
             case "we": if (!this.session.isHost && (e.s === 0 || e.s === 1 || e.s === 2)) g.weather?.setRemote(e.s, Number(e.l) || 0); break;
             case "bi": if (!this.session.isHost) g.bioTonight = !!e.v; break;
+            case "pl": g.saplings.plant(e.x, e.y, e.z, { slot: e.s, rot: e.r, age: e.a, remote: true }); break;
             case "mp": this.addPing(from, this.session.players.get(from)?.name ?? "Someone", playerColor(from), e.x, e.z); break;
         }
     }
