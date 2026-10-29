@@ -24,6 +24,8 @@ export class Atmosphere {
     /** weather (world/weather): 0..1 how grey the sky is, a lightning flash, how wet the ground is */
     overcast = 0;
     flash = 0;
+    /** 0..1: the sky bleeds dark pink while Mario is being summoned (world/druids) */
+    curse = 0;
     wet = 0;
     private lastOvercast = 0;
     private clouds: Mesh;
@@ -170,11 +172,16 @@ export class Atmosphere {
         this.sun.intensity *= 1 - 0.85 * ov;
         this.moon.intensity *= 1 - ov;
         this.scene.environmentIntensity *= 1 - 0.5 * ov;
-        this.clouds.setEnabled(ov > 0.01);
-        if (ov > 0.01) {
+        const cu = this.curse;
+        this.clouds.setEnabled(ov > 0.01 || cu > 0.01);
+        if (ov > 0.01 || cu > 0.01) {
             const g = (0.08 + 0.55 * day) * (1 - 0.35 * ov) + this.flash * 0.9;
-            this.cloudMat.emissiveColor.set(g * 0.92, g * 0.95, g * 1.02);
-            this.cloudMat.alpha = Math.min(0.94, ov * 1.05);
+            // grey cloud, or a cursed dark pink
+            const pr = 0.55 * (0.35 + 0.65 * day), pg = 0.1 * (0.35 + 0.65 * day), pb = 0.32 * (0.35 + 0.65 * day);
+            const k = cu / Math.max(1e-3, cu + ov);
+            this.cloudMat.emissiveColor.set(g * 0.92 * (1 - k) + pr * k, g * 0.95 * (1 - k) + pg * k, g * 1.02 * (1 - k) + pb * k);
+            this.cloudMat.alpha = Math.min(0.94, Math.max(ov * 1.05, cu * 0.8));
+            this.sun.intensity *= 1 - 0.5 * cu;
         }
         this.flashLight.intensity = this.flash * 1.6;
         this.flashLight.setEnabled(this.flash > 0.01);

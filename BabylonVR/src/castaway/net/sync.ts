@@ -76,6 +76,19 @@ export class WorldSync {
         const fauna = game.fauna;
         if (!session.isHost) { fauna.remote = true; game.turtles.remote = true; game.stalkers.remote = true; game.twins.remote = true; }
         game.net.hitStalker = (i, px, pz) => session.sendEvent({ k: "sh", i, x: +px.toFixed(1), z: +pz.toFixed(1) });
+        // the stone circle and Mario: the host runs him; touches and hits come from anybody
+        {
+            const dr = game.druids;
+            dr.remote = !session.isHost;
+            dr.players = () => {
+                const out = [{ id: session.myId, x: game.player.pos.x, y: game.player.pos.y, z: game.player.pos.z }];
+                for (const [pid, st] of session.states) if (pid !== session.myId) out.push({ id: pid, x: st.x, y: st.y, z: st.z });
+                return out.filter((p) => Math.abs(p.x) < 500 && Math.abs(p.z) < 500);
+            };
+            dr.onTouch = (i) => session.sendEvent({ k: "zt", i });
+            dr.onPhase = session.isHost ? (p) => session.sendEvent({ k: "zp", p }) : null;
+            dr.onHit = session.isHost ? null : (d) => session.sendEvent({ k: "zh", d: +d.toFixed(1), x: +game.player.pos.x.toFixed(1), z: +game.player.pos.z.toFixed(1) });
+        }
         // weather, whales and ships: the host decides, the others follow
         game.offshore.remote = !session.isHost;
         if (session.isHost) {
@@ -101,12 +114,14 @@ export class WorldSync {
                 const near = (x: number, z: number) => this.targets().some((t) => Math.hypot(t.x - x, t.z - z) < 135);
                 session.sendEvent({ k: "an", r: fauna.exportState(near) });
                 session.sendEvent({ k: "sk", r: game.stalkers.exportState() });
+                if (game.druids.phase === "alive" || game.druids.phase === "dying") session.sendEvent({ k: "zm", r: game.druids.exportState() });
                 session.sendEvent({ k: "tw", r: game.twins.exportState() });
                 const tu = game.turtles.exportState(); if (tu.length) session.sendEvent({ k: "tu", r: tu });
                 // the weather, for anyone who joined since it started
                 if (++this.slowTick % 40 === 0) {
                     if (game.weather) session.sendEvent({ k: "we", s: game.weather.kind, l: Math.round(game.weather.left) });
                     session.sendEvent({ k: "bi", v: game.bioTonight ? 1 : 0 });
+                    session.sendEvent({ k: "zp", p: game.druids.phase });
                     const sh = game.offshore.shipState; if (sh) session.sendEvent({ k: "sx", a: sh.a, d: sh.d, p: Math.round(sh.p) });
                 }
             };
@@ -179,6 +194,7 @@ export class WorldSync {
         if (this.game.twins.remote) this.game.twins.promote();
         if (this.game.weather) { this.game.weather.remote = false; this.game.weather.onChange = null; }
         this.game.offshore.remote = false; this.game.offshore.onWhale = this.game.offshore.onShip = null;
+        { const dr = this.game.druids; dr.remote = false; dr.onTouch = null; dr.onPhase = null; dr.onHit = null; dr.players = () => [{ id: 0, x: this.game.player.pos.x, y: this.game.player.pos.y, z: this.game.player.pos.z }]; }
         if (this.orig) { f.onSound = this.orig.sound; f.onBlood = this.orig.blood; f.onKill = this.orig.kill; this.orig = null; }
         this.session.onFast = null;
         resources.autoRespawn = true;
@@ -276,7 +292,10 @@ export class WorldSync {
             case "sc": if (this.users.get(e.n) === from) this.users.delete(e.n); break;
             case "hr": if (!this.session.isHost) this.clock.hour = e.h; break;
             case "zz": if (this.session.isHost) this.vote(from); break;
-            case "zm": g.hud.message(e.m); break;
+            case "zm": if (e.m) g.hud.message(e.m); else if (!this.session.isHost) g.druids.importState(e.r); break;
+            case "zt": g.druids.touch(+e.i, from, true); break;
+            case "zp": if (!this.session.isHost && ["idle", "summon", "alive", "dying"].includes(e.p)) g.druids.setPhase(e.p, true); break;
+            case "zh": if (this.session.isHost) g.druids.damage(+e.d || 0, +e.x || 0, +e.z || 0); break;
             case "dd": g.hud.message(`${this.session.players.get(from)?.name ?? "Someone"} died`); break;
             case "lk": { const p = this.session.players.get(from), o = parseOutfit(e.l); if (p && o) p.look = o; break; }
             case "cm": case "cc": case "cd": case "ce": g.under.remote(e); break;

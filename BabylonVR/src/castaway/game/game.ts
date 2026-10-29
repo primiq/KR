@@ -26,6 +26,8 @@ import { Turtles } from "./turtles";
 import { Saplings } from "./saplings";
 import { Stalkers } from "./stalker";
 import { Offshore } from "../world/offshore";
+import { Druids } from "../world/druids";
+import { druidMaterial } from "../world/druidView";
 import { Twins } from "./twins";
 import { type Door, Doors } from "./doors";
 import { type FrameAim, type Painting, Paintings } from "./paintings";
@@ -90,6 +92,8 @@ export class Game {
     readonly twins: Twins;
     /** whales and passing ships far out at sea (the host decides when) */
     readonly offshore: Offshore;
+    /** the stone circle on the hilltop, and Mario */
+    readonly druids: Druids;
     /** doors hung in doorways, and pictures on the walls (with the paint editor) */
     readonly doors: Doors;
     readonly paintings: Paintings;
@@ -229,6 +233,11 @@ export class Game {
         this.stalkers = new Stalkers(this.natureRoot, o.vegetation.colliders);
         this.twins = new Twins(this.natureRoot);
         this.offshore = new Offshore(this.natureRoot);
+        this.druids = new Druids(this.natureRoot, o.vegetation.colliders, o.shadows);
+        this.druids.say = (t) => this.hud.message(t);
+        this.druids.myId = () => this.netId;
+        this.druids.players = () => (this.net.targets?.() ?? [{ id: this.netId, x: this.player.pos.x, y: this.player.pos.y, z: this.player.pos.z }]).filter((p) => Math.abs(p.x) < 500 && Math.abs(p.z) < 500);
+        this.druids.sound = (k, v) => { if (k === "bonk") this.sfx.bonk(); else if (k === "hop") this.sfx.hop(v); else if (k === "poof") this.sfx.poof(v); else if (k === "touch") this.sfx.hum(v); else this.sfx.whoosh(); };
         this.offshore.sound = (k, v) => { if (k === "blow") this.sfx.blow(v); else if (k === "splash") this.sfx.bigSplash(v); else this.sfx.horn(v); };
         this.stalkers.onSound = (w, x, z) => this.fauna.onSound?.(w, x, z);
         this.stalkers.onBlood = (x, y, z, n) => this.fauna.onBlood?.(x, y, z, n);
@@ -257,7 +266,7 @@ export class Game {
         this.natureRoot.add(this.prints.mesh, this.birds.group, this.flamingos.group);
         this.sealife = new SeaLife(this.natureRoot, !o.shadows);
         this.natureMirror = new ThreeMirror(o.scene, this.natureRoot, null, o.shadows, {
-            custom: (m) => (m.name.startsWith("fish") ? fishMaterial(o.scene, FISH_WIGGLE[+m.name.slice(4)] ?? 0.1) : null),
+            custom: (m) => (m.name.startsWith("fish") ? fishMaterial(o.scene, FISH_WIGGLE[+m.name.slice(4)] ?? 0.1) : druidMaterial(o.scene, m)),
         });
         this.birds.sound = (k, v) => { if (k === "chirp") this.sfx.chirp(v); else this.sfx.flutter(v); };
         this.flamingos.sound = (k, v) => { if (k === "honk") this.sfx.honk(v); else this.sfx.flutter(v); };
@@ -812,7 +821,15 @@ export class Game {
         const usePaint = !!pt && (!t || pt.dist < t.dist) && (!st || pt.dist < st.dist) && !useUg;
         this.frameAim = def?.frame && !ug.active && !usePaint ? this.paintings.aim(eye, dir, this.building.findPiece(eye, dir, 3.6)) : null;
         this.paintings.showGhost(this.frameAim);
-        if (useDoor && dt0) {
+        // the standing stones on the hilltop
+        const dz = ug.active ? null : this.druids.target(eye, dir, 3.2);
+        const useStone = !!dz && !useDoor && (!t || dz.dist < t.dist + 0.3) && (!st || dz.dist < st.dist);
+        if (useStone && dz) {
+            const pr = this.druids.prompt(dz.i);
+            hud.setPrompt(pr.name, pr.hint.replace(/^E /, `${this.keyLabel("E")} `), this.druids.phase === "idle");
+            this.runHold(dt, null, () => {}, () => {});
+            if (input.interactQueued && this.druids.phase === "idle") { input.interactQueued = false; this.druids.touch(dz.i); this.vr.haptic?.(0.5); }
+        } else if (useDoor && dt0) {
             const d = dt0.door, clk = `<b>${this.vr.active ? "Trigger" : this.input.touch ? "HIT" : "Click"}</b>`;
             if (d) {
                 hud.setPrompt("Door", `${this.keyLabel("E")} ${d.open ? "close" : "open"} &nbsp;·&nbsp; hold ${this.keyLabel("E")} take it out`, true);
@@ -894,7 +911,7 @@ export class Game {
 
         // interact (pick up / forage / drink)
         if (useUg && ugT && input.interactQueued) { ug.interact(ugT); input.interactQueued = false; }
-        if (!useStruct && !useWin && !useUg && !useDoor && !usePaint && (input.interactQueued || input.interactHeld)) this.interact(t, dt, input.interactQueued);
+        if (!useStruct && !useWin && !useUg && !useDoor && !usePaint && !useStone && (input.interactQueued || input.interactHeld)) this.interact(t, dt, input.interactQueued);
         input.interactQueued = false;
     }
 
@@ -1084,6 +1101,13 @@ export class Game {
         }
         const sk = ug.active ? null : this.stalkers.raycast(eye, this.dir, def.tool.reach, this.assist);
         if (sk && (!an || sk.dist < an.dist) && (!t || t.type !== "node" || sk.dist < t.dist)) { this.hitStalker(sk.s); return; }
+        const md = ug.active ? null : this.druids.raycast(eye, this.dir, def.tool.reach);
+        if (md !== null && (!an || md < an.dist) && (!t || t.type !== "node" || md < t.dist)) {
+            this.druids.hit(def.tool.dmg, player.pos.x, player.pos.z);
+            player.shake(0.3); this.resources.burst(eye.add(this.dir.scale(md)), "leaf", 8); this.vr.haptic?.(0.8);
+            this.wearHeld();
+            return;
+        }
         if (an && (!t || t.type !== "node" || an.dist < t.dist)) { this.hitAnimal(an.a, def.tool.dmg); return; }
         if (!t) { this.sfx.hit("leaf"); return; }
         this.vr.haptic?.(0.55);
@@ -1161,6 +1185,7 @@ export class Game {
         if (wx) {
             const local = onIsland && !p.cave;
             wx.update(dt, this.vr.active ? this.vr.eye : p.eye, local, this.roofed, p.underwater);
+            this.druids.update(dt, me, onIsland && !p.cave);
             this.offshore.tick(hour, wx.kind === 0);
             this.offshore.update(dt, me, performance.now() / 1000, wx.rough, 1 - (this.clock.day ?? 1), !onIsland || !!p.cave);
             this.sfx.setWeather(local && !p.underwater ? wx.rain : 0, local ? Math.max(0, Math.min(1, (wx.wind - 1.4) / 2.8)) : 0, this.roofed, dt);

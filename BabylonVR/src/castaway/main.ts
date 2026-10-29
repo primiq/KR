@@ -248,6 +248,7 @@ async function main() {
             if (cats && !game.under.active) cats.update(dt, player.pos.x, player.pos.z, player.pos.y);
             dolphins.update(dt, player.pos.x, player.pos.z, player.yaw, game.under.active);
             ocean.bio = BIO.value;
+            clock.curse = game.druids.curse;
             Wind.push[0].set(player.pos.x, player.pos.y, player.pos.z, 0.9);
         } else {
             // the menu: a slow look along the beach

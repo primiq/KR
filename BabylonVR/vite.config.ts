@@ -10,6 +10,8 @@ export default defineConfig(({ mode }) => ({
     // ez-tree's bark/leaf textures, grass, flowers and rocks (MIT package; textures CC0).
     resolve: { alias: { "@eztree": fileURLToPath(new URL("./node_modules/@dgreenheck/ez-tree/src", import.meta.url)) } },
     server: { host: true },
+    // Castaway's 3D models (Mario) are bundled like its sound files (imported with ?inline)
+    assetsInclude: ["**/*.glb"],
     optimizeDeps: { exclude: ["@babylonjs/havok"] },
     // Keep bundled code apart from public/assets (Sponza + HDR fetched by `npm run fetch-assets`).
     build: {

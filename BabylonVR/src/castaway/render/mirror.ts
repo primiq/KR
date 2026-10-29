@@ -1,4 +1,4 @@
-import { Color3, Constants, DynamicTexture, type Material, Mesh, MeshBuilder, PBRMaterial, type Scene, StandardMaterial } from "@babylonjs/core";
+import { Color3, Constants, DynamicTexture, type Material, Matrix, Mesh, MeshBuilder, PBRMaterial, Quaternion, type Scene, StandardMaterial } from "@babylonjs/core";
 import * as THREE from "three";
 import { meshFromThree } from "./geometry";
 import { shadowCasters } from "./inst";
@@ -26,9 +26,11 @@ function softDot(col: THREE.Color) {
     return c;
 }
 
+interface SkinView { mesh: Mesh; pos: Float32Array; seen: number }
+
 interface Bucket { mesh: Mesh; data: Float32Array; cap: number; n: number; col: Float32Array | null }
 
-const _im = new THREE.Matrix4(), _wm = new THREE.Matrix4();
+const _im = new THREE.Matrix4(), _wm = new THREE.Matrix4(), _sv = new THREE.Vector3();
 interface SpriteView { plane: Mesh; mat: StandardMaterial; tex: DynamicTexture; version: number; seen: number }
 
 /**
@@ -42,6 +44,7 @@ export class ThreeMirror {
     private buckets = new Map<string, Bucket>();
     private mats = new Map<THREE.Material, Material>();
     private sprites = new Map<THREE.Sprite, SpriteView>();
+    private skins = new Map<THREE.SkinnedMesh, SkinView>();
     private frame = 0;
     private ids = new WeakMap<object, number>();
     private nextId = 1;
@@ -77,13 +80,25 @@ export class ThreeMirror {
             })();
         } else if (map && (map as THREE.CanvasTexture).image) {
             const p = new PBRMaterial(`mirror_tex${this.id(m)}`, this.scene);
-            const t = new DynamicTexture("mirrorCanvas", map.image as HTMLCanvasElement, { scene: this.scene });
-            t.update();
+            const img = map.image as HTMLCanvasElement | ImageBitmap | HTMLImageElement;
+            const isCanvas = typeof HTMLCanvasElement !== "undefined" && img instanceof HTMLCanvasElement;
+            // (a decoded image, e.g. from a .glb: copied onto a canvas once)
+            let cv: HTMLCanvasElement;
+            if (isCanvas) cv = img as HTMLCanvasElement;
+            else {
+                cv = document.createElement("canvas");
+                cv.width = img.width; cv.height = img.height;
+                cv.getContext("2d")!.drawImage(img as CanvasImageSource, 0, 0);
+            }
+            const t = new DynamicTexture("mirrorCanvas", cv, { scene: this.scene, invertY: map.flipY !== false } as never);
+            t.update(map.flipY !== false);
+            t.wrapU = t.wrapV = 1;
             p.albedoTexture = t;
-            p.emissiveTexture = t;
-            p.emissiveColor = new Color3(0.3, 0.3, 0.3);
-            p.roughness = 0.8;
+            if (isCanvas) { p.emissiveTexture = t; p.emissiveColor = new Color3(0.3, 0.3, 0.3); }
+            p.roughness = (anyM as THREE.MeshStandardMaterial).roughness ?? 0.8;
             p.metallic = 0;
+            p.backFaceCulling = m.side !== THREE.DoubleSide;
+            if (m.alphaTest > 0) { t.hasAlpha = true; p.useAlphaFromAlbedoTexture = true; p.transparencyMode = PBRMaterial.PBRMATERIAL_ALPHATEST; p.alphaCutOff = m.alphaTest; }
             b = p;
         } else if (m.type === "MeshStandardMaterial" || m.type === "MeshPhysicalMaterial") {
             const p = new PBRMaterial(`mirror_std${this.id(m)}`, this.scene);
@@ -141,6 +156,36 @@ export class ThreeMirror {
             g.addEventListener("dispose", () => { const q = this.buckets.get(key); if (!q) return; shadowCasters.delete(q.mesh); q.mesh.dispose(false, false); this.buckets.delete(key); });
         }
         return b;
+    }
+
+    /** a skinned mesh (Mario): skinned on the CPU every frame into its own Babylon mesh, in world space */
+    private skin(m: THREE.SkinnedMesh) {
+        let v = this.skins.get(m);
+        const P = m.geometry.getAttribute("position");
+        if (!v) {
+            const mesh = meshFromThree("mirrorSkin", m.geometry, this.scene);
+            mesh.material = this.material(Array.isArray(m.material) ? m.material[0] : m.material);
+            mesh.isPickable = false;
+            mesh.receiveShadows = true;
+            mesh.alwaysSelectAsActiveMesh = true;
+            if (this.opts.tag) mesh.metadata = { ...this.opts.tag };
+            if (this.shadows) shadowCasters.add(mesh);
+            mesh.rotationQuaternion = new Quaternion();
+            v = { mesh, pos: new Float32Array(P.count * 3), seen: 0 };
+            mesh.setVerticesData("position", v.pos, true);
+            this.skins.set(m, v);
+        }
+        m.skeleton.update();
+        const t = _sv;
+        for (let i = 0; i < P.count; i++) {
+            t.fromBufferAttribute(P, i);
+            m.applyBoneTransform(i, t);
+            v.pos[i * 3] = t.x; v.pos[i * 3 + 1] = t.y; v.pos[i * 3 + 2] = t.z;
+        }
+        v.mesh.updateVerticesData("position", v.pos, false, false);
+        Matrix.FromArray(m.matrixWorld.elements).decompose(v.mesh.scaling, v.mesh.rotationQuaternion!, v.mesh.position);
+        v.mesh.setEnabled(true);
+        v.seen = this.frame;
     }
 
     private grow(b: Bucket) {
@@ -201,7 +246,8 @@ export class ThreeMirror {
             if (!o.visible) return;
             if ((o as THREE.Sprite).isSprite) this.sprite(o as THREE.Sprite);
             const m = o as THREE.Mesh;
-            if (m.isMesh && !(o as THREE.Sprite).isSprite) {
+            if ((m as THREE.SkinnedMesh).isSkinnedMesh) this.skin(m as THREE.SkinnedMesh);
+            else if (m.isMesh && !(o as THREE.Sprite).isSprite) {
                 const mt = Array.isArray(m.material) ? m.material[0] : m.material;
                 const b = this.bucket(m.geometry, mt);
                 // basic materials can fade (beacons): follow the three material's opacity
@@ -243,6 +289,7 @@ export class ThreeMirror {
             b.mesh.setEnabled(b.n > 0);
             if (b.n) { b.mesh.thinInstanceBufferUpdated("matrix"); if (b.col) b.mesh.thinInstanceBufferUpdated("color"); }
         }
+        for (const v of this.skins.values()) if (v.seen !== this.frame) v.mesh.setEnabled(false);
         for (const [s, v] of this.sprites) {
             if (v.seen === this.frame) continue;
             v.plane.setEnabled(false);
