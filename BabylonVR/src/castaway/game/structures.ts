@@ -10,6 +10,9 @@ import { Inventory } from "./inventory";
 import { ITEMS, type ItemId, type PlaceKind } from "./items";
 import { MAX_FUEL, STATION_RECIPES, WOOD_BURN } from "./recipes";
 import { raySphere } from "./resources";
+import { flowerGeometry, FLOWERS } from "../world/flowers";
+import { meshFromThree } from "../render/geometry";
+import { foliageMaterial } from "../render/materials";
 
 const S_TOK = {
   stone: tok("stone"), log: tok("log"), logEnd: tok("logEnd"), char: tok("char"), steel: tok("steel"), iron: tok("iron"),
@@ -644,12 +647,30 @@ export class StructureManager {
     return null;
   }
 
+  /** a clay pot shows the flower planted in it (its one slot) */
+  private potFlower(s: Structure) {
+    const it = s.inv?.slots[0], k = it ? ITEMS[it.id]?.flower ?? -1 : -1;
+    const md = (s.node.metadata ??= {}) as { flowerK?: number };
+    if (md.flowerK === k) return;
+    md.flowerK = k;
+    s.node.getChildMeshes(true).filter((m) => m.name === "potflower").forEach((m) => m.dispose(false, false));
+    if (k < 0) return;
+    const g = flowerGeometry(k).clone(), sc = Math.min(1.5, 0.55 / Math.max(0.25, FLOWERS[k].h));
+    g.scale(sc, sc, sc);
+    const m = meshFromThree("potflower", g, this.scene);
+    m.material = foliageMaterial(this.scene, "potFlower", 0.0001);
+    m.parent = s.node;
+    m.position.y = 0.33;
+    m.isPickable = false;
+  }
+
   update(dt: number, px: number, _py: number, pz: number) {
     this.time += dt;
     const t = this.time;
     const cands: { s: Structure; d: number }[] = [];
     this.fireNear = 0;
     for (const s of this.list) {
+      if (s.kind === "flower_pot") { this.potFlower(s); continue; }
       if (s.kind === "lantern") {
         const d = Math.hypot(s.x - px, s.z - pz);
         s.glow?.setEnabled(d < 60);
