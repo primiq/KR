@@ -3,6 +3,7 @@ import { AdvancedDynamicTexture, Button, Control, Grid, Image, Rectangle, Scroll
 import type { Game } from "../game/game";
 import { ITEMS, type ItemId } from "../game/items";
 import { canAfford, costHave, costLabel, GROUP_LABEL, RECIPES } from "../game/recipes";
+import { PHRASES } from "../net/chat";
 
 const iconCache = new Map<string, string>();
 /** Castaway's item icons are inline SVG: as data URLs they work as GUI images. */
@@ -74,6 +75,17 @@ export class VRPanel {
     private dirty = true;
     private tabMenu: Button;
     private menuOpen = false;
+    /** the map and quick-chat tabs (null: bag / craft / menu) */
+    private extra: "map" | "chat" | null = null;
+    private tabMap!: Button;
+    private tabChat!: Button;
+    private mapPane!: Rectangle;
+    private mapImg!: Image;
+    private mapCanvas = document.createElement("canvas");
+    private mapZoom = 1.6;
+    private mapT = 0;
+    private chatPane!: StackPanel;
+    private chatPlayers!: TextBlock;
     private menuPane!: StackPanel;
     private menuStatus!: TextBlock;
     private codeText!: TextBlock;
@@ -86,6 +98,10 @@ export class VRPanel {
         leave(): void;
         save(): void;
         exitVR(): void;
+        /** multiplayer: quick chat, a ping on the map, who is here (null when solo) */
+        chat?(text: string): void;
+        pingAt?(x: number, z: number): void;
+        players?(): string | null;
     } | null = null;
     private craftKey = "";
 
@@ -185,7 +201,7 @@ export class VRPanel {
         top.paddingTop = "20px";
         const tab = (name: string, label: string, fn: () => void) => {
             const t = Button.CreateSimpleButton(name, label);
-            t.width = "260px";
+            t.width = "250px";
             t.height = "80px";
             t.color = TXT;
             t.fontSize = 40;
@@ -197,9 +213,11 @@ export class VRPanel {
             top.addControl(t);
             return t;
         };
-        this.tabBag = tab("tbag", "Bag", () => { this.menuOpen = false; game.hud.setTab("bag"); this.dirty = true; });
-        this.tabCraft = tab("tcraft", "Craft", () => { this.menuOpen = false; game.hud.setTab("craft"); this.dirty = true; });
-        this.tabMenu = tab("tmenu", "Menu", () => { this.menuOpen = true; this.dirty = true; });
+        this.tabBag = tab("tbag", "Bag", () => { this.menuOpen = false; this.extra = null; game.hud.setTab("bag"); this.dirty = true; });
+        this.tabCraft = tab("tcraft", "Craft", () => { this.menuOpen = false; this.extra = null; game.hud.setTab("craft"); this.dirty = true; });
+        this.tabMap = tab("tmap", "Map", () => this.setExtra("map"));
+        this.tabChat = tab("tchat", "Chat", () => this.setExtra("chat"));
+        this.tabMenu = tab("tmenu", "Menu", () => { this.menuOpen = true; this.extra = null; this.dirty = true; });
         tab("tclose", "Close  ✕", () => this.close());
         b.addControl(top);
 
@@ -286,6 +304,8 @@ export class VRPanel {
         b.addControl(this.craftPane);
 
         this.buildMenu(b);
+        this.buildMap(b);
+        this.buildChat(b);
         game.inv.subscribe(() => (this.dirty = true));
         game.worn.subscribe(() => (this.dirty = true));
     }
@@ -351,6 +371,88 @@ export class VRPanel {
         pane.isVisible = false;
     }
 
+    private setExtra(t: "map" | "chat" | null) {
+        this.extra = t; this.menuOpen = false; this.mapT = 0; this.dirty = true;
+        this.game.map.boost = t === "map";
+    }
+
+    /** the map: Castaway's map drawn into a canvas of its own; point at it and pull the trigger to ping a spot */
+    private buildMap(b: Rectangle) {
+        const S = 900;
+        this.mapCanvas.width = this.mapCanvas.height = S;
+        const pane = new Rectangle("mapPane");
+        pane.thickness = 0;
+        pane.top = "120px";
+        pane.height = "980px";
+        pane.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+        b.addControl(pane);
+        this.mapPane = pane;
+        const img = new Image("mapImg");
+        img.domImage = this.mapCanvas as unknown as HTMLImageElement;
+        img.width = `${S}px`; img.height = `${S}px`;
+        img.left = "40px";
+        img.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+        img.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+        img.isPointerBlocker = true;
+        img.onPointerUpObservable.add((e) => {
+            const l = img.getLocalCoordinates(e);
+            const w = this.game.map.toWorld(l.x / img.widthInPixels, l.y / img.heightInPixels);
+            if (this.menuActions?.pingAt) this.menuActions.pingAt(w.x, w.z);
+        });
+        pane.addControl(img);
+        this.mapImg = img;
+        const side = new StackPanel("mapSide");
+        side.width = "620px";
+        side.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+        side.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+        side.paddingRight = "30px";
+        pane.addControl(side);
+        const zrow = new StackPanel("zrow");
+        zrow.isVertical = false; zrow.height = "110px";
+        side.addControl(zrow);
+        const zb = (label: string, f: number) => {
+            const x = Button.CreateSimpleButton(`z${label}`, label);
+            x.width = "280px"; x.height = "92px"; x.color = TXT; x.fontSize = 38; x.cornerRadius = 20; x.thickness = 0; x.background = "#2d6a5a";
+            x.paddingLeft = "8px"; x.paddingRight = "8px";
+            x.onPointerUpObservable.add(() => { this.mapZoom = Math.max(1, Math.min(6, this.mapZoom * f)); this.mapT = 0; });
+            zrow.addControl(x);
+        };
+        zb("Zoom +", 1.5); zb("Zoom −", 1 / 1.5);
+        const help = new TextBlock("mapHelp", "You are the white arrow. North is up.\n\nIn a room with friends, point at the map and pull the trigger to ping that spot for everyone.");
+        help.height = "420px"; help.color = TXT; help.fontSize = 34; help.textWrapping = true;
+        help.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+        side.addControl(help);
+        pane.isVisible = false;
+    }
+
+    /** quick chat (the same phrases as the flat screen: no free text, no keyboard) and who is in the room */
+    private buildChat(b: Rectangle) {
+        const pane = new StackPanel("chatPane");
+        pane.top = "130px";
+        pane.width = "1560px";
+        pane.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+        b.addControl(pane);
+        this.chatPane = pane;
+        for (let r = 0; r < Math.ceil(PHRASES.length / 4); r++) {
+            const row = new StackPanel(`chr${r}`);
+            row.isVertical = false; row.height = "120px";
+            pane.addControl(row);
+            for (const ph of PHRASES.slice(r * 4, r * 4 + 4)) {
+                const x = Button.CreateSimpleButton(`ch${ph}`, ph);
+                x.width = "380px"; x.height = "100px"; x.color = TXT; x.fontSize = 38; x.cornerRadius = 20; x.thickness = 0; x.background = "#2d6a5a";
+                x.paddingLeft = "8px"; x.paddingRight = "8px";
+                x.onPointerUpObservable.add(() => { if (this.menuActions?.chat) { this.menuActions.chat(ph); this.close(); } });
+                row.addControl(x);
+            }
+        }
+        this.chatPlayers = new TextBlock("chatPlayers", "");
+        this.chatPlayers.height = "640px"; this.chatPlayers.color = TXT; this.chatPlayers.fontSize = 36;
+        this.chatPlayers.textWrapping = true; this.chatPlayers.paddingTop = "30px";
+        this.chatPlayers.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+        pane.addControl(this.chatPlayers);
+        pane.isVisible = false;
+    }
+
     /** the wrist display rides on the left controller, facing up at you */
     attach(src: WebXRInputSource) {
         const grip = src.grip ?? src.pointer;
@@ -367,16 +469,18 @@ export class VRPanel {
 
     get pointerBusy() { return this.board.isEnabled(); }
 
-    open(tab: "bag" | "craft" | "menu") {
+    open(tab: "bag" | "craft" | "menu" | "map" | "chat") {
         const g = this.game;
         this.menuOpen = tab === "menu";
-        if (tab === "menu") tab = "bag";
+        this.setExtra(tab === "map" || tab === "chat" ? tab : null);
+        this.menuOpen = tab === "menu";
+        if (tab === "menu" || tab === "map" || tab === "chat") tab = "bag";
         if (g.stats.dead) return;
         if (!g.hud.inventoryOpen) g.setInventory(true, tab);
         else g.hud.setTab(tab);
         this.dirty = true;
     }
-    toggle(tab: "bag" | "craft" | "menu") {
+    toggle(tab: "bag" | "craft" | "menu" | "map" | "chat") {
         if (this.game.hud.inventoryOpen) this.close();
         else this.open(tab);
     }
@@ -419,15 +523,36 @@ export class VRPanel {
             this.board.setEnabled(open);
             this.dirty = true;
         }
+        if (open && this.extra === "map") {
+            // the map redraws a few times a second while it shows (you, friends, pings move)
+            this.mapT -= _dt;
+            if (this.mapT <= 0) {
+                this.mapT = 0.25;
+                g.map.setView(g.player.pos.x, g.player.pos.z, this.mapZoom);
+                g.map.render(this.mapCanvas.getContext("2d")!, this.mapCanvas.width);
+                this.mapImg.markAsDirty();
+            }
+        }
+        if (open && this.extra === "chat") {
+            const who = this.menuActions?.players?.() ?? null;
+            const t = who ?? "Playing solo: host a room from the Menu tab (or join a friend's) to chat.";
+            if (this.chatPlayers.text !== t) this.chatPlayers.text = t;
+        }
         if (!open || !this.dirty) return;
         this.dirty = false;
-        const craft = hud.tab === "craft" && !this.menuOpen;
-        this.bagPane.isVisible = !craft && !this.menuOpen;
+        const ex = this.extra, other = this.menuOpen || !!ex;
+        const craft = hud.tab === "craft" && !other;
+        this.bagPane.isVisible = !craft && !other;
         this.craftPane.isVisible = craft;
         this.menuPane.isVisible = this.menuOpen;
-        this.tabBag.background = !craft && !this.menuOpen ? "#2d6a5a" : "#ffffff18";
+        this.mapPane.isVisible = ex === "map";
+        this.chatPane.isVisible = ex === "chat";
+        this.tabBag.background = !craft && !other ? "#2d6a5a" : "#ffffff18";
         this.tabCraft.background = craft ? "#2d6a5a" : "#ffffff18";
         this.tabMenu.background = this.menuOpen ? "#2d6a5a" : "#ffffff18";
+        this.tabMap.background = ex === "map" ? "#2d6a5a" : "#ffffff18";
+        this.tabChat.background = ex === "chat" ? "#2d6a5a" : "#ffffff18";
+        if (ex) return;
         if (this.menuOpen) { this.menuStatus.text = this.menuActions?.status() ?? ""; this.codeText.text = `Room code: ${this.code.padEnd(5, "_")}`; return; }
         if (craft) { this.renderCraft(); return; }
         const pick = hud.picked;

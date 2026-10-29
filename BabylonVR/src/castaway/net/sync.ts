@@ -462,6 +462,13 @@ export class WorldSync {
         if (from !== this.session.myId) this.game.hud.message(`${name} marked a location`);
     }
 
+    /** Mark a spot on the map for everyone (the VR map). */
+    pingAt(x: number, z: number) {
+        const me = this.session.players.get(this.session.myId);
+        this.addPing(this.session.myId, me?.name ?? "You", playerColor(this.session.myId), x, z);
+        this.session.sendEvent({ k: "mp", x: +x.toFixed(1), z: +z.toFixed(1) });
+    }
+
     /** Mark the spot you are looking at for everyone. */
     sendPing(eye: Vector3, dir: Vector3) {
         for (let t = 1; t < 220; t += 1.5) {

@@ -813,6 +813,13 @@ async function main() {
             leave: () => leave(),
             save: () => doSave(),
             exitVR: () => void vm.exit(),
+            chat: (t) => { if (sync) { sync.sendChat(t); chat.add("You", "#ffffff", t); } else game.hud.message("Host or join a room to chat"); },
+            pingAt: (x, z) => { if (sync) sync.pingAt(x, z); else game.hud.message("Pings are for rooms with friends"); },
+            players: () => {
+                if (!sync) return null;
+                const s = sync.session;
+                return `Room ${s.code}\n\n` + [...s.players.values()].map((p) => `${p.name}${p.id === s.myId ? " (you)" : ""}${p.id === 0 ? "  · host" : ""}  —  ${Math.round(s.states.get(p.id)?.hp ?? (p.id === s.myId ? game.stats.health : 0))} hp`).join("\n");
+            },
         };
     }
     $("mp-open").addEventListener("click", () => $("mp-panel").classList.toggle("hidden"));

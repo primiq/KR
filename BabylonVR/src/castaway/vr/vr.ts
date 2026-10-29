@@ -274,6 +274,10 @@ export class CastawayVR {
                 else if (camp) { if (!this.campHand(R, true)) game.vrPrimary(false); }
                 else if (!this.catOn) game.vrPrimary(false);
             } else if (!trig && R.trig && camp) this.campHand(R, false);
+            // right stick click: the map (with friends and pings)
+            const rs = btn(R, 3);
+            if (rs && !R.stick && !game.stats.dead) this.panel.toggle("map");
+            R.stick = rs;
             if (used && !(R.a || R.sq)) input.interactQueued = true;
             input.interactHeld = used;
             if (b && !R.b) input.jumpQueued = true;
