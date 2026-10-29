@@ -1,9 +1,10 @@
 import { CLASSIC } from '../world/island';
+import { getOutfit, parseOutfit } from "./outfit";
 // A multiplayer session: one host, any number of clients, star topology.
 // The host owns the room: it assigns ids, hands joiners a snapshot of the world, and relays everything.
 import { hostRoom, joinRoom, newCode, type Link, type Room, type TransportKind } from './transport';
 
-export interface PlayerInfo { id: number; name: string; /** shirt colour index */ look?: number[] }
+export interface PlayerInfo { id: number; name: string; /** the look they picked in the customise screen (see outfit.ts) */ look?: number[] }
 
 /** Compact state of one player, sent ~12 times a second. */
 export interface PState {
@@ -86,7 +87,7 @@ export class Session {
     const s = new Session('host', code, name);
     s.pvp = pvp; s.wid = wid;
     s.room = await hostRoom(kind, code);
-    s.players.set(0, { id: 0, name });
+    s.players.set(0, { id: 0, name, look: getOutfit() });
     s.room.onLink = (l) => s.acceptLink(l);
     return s;
   }
@@ -116,7 +117,7 @@ export class Session {
         resolve({ session: s, snap: m.snap, hour: m.hour });
       };
       link.onClose = () => { clearTimeout(timer); reject(new Error('Connection closed')); };
-      link.send({ t: 'hi', name, v: PROTOCOL });
+      link.send({ t: 'hi', name, v: PROTOCOL, look: getOutfit() });
     });
   }
 
@@ -128,7 +129,7 @@ export class Session {
         if (m.v !== PROTOCOL) { l.send({ t: 'bad', why: 'This game is a different version. Everyone should reload the page, then try again.' }); l.close(); return; }
         if (this.players.size >= MAX_PLAYERS) { l.send({ t: 'full' }); l.close(); return; }
         id = this.nextId++;
-        const info: PlayerInfo = { id, name: this.uniqueName(String(m.name || 'Castaway').slice(0, 14)) };
+        const info: PlayerInfo = { id, name: this.uniqueName(String(m.name || 'Castaway').slice(0, 14)), look: parseOutfit(m.look) ?? undefined };
         this.players.set(id, info);
         this.links.set(id, l);
         this.rx.set(id, now());

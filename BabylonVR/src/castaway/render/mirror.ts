@@ -1,53 +1,156 @@
-import type { Material, Mesh, Scene } from "@babylonjs/core";
-import type * as THREE from "three";
+import { Color3, Constants, DynamicTexture, type Material, Mesh, MeshBuilder, PBRMaterial, type Scene, StandardMaterial } from "@babylonjs/core";
+import * as THREE from "three";
 import { meshFromThree } from "./geometry";
 import { shadowCasters } from "./inst";
 
 interface Bucket { mesh: Mesh; data: Float32Array; cap: number; n: number }
+interface SpriteView { plane: Mesh; mat: StandardMaterial; tex: DynamicTexture; version: number; seen: number }
 
 /**
- * Draws a three.js scene graph (Castaway's animal rigs, animated by its own code) with Babylon: every frame the
- * visible three meshes' world matrices are written into one thin-instanced Babylon mesh per geometry, so a whole
- * herd of animated, jointed creatures costs a handful of draw calls. three's matrix layout is Babylon's.
+ * Draws a three.js scene graph (Castaway's animal and player rigs, animated by its own code) with Babylon. Every frame
+ * the visible three meshes' world matrices are written into one thin-instanced Babylon mesh per geometry + material,
+ * so a whole herd of jointed creatures costs a handful of draw calls (three's matrix layout is Babylon's). Materials
+ * are translated once: vertex-coloured bodies, flat-coloured / additive basics, canvas-textured plates. three.js
+ * sprites (name tags, health bars, chat bubbles) become billboard planes that follow their canvases.
  */
 export class ThreeMirror {
-    private buckets = new Map<THREE.BufferGeometry, Bucket>();
+    private buckets = new Map<string, Bucket>();
+    private mats = new Map<THREE.Material, Material>();
+    private sprites = new Map<THREE.Sprite, SpriteView>();
+    private frame = 0;
+    private ids = new WeakMap<object, number>();
+    private nextId = 1;
 
     constructor(
         private readonly scene: Scene,
         private readonly root: THREE.Object3D,
-        private readonly material: Material,
+        private readonly fallback: Material | null,
         private readonly shadows: boolean,
     ) {}
 
-    private bucket(g: THREE.BufferGeometry): Bucket {
-        let b = this.buckets.get(g);
+    private id(o: object) {
+        let i = this.ids.get(o);
+        if (!i) { i = this.nextId++; this.ids.set(o, i); }
+        return i;
+    }
+
+    private material(m: THREE.Material): Material {
+        let b = this.mats.get(m);
+        if (b) return b;
+        const anyM = m as THREE.MeshBasicMaterial & THREE.MeshStandardMaterial;
+        const map = anyM.map as THREE.CanvasTexture | null | undefined;
+        if (m.name === "body" || m.name === "animal" || (!map && m.type === "MeshBasicMaterial" && anyM.vertexColors)) {
+            b = this.fallback ?? (() => {
+                const p = new PBRMaterial(`mirror_${m.name}`, this.scene);
+                p.albedoColor = Color3.White();
+                p.roughness = 0.84;
+                p.metallic = 0;
+                return p;
+            })();
+        } else if (map && (map as THREE.CanvasTexture).image) {
+            const p = new PBRMaterial(`mirror_tex${this.id(m)}`, this.scene);
+            const t = new DynamicTexture("mirrorCanvas", map.image as HTMLCanvasElement, { scene: this.scene });
+            t.update();
+            p.albedoTexture = t;
+            p.emissiveTexture = t;
+            p.emissiveColor = new Color3(0.3, 0.3, 0.3);
+            p.roughness = 0.8;
+            p.metallic = 0;
+            b = p;
+        } else if (m.type === "MeshStandardMaterial" && !m.transparent) {
+            const p = new PBRMaterial(`mirror_std${this.id(m)}`, this.scene);
+            const c = anyM.color, e = anyM.emissive;
+            p.albedoColor = new Color3(c.r, c.g, c.b);
+            p.emissiveColor = new Color3(e.r, e.g, e.b);
+            p.roughness = anyM.roughness;
+            p.metallic = anyM.metalness;
+            p.backFaceCulling = m.side !== THREE.DoubleSide;
+            b = p;
+        } else {
+            const s = new StandardMaterial(`mirror_basic${this.id(m)}`, this.scene);
+            s.disableLighting = true;
+            const c = anyM.color ?? new THREE.Color(1, 1, 1);
+            s.emissiveColor = new Color3(c.r, c.g, c.b).toGammaSpace();
+            s.backFaceCulling = m.side !== THREE.DoubleSide;
+            if (m.transparent || m.opacity < 1) {
+                s.alpha = m.opacity;
+                s.disableDepthWrite = true;
+                if (m.blending === THREE.AdditiveBlending) s.alphaMode = Constants.ALPHA_ADD;
+            }
+            b = s;
+        }
+        this.mats.set(m, b);
+        return b;
+    }
+
+    private bucket(g: THREE.BufferGeometry, m: THREE.Material): Bucket {
+        const key = `${this.id(g)}:${this.id(m)}`;
+        let b = this.buckets.get(key);
         if (!b) {
             const mesh = meshFromThree("mirror", g, this.scene);
-            mesh.material = this.material;
+            mesh.material = this.material(m);
             mesh.isPickable = false;
             mesh.receiveShadows = true;
             mesh.alwaysSelectAsActiveMesh = true;
-            if (this.shadows) shadowCasters.add(mesh);
+            const lit = !(mesh.material instanceof StandardMaterial);
+            if (this.shadows && lit) shadowCasters.add(mesh);
             const cap = 8;
             const data = new Float32Array(cap * 16);
             mesh.thinInstanceSetBuffer("matrix", data, 16, false);
             mesh.thinInstanceCount = 0;
             mesh.setEnabled(false);
             b = { mesh, data, cap, n: 0 };
-            this.buckets.set(g, b);
+            this.buckets.set(key, b);
         }
         return b;
     }
 
+    private sprite(s: THREE.Sprite) {
+        let v = this.sprites.get(s);
+        const mat = s.material as THREE.SpriteMaterial;
+        const map = mat.map as THREE.CanvasTexture | null;
+        if (!v) {
+            if (!map?.image) return;
+            const plane = MeshBuilder.CreatePlane("mirrorSprite", { size: 1 }, this.scene);
+            plane.billboardMode = Mesh.BILLBOARDMODE_ALL;
+            plane.isPickable = false;
+            plane.renderingGroupId = 1;
+            const tex = new DynamicTexture("mirrorSpriteTex", map.image as HTMLCanvasElement, { scene: this.scene });
+            tex.hasAlpha = true;
+            tex.update();
+            const sm = new StandardMaterial("mirrorSpriteMat", this.scene);
+            sm.disableLighting = true;
+            sm.emissiveTexture = tex;
+            sm.opacityTexture = tex;
+            sm.disableDepthWrite = true;
+            sm.backFaceCulling = false;
+            plane.material = sm;
+            v = { plane, mat: sm, tex, version: map.version, seen: 0 };
+            this.sprites.set(s, v);
+        }
+        if (map && map.version !== v.version) { v.version = map.version; v.tex.update(); }
+        const e = s.matrixWorld.elements;
+        v.plane.position.set(e[12], e[13], e[14]);
+        v.plane.scaling.set(Math.hypot(e[0], e[1], e[2]), Math.hypot(e[4], e[5], e[6]), 1);
+        v.mat.alpha = mat.opacity;
+        v.plane.setEnabled(true);
+        v.seen = this.frame;
+    }
+
     sync() {
+        this.frame++;
         this.root.updateMatrixWorld(true);
         for (const b of this.buckets.values()) b.n = 0;
         const walk = (o: THREE.Object3D) => {
             if (!o.visible) return;
+            if ((o as THREE.Sprite).isSprite) this.sprite(o as THREE.Sprite);
             const m = o as THREE.Mesh;
-            if (m.isMesh) {
-                const b = this.bucket(m.geometry);
+            if (m.isMesh && !(o as THREE.Sprite).isSprite) {
+                const mt = Array.isArray(m.material) ? m.material[0] : m.material;
+                const b = this.bucket(m.geometry, mt);
+                // basic materials can fade (beacons): follow the three material's opacity
+                const bm = b.mesh.material;
+                if (bm instanceof StandardMaterial && (mt.transparent || mt.opacity < 1)) bm.alpha = mt.opacity;
                 if (b.n >= b.cap) {
                     b.cap *= 2;
                     const d = new Float32Array(b.cap * 16);
@@ -65,6 +168,12 @@ export class ThreeMirror {
             b.mesh.thinInstanceCount = b.n;
             b.mesh.setEnabled(b.n > 0);
             if (b.n) b.mesh.thinInstanceBufferUpdated("matrix");
+        }
+        for (const [s, v] of this.sprites) {
+            if (v.seen === this.frame) continue;
+            v.plane.setEnabled(false);
+            // gone for good (a removed name tag or bubble): free it
+            if (this.frame - v.seen > 300) { v.plane.dispose(); v.tex.dispose(); v.mat.dispose(); this.sprites.delete(s); }
         }
     }
 }
