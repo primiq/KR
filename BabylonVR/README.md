@@ -7,6 +7,10 @@ location from the start screen or the in-VR menu:
 - **Deep Forest:** a procedurally grown forest with a clearing and a pond.
 - **Desert Island:** a palm-covered island in an open sea with interactive water.
 
+It also hosts **Castaway** (`castaway.html`): a Babylon.js rebuild of the multiplayer island survival
+game, with harvesting, inventory, crafting, grid building and online co-op. See
+[Castaway](#castaway) below and `CASTAWAY_PORT.md` for the port's task list.
+
 Open it in a VR headset browser and you play it in VR with controllers or your bare hands.
 On a phone or tablet you get touch controls. On a desktop it runs as a first-person game with
 mouse and keyboard.
@@ -257,3 +261,40 @@ colliders, and held objects each have their own Havok collision filter. This mea
 - The default WebXR hand meshes are loaded at runtime from the Babylon.js CDN.
 - [Babylon.js](https://www.babylonjs.com/) (Apache-2.0) and
   [Havok for Babylon.js](https://www.npmjs.com/package/@babylonjs/havok) (MIT).
+
+
+## Castaway
+
+`castaway.html` is a like-for-like port of **Castaway** (the three.js island survival game) to
+Babylon.js. The rules, item and recipe data, island height field, seeds and multiplayer protocol
+come from Castaway. Rendering, materials, the ocean and the VR controls are rebuilt on Babylon.
+
+- **Harvesting:** 200 palms, 130 jungle trees, 150 boulders and ore rocks, and 22 berry bushes,
+  placed with Castaway's seeds. Trees fall and drop coconuts; rocks wear down and crumble. Things
+  grow back when nobody is near.
+- **Inventory:** 24 slots with a 6-slot hotbar, armour, tool durability, eating and drinking.
+- **Crafting:** Castaway's recipes, with a workbench for advanced ones. Campfires and furnaces
+  cook and smelt; storage boxes hold your stuff.
+- **Building:** a 3 m grid with foundations on stilts, walls, doorways, opening windows, floors,
+  stairs and joined pools, plus upgrading to stone.
+- **Multiplayer:** host a room and share the 5-letter code. It is peer to peer over WebRTC
+  (PeerJS), with host migration when the host leaves.
+- **Desktop and touch:** controls as in Castaway.
+- **VR:** hold tools in your right hand and swing your arm to chop or mine. The vitals, hotbar
+  and prompts are on your left wrist, and the bag and crafting panel float in front of you.
+  Controls:
+
+  | Control | Action |
+  | --- | --- |
+  | Left stick | Walk (push to the edge, or hold the left grip, to sprint) |
+  | Right stick | Snap turn and hotbar |
+  | Right trigger | Use or place |
+  | Right grip or A | Pick up or open (hold to pick structures up) |
+  | B | Jump or swim up |
+  | Left trigger | Dive |
+  | X | Rotate what you are placing (otherwise opens crafting) |
+  | Y | Next building piece |
+  | Left stick click | Bag |
+
+Testing tip: `castaway.html?net=local` uses a BroadcastChannel transport, so two tabs of the
+same browser can play together without any network.

@@ -12,5 +12,11 @@ export default defineConfig(({ mode }) => ({
     server: { host: true },
     optimizeDeps: { exclude: ["@babylonjs/havok"] },
     // Keep bundled code apart from public/assets (Sponza + HDR fetched by `npm run fetch-assets`).
-    build: { target: "es2022", assetsDir: "bundle", chunkSizeWarningLimit: 8000 },
+    build: {
+        target: "es2022",
+        assetsDir: "bundle",
+        chunkSizeWarningLimit: 8000,
+        // Two pages: the VR playground and the Castaway survival game.
+        rollupOptions: { input: { main: fileURLToPath(new URL("./index.html", import.meta.url)), castaway: fileURLToPath(new URL("./castaway.html", import.meta.url)) } },
+    },
 }));

@@ -18,7 +18,6 @@ import {
     VertexData,
 } from "@babylonjs/core";
 import type { Quality } from "../environment";
-import type { PlayerController } from "../player";
 import type { Grabbable } from "../props";
 import { waterProbes } from "../waterProbes";
 import { RippleSimulation } from "./ripples";
@@ -39,6 +38,14 @@ const WAVES: Wave[] = [
     { dir: -2.4, length: 5.2, amp: 0.04, steep: 0.5 },
     { dir: -0.9, length: 3.1, amp: 0.022, steep: 0.45 },
 ];
+
+/** Anything that wades and swims: the playground's physics player or Castaway's kinematic one. */
+export interface WaterBody {
+    readonly position: Vector3;
+    readonly waterDepth: number;
+    readonly linearVelocity: Vector3;
+    water: { surfaceAt(x: number, z: number): number } | null;
+}
 
 export interface OceanOptions {
     quality: Quality;
@@ -123,6 +130,7 @@ uniform vec3 sunDir;
 uniform vec3 sunColor;
 uniform vec3 shallowColor;
 uniform vec3 deepColor;
+uniform float daylight;
 uniform float time;
 varying vec3 vPos;
 varying vec3 vNormal;
@@ -180,7 +188,7 @@ void main(void) {
     vec3 body = mix(shallowColor, deepColor, 1.0 - exp(-depth * 0.22));
     float sss = pow(max(dot(V, normalize(vec3(-L.x, 0.25, -L.z))), 0.0), 3.0) * clamp(vCrest * 2.5 + 0.2, 0.0, 1.0);
     body += shallowColor * sss * 0.6 * length(sunColor) * 0.2;
-    body *= 0.4 + 0.6 * max(dot(N, L), 0.0) * length(sunColor) * 0.18;
+    body *= 0.4 * daylight + 0.6 * max(dot(N, L), 0.0) * length(sunColor) * 0.18;
 
     vec3 col = under ? mix(body * 0.6, refl * 0.3, fresnel) : mix(body, refl, fresnel) + spec;
 
@@ -190,7 +198,7 @@ void main(void) {
     float foamNoise = fbm(vPos.xz * 2.2 + vec2(time * 0.12, -time * 0.08));
     float lace = smoothstep(0.45, 0.65, foamNoise);
     float foam = clamp(shore * lace * 1.2 + smoothstep(0.7, 1.0, vCrest) * lace * 0.8, 0.0, 1.0);
-    col = mix(col, vec3(0.9, 0.93, 0.95) * (0.35 + 0.65 * length(sunColor) * 0.2), foam * 0.75);
+    col = mix(col, vec3(0.9, 0.93, 0.95) * (0.35 * daylight + 0.65 * length(sunColor) * 0.2), foam * 0.75);
 
     // Shallow water is clear; deep water is opaque.
     float alpha = clamp(1.0 - exp(-depth * 1.6) + fresnel * 0.6 + foam, 0.0, 1.0);
@@ -214,12 +222,14 @@ export class Ocean {
     private time = 0;
     private readonly gridStep: number;
     private props: Grabbable[] = [];
-    private player: PlayerController | null = null;
+    private player: WaterBody | null = null;
     private readonly splash: ParticleSystem;
     private readonly wasWet = new Map<Grabbable, boolean>();
     private readonly probeLast = new Map<TransformNode, Vector3>();
     private playerWasWet = false;
     private underwater = false;
+    /** 1 by day; lower at night so the water's own glow fades with the light (Castaway's day / night) */
+    daylight = 1;
 
     constructor(
         private readonly scene: Scene,
@@ -272,7 +282,7 @@ export class Ocean {
             { vertex: "ocean", fragment: "ocean" },
             {
                 attributes: ["position"],
-                uniforms: ["world", "viewProjection", "time", "waveA", "waveB", "seabedRect", "rippleRect", "rippleTexel", "cameraPos", "sunDir", "sunColor", "shallowColor", "deepColor"],
+                uniforms: ["world", "viewProjection", "time", "waveA", "waveB", "seabedRect", "rippleRect", "rippleTexel", "cameraPos", "sunDir", "sunColor", "shallowColor", "deepColor", "daylight"],
                 samplers: ["seabed", "ripples", "envMap"],
                 defines: [`#define NUM_WAVES ${n}`],
                 needAlphaBlending: true,
@@ -289,6 +299,7 @@ export class Ocean {
             const cam = scene.activeCamera!;
             const e = mat.getEffect()!;
             e.setFloat("time", this.time);
+            e.setFloat("daylight", this.daylight);
             e.setArray4("waveA", this.waveA as unknown as number[]);
             e.setArray4("waveB", this.waveB as unknown as number[]);
             e.setVector3("cameraPos", cam.globalPosition);
@@ -301,7 +312,8 @@ export class Ocean {
         this.mesh.material = mat;
 
         this.splash = this.createSplashSystem();
-        scene.onBeforePhysicsObservable.add(() => this.physicsStep());
+        // (Castaway has no physics engine: the observable only exists once Havok is set up)
+        scene.onBeforePhysicsObservable?.add(() => this.physicsStep());
         scene.onBeforeRenderObservable.add(() => this.frame());
     }
 
@@ -341,7 +353,7 @@ export class Ocean {
         this.props = props;
     }
 
-    bindPlayer(player: PlayerController): void {
+    bindPlayer(player: WaterBody): void {
         this.player = player;
         player.water = this;
     }

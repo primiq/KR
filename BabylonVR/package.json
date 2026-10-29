@@ -19,6 +19,8 @@
     "@babylonjs/loaders": "^9.32.0",
     "@babylonjs/materials": "^9.32.0",
     "@dgreenheck/ez-tree": "^1.1.0",
+    "nipplejs": "^1.0.4",
+    "peerjs": "^1.5.5",
     "three": "^0.186.1"
   },
   "devDependencies": {

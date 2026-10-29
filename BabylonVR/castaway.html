@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a2a3a" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>Petr's Castaway — Island Survival (Babylon.js)</title>
+  <meta name="description" content="A tropical island survival game: gather, craft, build, dig into caves for ore and diamonds, and play with friends or in VR. Free, in your browser." />
+  <meta property="og:title" content="Petr's Castaway — Island Survival" />
+  <meta property="og:description" content="Gather, craft, build and survive on a tropical island. Caves, multiplayer and VR." />
+  <meta property="og:type" content="website" />
+  <meta name="apple-mobile-web-app-title" content="Petr's Castaway" />
+    <link rel="stylesheet" href="./src/castaway/ui/style.css" />
+</head>
+<body class="prestart">
+  <canvas id="game"></canvas>
+
+  <div id="loading" class="hidden">
+    <div class="loading-inner">
+      <h1><span class="owner">Petr's</span>CASTAWAY</h1>
+      <p id="loading-text">Starting…</p>
+      <div class="bar"><div id="loading-bar"></div></div>
+    </div>
+  </div>
+
+  <div id="menu">
+    <div class="menu-inner">
+      <h1><span class="owner">Petr's</span>CASTAWAY</h1>
+      <p class="sub">A tropical island survival game</p>
+      <button id="continue" class="hidden">Continue</button>
+      <button id="play">Play</button>
+      <button id="play-vr" class="hidden">Play in VR</button>
+      <button id="quit-menu" class="hidden ghost-btn">Save &amp; back to main menu</button>
+      <div class="help" id="help-desktop">
+        <b>WASD</b> move &nbsp; <b>Shift</b> sprint &nbsp; <b>Space</b> jump &nbsp; <b>Mouse</b> look<br />
+        <b>Click</b> use tool / place &nbsp; <b>E</b> use (hold: pick up) &nbsp; <b>1-6</b> hotbar &nbsp; <b>Tab</b> bag &nbsp; <b>C</b> craft<br /><b>Q</b> next piece &nbsp; <b>R</b> rotate &nbsp;<b>T</b> / <b>Y</b> time of day &nbsp; <b>N</b> mute &nbsp; <b>F</b> fly (debug) &nbsp; <b>Esc</b> menu
+      </div>
+      <div class="help" id="help-touch">Left stick: move &nbsp; Drag right side: look<br />HIT swings your tool or eats &nbsp; USE picks up and drinks</div>
+      <div class="row">
+        <label>Quality
+          <select id="quality">
+            <option value="auto">Auto</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+        </label>
+      </div>
+      <div class="mp">
+        <button id="mp-open" type="button" class="ghost">Multiplayer</button>
+        <div id="mp-panel" class="hidden">
+          <input id="mp-name" maxlength="14" placeholder="Your name" autocomplete="off" />
+          <div class="mp-tabs" role="tablist">
+            <button id="mp-tab-host" type="button" role="tab" class="on">Host a game</button>
+            <button id="mp-tab-join" type="button" role="tab">Join a game</button>
+          </div>
+          <div id="mp-pane-host" class="mp-pane">
+            <p class="mp-help">Start a new room. You get a 5-letter code to give your friends.</p>
+            <label class="mp-opt"><input type="checkbox" id="mp-pvp" checked /> Players can hurt each other</label>
+            <button id="mp-host" type="button">Host a game</button>
+          </div>
+          <div id="mp-pane-join" class="mp-pane hidden">
+            <p class="mp-help">Got a code from a friend? Type it here.</p>
+            <div class="mp-join">
+              <input id="mp-code" maxlength="5" placeholder="CODE" autocomplete="off" autocapitalize="characters" spellcheck="false" />
+              <button id="mp-join" type="button">Join</button>
+            </div>
+          </div>
+          <label class="mp-opt hidden" id="mp-vr-opt"><input type="checkbox" id="mp-vr" /> Enter VR when the game is ready</label>
+          <details class="mp-adv">
+            <summary>Connection help (TURN relay)</summary>
+            <p>Only needed if friends on mobile data cannot connect. Paste a TURN server from a provider such as Metered, Cloudflare or your own coturn.</p>
+            <input id="mp-turn" placeholder="turn:example.com:3478" autocomplete="off" spellcheck="false" />
+            <input id="mp-turn-user" placeholder="username" autocomplete="off" spellcheck="false" />
+            <input id="mp-turn-pass" placeholder="password" type="password" autocomplete="off" />
+          </details>
+          <div id="mp-status" class="mp-status" aria-live="polite"></div>
+        </div>
+      </div>
+      <div id="backend" class="backend"></div>
+      <a class="backend" href="./index.html">← Babylon VR playground</a>
+    </div>
+  </div>
+
+  <div id="ready" class="hidden">
+    <div class="loading-inner">
+      <h1><span class="owner">Petr's</span>CASTAWAY</h1>
+      <p id="ready-text">Your island is ready.</p>
+      <button id="ready-play">Play</button>
+      <button id="ready-vr" class="hidden">Enter VR</button>
+    </div>
+  </div>
+
+  <div id="vignette"></div>
+
+  <div id="hud" class="hidden">
+    <div id="stats"></div>
+    <button id="mp-chip" class="hidden" type="button"></button>
+    <div id="compass"><canvas id="compass-canvas" width="900" height="64" aria-label="Compass"></canvas></div>
+    <div id="crosshair"></div>
+    <div id="prompt" class="hidden"><div id="prompt-name"></div><div id="prompt-hint"></div><div id="prompt-hold" class="hidden"><i></i></div></div>
+    <button id="build-chip" class="hidden" type="button"></button>
+    <div id="toasts"></div>
+    <div id="bottom">
+      <div id="vitals"></div>
+      <div id="hotbar"></div>
+    </div>
+    <div id="zone-left"></div>
+    <div id="buttons">
+      <button id="btn-sprint" aria-label="Sprint">»</button>
+      <button id="btn-jump" aria-label="Jump">▲</button>
+      <button id="btn-use">USE</button>
+      <button id="btn-hit">HIT</button>
+    </div>
+    <div id="mode-tool"><button id="btn-mode" aria-label="Place or carry the torch">🔥</button></div>
+    <div id="build-tools">
+      <button id="btn-piece" aria-label="Next piece">⬚</button>
+      <button id="btn-rot" aria-label="Rotate">⟳</button>
+    </div>
+    <button id="btn-bag" aria-label="Inventory"><svg viewBox="0 0 24 24"><path d="M7 8V6a5 5 0 0 1 10 0v2h2l1 13H4L5 8zm2 0h6V6a3 3 0 0 0-6 0z"/></svg></button>
+    
+    <button id="btn-menu" aria-label="Menu">☰</button>
+  </div>
+
+  <div id="inventory" class="hidden" role="dialog" aria-label="Inventory">
+    <div class="inv-card">
+      <header>
+        <div id="tabs" role="tablist">
+          <button id="tab-bag" class="on" type="button" role="tab">Bag</button>
+          <button id="tab-craft" type="button" role="tab">Craft</button>
+        </div>
+        <button id="inv-close" aria-label="Close">✕</button>
+      </header>
+      <div id="pane-bag" class="inv-body">
+        <div id="inv-left">
+          <section id="cont" class="hidden">
+            <h3 id="cont-title"></h3>
+            <div id="cont-fuel" class="hidden">
+              <div id="fuel-meter"><div id="fuel-fill"></div></div>
+              <span id="fuel-text"></span>
+              <button id="fuel-add1" type="button">🔥 Add 1 wood</button>
+              <button id="fuel-add5" type="button">🔥 Add 5</button>
+            </div>
+            <div id="cont-grid"></div>
+            <p id="cont-hint" class="hint"></p>
+          </section>
+          <div id="inv-grid"></div>
+        </div>
+        <aside id="inv-detail">
+          <div id="detail-empty">Select an item to see what it does.</div>
+          <div id="detail-box" class="hidden">
+            <div class="detail-head"><div id="detail-icon"></div><h3 id="detail-name"></h3></div>
+            <p id="detail-desc"></p>
+            <div id="detail-actions">
+              <button id="act-use">Use</button>
+              <button id="act-xfer">Move</button>
+              <button id="act-drop1">Drop 1</button>
+              <button id="act-dropall">Drop all</button>
+            </div>
+          </div>
+          <p class="hint">Tap an item, then tap another slot to move it. The top row is your hotbar.</p>
+        </aside>
+      </div>
+      <div id="pane-craft" class="hidden">
+        <p id="craft-note"></p>
+        <div id="craft-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="fade"><span id="fade-text"></span></div>
+  <div id="lids"></div>
+
+  <div id="death" class="hidden">
+    <div class="death-card">
+      <h2>You died</h2>
+      <p id="death-cause"></p>
+      <button id="respawn">Respawn on the beach</button>
+    </div>
+  </div>
+
+  <script type="module" src="./src/castaway/main.ts"></script>
+</body>
+</html>
