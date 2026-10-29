@@ -27,6 +27,8 @@ import { SkyRoom } from "./world/skyroom";
 import { Skydive } from "./world/skydive";
 import { Airstrip } from "./world/airstrip";
 import { CatHome } from "./world/catroom";
+import { HideIsle } from "./world/hideisle";
+import { TileTrial } from "./world/tiletrial";
 import { FPPaws, PLAYER_COATS } from "./world/cats";
 import { HUMAN } from "./world/player";
 import { ThreeMirror } from "./render/mirror";
@@ -195,6 +197,26 @@ async function main() {
     };
     game.under.onCat = catMode;
     let mouseSend = 0;
+    // Hideaway Isle (hide and seek, the green door) and the Chamber of Tiles (the copper door)
+    const hide = new HideIsle(game.natureRoot as unknown as THREE.Scene, q.shadows);
+    game.under.hide = hide;
+    hide.say = (t) => game.hud.message(t);
+    hide.myId = () => sync?.session.myId ?? 0;
+    hide.send = (e) => sync?.session.sendEvent(e);
+    hide.others = () => {
+        const out: { id: number; name: string; x: number; y: number; z: number; flags: number }[] = [];
+        if (sync) for (const a of sync.avatars.positions) { const st = sync.session.states.get(a.id); if (st) out.push({ id: a.id, name: a.name, x: a.x, y: a.y, z: a.z, flags: st.flags }); }
+        return out;
+    };
+    const trial = new TileTrial(game.natureRoot as unknown as THREE.Scene);
+    game.under.trial = trial;
+    trial.say = (t) => game.hud.message(t);
+    trial.myId = () => sync?.session.myId ?? 0;
+    trial.myName = () => sync?.session.name || "You";
+    trial.send = (e) => sync?.session.sendEvent(e);
+    trial.others = () => hide.others();
+    trial.die = () => { game.stats.hurt(9999, "fall"); if (game.stats.dead) { game.stats.deathCause = "You fell into the pit."; return true; } return false; };
+    trial.sfx = { tick: (f: boolean) => game.sfx.tileTick(f), go: () => game.sfx.tileGo(), seal: () => game.sfx.tileSeal(), drop: () => game.sfx.tileDrop(), fall: () => game.sfx.tileFall(), win: () => game.sfx.tileWin(), lose: () => game.sfx.tileLose(), press: () => game.sfx.tilePress(), crack: () => game.sfx.tileCrack() };
     cat.onSqueak = () => game.sfx.meow(0.35);
     cat.onCatch = () => { game.hud.message(`You caught the mouse! (${cat.caught})`); sync?.session.sendEvent({ k: "mc", n: sync.session.name }); };
     cat.onBonk = (id) => {
@@ -293,6 +315,10 @@ async function main() {
             if (air.active && !air.contains(player.pos.x, player.pos.z)) { air.leave(player); player.teleport(player.pos.x, heightAt(player.pos.x, player.pos.z), player.pos.z, player.yaw); }
             if (!cat.active && cat.contains(player.pos.x, player.pos.z) && sky.exitTo) { const e = sky.exitTo; player.teleport(e.x, e.y, e.z, e.yaw); }
             if (cat.active && !cat.contains(player.pos.x, player.pos.z)) { cat.leave(player, HUMAN); catMode(false); player.teleport(player.pos.x, heightAt(player.pos.x, player.pos.z), player.pos.z, player.yaw); }
+            if (!hide.active && hide.contains(player.pos.x, player.pos.z) && sky.exitTo) { const e = sky.exitTo; player.teleport(e.x, e.y, e.z, e.yaw); }
+            if (hide.active && !hide.contains(player.pos.x, player.pos.z)) { hide.leave(player); player.teleport(player.pos.x, heightAt(player.pos.x, player.pos.z), player.pos.z, player.yaw); }
+            if (!trial.active && trial.contains(player.pos.x, player.pos.z) && sky.exitTo) { const e = sky.exitTo; player.teleport(e.x, e.y, e.z, e.yaw); }
+            if (trial.active && !trial.contains(player.pos.x, player.pos.z)) { trial.leave(player); player.teleport(player.pos.x, heightAt(player.pos.x, player.pos.z), player.pos.z, player.yaw); }
             if (air.driving && game.stats.dead) air.exitCar(player);
             if (air.active) air.pre(dt, { gas: Math.max(-1, Math.min(1, input.move.y)), steer: Math.max(-1, Math.min(1, input.move.x)), hand: input.jumpHeld, boost: input.wantsSprint }, player, vrActive());
             if (!game.uiBlocking) player.update(dt, input);
@@ -312,6 +338,10 @@ async function main() {
             }
             game.update(dt, true);
             game.under.sites?.update(dt);
+            hide.update(dt, player, now / 1000);
+            if (sync) sync.avatars.three.labelsOff = hide.active;
+            game.sfx.setDeaf(hide.deaf);
+            trial.update(dt, player, now / 1000);
             if (cats && !game.under.active) cats.update(dt, player.pos.x, player.pos.z, player.pos.y);
             dive.update(dt, player, input.move, game.stats.dead);
             const sy = sync;

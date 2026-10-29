@@ -1007,6 +1007,8 @@ export class Game {
             } else this.updatePrompt(t, def);
         }
 
+        // hide & seek: clicking works as well as E for tagging a player or opening a box
+        if (ug.active && ugT?.kind === "hide" && input.attackQueued && (ugT.t.w === "tag" || ugT.t.w === "box")) { input.attackQueued = false; ug.interact(ugT); }
         // cat house: click is a pounce, G is a meow
         if (ug.cat?.active) {
             if (input.attackQueued) { input.attackQueued = false; this.pounce(); }

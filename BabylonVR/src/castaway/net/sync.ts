@@ -364,6 +364,9 @@ export class WorldSync {
             case "mt": g.under.cat?.importThrow(e.r); break;
             case "mh": if (e.t === this.session.myId && g.under.cat?.active) { g.sfx.meow(0.5); g.hud.message(`${e.n ?? "Somebody"} bonked you with the mouse!`); g.vr.haptic?.(0.6); } break;
             case "mw": { const c = g.under.cat; if (c?.active) { const d = Math.hypot(e.x - g.player.pos.x, e.z - g.player.pos.z); if (d < 14) g.sfx.meow(Math.max(0.15, 1 - d / 14)); } break; }
+            case "tp": case "td": case "tx": case "tb": g.under.trial?.net(e, from); break;
+            case "hs": case "hf": case "he": g.under.hide?.net(e); break;
+            case "hb": g.under.hide?.net({ ...e, from }); break;
             case "ml": g.warp.net(e, from); break;
             case "mp": this.addPing(from, this.session.players.get(from)?.name ?? "Someone", playerColor(from), e.x, e.z); break;
         }
@@ -483,7 +486,7 @@ export class WorldSync {
         const st: PState = {
             x: p.pos.x, y: p.pos.y, z: p.pos.z, yaw: p.yaw, pitch: p.pitch,
             spd: Math.hypot(p.vel.x, p.vel.z), item: held ? held.id : "", swing: g.swings,
-            flags: (p.sprinting ? 1 : 0) | (p.mode === "swim" ? 2 : 0) | (g.stats.dead ? 4 : 0) | (g.isSleeping ? 8 : 0) | (g.drinking ? 32 : 0) | (g.warp.inLevel ? F_LEVEL : 0) | (g.slide.riding ? 536870912 : 0) | (g.under.air?.driving ? 64 : 0) | (g.under.cat?.active ? 16 : 0) | (g.dive?.active ? 2048 : 0) | (g.dive?.active && g.dive.phase === "chute" ? 4096 : 0),
+            flags: (p.sprinting ? 1 : 0) | (p.mode === "swim" ? 2 : 0) | (g.stats.dead ? 4 : 0) | (g.isSleeping ? 8 : 0) | (g.drinking ? 32 : 0) | (g.warp.inLevel ? F_LEVEL : 0) | (g.slide.riding ? 536870912 : 0) | (g.under.air?.driving ? 64 : 0) | (g.under.cat?.active ? 16 : 0) | (g.under.hide?.active ? 128 : 0) | ((g.under.hide?.hiddenMe ?? -1) >= 0 ? 256 : 0) | (g.under.trial?.active ? 512 : 0) | (g.under.trial?.inRoom ? 1024 : 0) | (g.dive?.active ? 2048 : 0) | (g.dive?.active && g.dive.phase === "chute" ? 4096 : 0),
             hp: g.stats.health, arm: g.armorCode,
         };
         const pose = this.vrPose?.() ?? null;
