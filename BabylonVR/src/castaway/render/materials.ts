@@ -32,10 +32,8 @@ export function foliageMaterial(scene: Scene, name: string, amp: number, push = 
         m.twoSidedLighting = true;
         m.albedoColor = new Color3(1, 1, 1);
         if (amp > 0) {
-            // light through the leaves
-            m.subSurface.isTranslucencyEnabled = true;
-            m.subSurface.translucencyIntensity = 0.35;
-            m.subSurface.tintColor = new Color3(0.55, 0.85, 0.25);
+            // (no translucency: Babylon's adds the same light to every surface whatever its colour, so it greened the palm trunks
+            //  and washed out the leaves; Castaway's foliage has none either)
             new FoliagePlugin(m, amp, push, storm);
         }
         return m;

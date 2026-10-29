@@ -265,6 +265,8 @@ export class Seabed {
             let c: Float32Array | null = null;
             if (k === 4 || k === 5 || k === 6 || k === 8) { c = new Float32Array(this.caps[k] * 4).fill(1); mesh.thinInstanceSetBuffer("color", c, 4, false); }
             mesh.thinInstanceCount = 0;
+            // (a thin-instanced mesh with a colour buffer and no instances compiles a broken shader: off until it has some)
+            mesh.setEnabled(false);
             this.meshes.push(mesh); this.bufs.push({ m, c }); this.counts.push(0);
         });
 
@@ -370,7 +372,7 @@ export class Seabed {
   /** px, pz: where the player is; under: head under water (for the light shafts and specks); eye: the camera */
   update(dt: number, px: number, pz: number, eye: { x: number; y: number; z: number }, under: boolean, active: boolean) {
     this.time += dt;
-    if (active !== this.shown) { this.shown = active; for (const m of this.meshes) m.setEnabled(active); }
+    if (active !== this.shown) { this.shown = active; this.meshes.forEach((m, k) => m.setEnabled(active && this.counts[k] > 0)); }
     this.shafts.setEnabled(active && under);
     this.snow.setEnabled(active && under);
     if (under && active) {
@@ -407,6 +409,7 @@ export class Seabed {
     }
     this.meshes.forEach((m, k) => {
       m.thinInstanceCount = counts[k]; this.counts[k] = counts[k];
+      m.setEnabled(counts[k] > 0);
       m.thinInstanceBufferUpdated("matrix");
       if (this.bufs[k].c) m.thinInstanceBufferUpdated("color");
     });
