@@ -25,6 +25,7 @@ import { Birds, Flamingos, Footprints, type Walker } from "./nature";
 import { Turtles } from "./turtles";
 import { Saplings } from "./saplings";
 import { Stalkers } from "./stalker";
+import { Offshore } from "../world/offshore";
 import { Twins } from "./twins";
 import { type Door, Doors } from "./doors";
 import { type FrameAim, type Painting, Paintings } from "./paintings";
@@ -47,7 +48,7 @@ export interface GameOpts {
     springSpots: Zone[];
     shadows: boolean;
     /** day / night: the hour now (0..24) and a way to set it (sleeping) */
-    clock: { hour: number };
+    clock: { hour: number; day?: number };
 }
 
 const HOLD_TIME = 0.9;
@@ -87,6 +88,8 @@ export class Game {
     /** night things: the Stalker in the trees, and the twins on the beach */
     readonly stalkers: Stalkers;
     readonly twins: Twins;
+    /** whales and passing ships far out at sea (the host decides when) */
+    readonly offshore: Offshore;
     /** doors hung in doorways, and pictures on the walls (with the paint editor) */
     readonly doors: Doors;
     readonly paintings: Paintings;
@@ -225,6 +228,8 @@ export class Game {
         this.saplings = new Saplings(o.vegetation, this.resources);
         this.stalkers = new Stalkers(this.natureRoot, o.vegetation.colliders);
         this.twins = new Twins(this.natureRoot);
+        this.offshore = new Offshore(this.natureRoot);
+        this.offshore.sound = (k, v) => { if (k === "blow") this.sfx.blow(v); else if (k === "splash") this.sfx.bigSplash(v); else this.sfx.horn(v); };
         this.stalkers.onSound = (w, x, z) => this.fauna.onSound?.(w, x, z);
         this.stalkers.onBlood = (x, y, z, n) => this.fauna.onBlood?.(x, y, z, n);
         this.twins.onSound = (w, x, z) => this.fauna.onSound?.(w, x, z);
@@ -1156,6 +1161,8 @@ export class Game {
         if (wx) {
             const local = onIsland && !p.cave;
             wx.update(dt, this.vr.active ? this.vr.eye : p.eye, local, this.roofed, p.underwater);
+            this.offshore.tick(hour, wx.kind === 0);
+            this.offshore.update(dt, me, performance.now() / 1000, wx.rough, 1 - (this.clock.day ?? 1), !onIsland || !!p.cave);
             this.sfx.setWeather(local && !p.underwater ? wx.rain : 0, local ? Math.max(0, Math.min(1, (wx.wind - 1.4) / 2.8)) : 0, this.roofed, dt);
         }
     }

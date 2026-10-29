@@ -22,6 +22,8 @@ import { CaveView } from "./world/caveView";
 import { Weather } from "./world/weather";
 import { BIO } from "./world/sealife";
 import { Cats } from "./world/cats";
+import { Dolphins } from "./world/dolphins";
+import { SEA } from "./world/waves";
 import { getOutfit, onOutfitChange, setPlayerOutfit } from "./net/outfit";
 import { SKINS } from "./net/playerModel";
 import { setupCustomise, setNameLocked } from "./ui/customise";
@@ -143,6 +145,11 @@ async function main() {
     const sites = new SurfaceSites(game.ugRoot as unknown as THREE.Scene, sitePlan, vegetation.colliders, q.shadows);
     game.under.sites = sites;
     const caves = new CaveView(scene, game, clock, q.shadows);
+    // the sea's own surface for things far out (whales, ships, dolphins)
+    SEA.surface = (x, z) => ocean.surfaceAt(x, z);
+    const dolphins = new Dolphins(game.natureRoot, (x, z) => ocean.surfaceAt(x, z));
+    if (params.has("nodolphins")) dolphins.enabled = false;
+    if (params.has("dolphintest")) { dolphins.wait = 1; dolphins.rate = 0.08; }
     // the island's cats
     const cats = params.has("nocats") ? null : new Cats(game.natureRoot, vegetation.colliders, q.shadows, () => game.fauna.animals);
     if (cats) {
@@ -239,6 +246,7 @@ async function main() {
             game.update(dt, true);
             game.under.sites?.update(dt);
             if (cats && !game.under.active) cats.update(dt, player.pos.x, player.pos.z, player.pos.y);
+            dolphins.update(dt, player.pos.x, player.pos.z, player.yaw, game.under.active);
             ocean.bio = BIO.value;
             Wind.push[0].set(player.pos.x, player.pos.y, player.pos.z, 0.9);
         } else {

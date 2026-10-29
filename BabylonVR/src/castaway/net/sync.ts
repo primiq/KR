@@ -76,7 +76,12 @@ export class WorldSync {
         const fauna = game.fauna;
         if (!session.isHost) { fauna.remote = true; game.turtles.remote = true; game.stalkers.remote = true; game.twins.remote = true; }
         game.net.hitStalker = (i, px, pz) => session.sendEvent({ k: "sh", i, x: +px.toFixed(1), z: +pz.toFixed(1) });
-        // weather: the host decides, the others follow
+        // weather, whales and ships: the host decides, the others follow
+        game.offshore.remote = !session.isHost;
+        if (session.isHost) {
+            game.offshore.onWhale = (x, z, h, seed) => session.sendEvent({ k: "wh", x: Math.round(x), z: Math.round(z), h: +h.toFixed(3), s: seed });
+            game.offshore.onShip = (a, d, p) => session.sendEvent({ k: "sx", a: +a.toFixed(4), d, p: Math.round(p) });
+        }
         if (game.weather) {
             game.weather.remote = !session.isHost;
             game.weather.onChange = session.isHost ? (s, l) => session.sendEvent({ k: "we", s, l: Math.round(l) }) : null;
@@ -102,6 +107,7 @@ export class WorldSync {
                 if (++this.slowTick % 40 === 0) {
                     if (game.weather) session.sendEvent({ k: "we", s: game.weather.kind, l: Math.round(game.weather.left) });
                     session.sendEvent({ k: "bi", v: game.bioTonight ? 1 : 0 });
+                    const sh = game.offshore.shipState; if (sh) session.sendEvent({ k: "sx", a: sh.a, d: sh.d, p: Math.round(sh.p) });
                 }
             };
         }
@@ -172,6 +178,7 @@ export class WorldSync {
         if (this.game.stalkers.remote) this.game.stalkers.promote();
         if (this.game.twins.remote) this.game.twins.promote();
         if (this.game.weather) { this.game.weather.remote = false; this.game.weather.onChange = null; }
+        this.game.offshore.remote = false; this.game.offshore.onWhale = this.game.offshore.onShip = null;
         if (this.orig) { f.onSound = this.orig.sound; f.onBlood = this.orig.blood; f.onKill = this.orig.kill; this.orig = null; }
         this.session.onFast = null;
         resources.autoRespawn = true;
@@ -288,6 +295,8 @@ export class WorldSync {
             case "tw": if (!this.session.isHost) g.twins.importState(e.r); break;
             case "sk": if (!this.session.isHost) g.stalkers.importState(e.r); break;
             case "sh": { const q = this.session.isHost ? g.stalkers.list[e.i] : undefined; if (q) g.stalkers.hit(q, e.x, e.z); break; }
+            case "wh": if (!this.session.isHost) g.offshore.startWhale(+e.x, +e.z, +e.h, +e.s); break;
+            case "sx": if (!this.session.isHost && !g.offshore.shipActive) g.offshore.startShip(+e.a, e.d < 0 ? -1 : 1, +e.p || 0); break;
             case "mp": this.addPing(from, this.session.players.get(from)?.name ?? "Someone", playerColor(from), e.x, e.z); break;
         }
     }
