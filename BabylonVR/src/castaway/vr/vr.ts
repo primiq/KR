@@ -92,6 +92,10 @@ export class CastawayVR {
         });
     }
 
+    async exit() {
+        await this.xr.baseExperience.exitXRAsync();
+    }
+
     async enter() {
         await this.xr.baseExperience.enterXRAsync("immersive-vr", "local-floor", this.xr.renderTarget);
     }

@@ -3,7 +3,7 @@ import type * as THREE from "three";
 
 /**
  * Turns a three.js BufferGeometry (Castaway's procedural plants, rocks and props are generated with three's maths)
- * into a Babylon mesh: positions, normals, vertex colours, plus the `sway` / `flutter` wind weights as extra attributes.
+ * into a Babylon mesh: positions, normals and vertex colours, with the `sway` / `flutter` wind weights packed into the colour alpha.
  * Both engines run right-handed here, so axes carry over untouched; only the triangle winding is reversed.
  */
 export function meshFromThree(name: string, g: THREE.BufferGeometry, scene: Scene): Mesh {
@@ -23,13 +23,15 @@ export function meshFromThree(name: string, g: THREE.BufferGeometry, scene: Scen
     }
     vd.indices = idx;
     const col = g.getAttribute("color");
-    if (col) {
+    const sway = g.getAttribute("sway"), flut = g.getAttribute("flutter");
+    if (col || sway) {
+        // the wind weights ride in the colour's alpha (Babylon ignores vertex alpha unless asked): whole part = sway x 100, fraction = flutter
         const c = new Float32Array(n * 4);
         for (let i = 0; i < n; i++) {
-            c[i * 4] = col.getX(i);
-            c[i * 4 + 1] = col.getY(i);
-            c[i * 4 + 2] = col.getZ(i);
-            c[i * 4 + 3] = 1;
+            c[i * 4] = col ? col.getX(i) : 1;
+            c[i * 4 + 1] = col ? col.getY(i) : 1;
+            c[i * 4 + 2] = col ? col.getZ(i) : 1;
+            c[i * 4 + 3] = Math.round(Math.max(0, sway ? sway.getX(i) : 0) * 100) + Math.min(0.99, Math.max(0, flut ? flut.getX(i) : 0));
         }
         vd.colors = c;
     }
@@ -41,9 +43,6 @@ export function meshFromThree(name: string, g: THREE.BufferGeometry, scene: Scen
         vd.normals = nn;
     }
     vd.applyToMesh(m, false);
-    for (const k of ["sway", "flutter"]) {
-        const a = g.getAttribute(k);
-        m.setVerticesData(k, a ? new Float32Array(a.array as ArrayLike<number>) : new Float32Array(n), false, 1);
-    }
+    m.hasVertexAlpha = false;
     return m;
 }

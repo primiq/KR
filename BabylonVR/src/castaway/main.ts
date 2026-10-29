@@ -471,14 +471,17 @@ async function main() {
             attach(session);
             say(`Room code <b>${session.code}</b><br>Friends open this page, tap Multiplayer, and enter it.`);
             if (!started) ready(wantVR, `Room ${session.code} is open. Friends tap Multiplayer and enter this code.`);
+            return null;
         } catch (e) {
-            say(`${(e as Error)?.message ?? e}`, true);
+            const m = `${(e as Error)?.message ?? e}`;
+            say(m, true);
             b.disabled = false;
+            return m;
         }
     };
     const doJoin = async (raw: string, wantVR = false) => {
         const code = cleanCode(raw);
-        if (code.length < 5) { say("Enter the 5-letter room code", true); return; }
+        if (code.length < 5) { say("Enter the 5-letter room code", true); return "Enter the 5-letter room code"; }
         const b = $<HTMLButtonElement>("mp-join");
         b.disabled = true;
         say("Joining…");
@@ -492,11 +495,25 @@ async function main() {
             else { freshChar(); s.spawnOffset(spawn); }
             say("Connected!");
             if (!started) ready(wantVR, `Connected to room ${session.code}.`);
+            return null;
         } catch (e) {
-            say(`${(e as Error)?.message ?? e}`, true);
+            const m = `${(e as Error)?.message ?? e}`;
+            say(m, true);
             b.disabled = false;
+            return m;
         }
     };
+    if (vrMode) {
+        const vm = vrMode;
+        vm.panel.menuActions = {
+            status: () => (sync ? `${sync.session.isHost ? "Hosting" : "In"} room ${sync.session.code} · ${[...sync.session.players.values()].map((p) => p.name).join(", ")}` : "Playing solo. Host a room and share its code, or type a friend's code and join."),
+            host: async () => (sync ? "You are already in a room" : (await doHost()) ?? `Room ${sync!.session.code} is open`),
+            join: async (code) => (sync ? "Leave this room first" : (await doJoin(code)) ?? "Connected!"),
+            leave: () => leave(),
+            save: () => doSave(),
+            exitVR: () => void vm.exit(),
+        };
+    }
     $("mp-open").addEventListener("click", () => $("mp-panel").classList.toggle("hidden"));
     const tab = (host: boolean) => {
         $("mp-tab-host").classList.toggle("on", host);
@@ -533,7 +550,7 @@ async function main() {
     // a hidden tab stops rendering: keep the room in step anyway (a host who alt-tabs must not freeze everyone else)
     setInterval(() => { if (document.hidden) sync?.update(0.1); }, 100);
 
-    Object.assign(window as unknown as Record<string, unknown>, { scene, engine, game, player, vegetation, terrain, ocean, input, clock, camera, getSync: () => sync, doSave });
+    Object.assign(window as unknown as Record<string, unknown>, { Wind, scene, engine, game, player, vegetation, terrain, ocean, input, clock, camera, getSync: () => sync, doSave });
 }
 
 main().catch((e) => {

@@ -23,6 +23,7 @@ export function shakeFoliage(x: number, z: number, strength = 1) {
 
 /**
  * Castaway's foliage wind as a Babylon material plugin: per-vertex `sway` (how far that part bends) and `flutter`
+ * (both packed into the vertex colour's alpha by meshFromThree)
  * (leaf flicker) weights from the plant generators, gusts travelling across the island, leaves shivering on a tree
  * that was just hit, and grass / bushes bending away from people walking through them. Runs in world space after
  * (thin-)instancing, so every copy moves differently.
@@ -50,10 +51,6 @@ export class FoliagePlugin extends MaterialPluginBase {
 
     override isCompatible(shaderLanguage: ShaderLanguage): boolean {
         return shaderLanguage === ShaderLanguage.GLSL;
-    }
-
-    override getAttributes(attributes: string[]): void {
-        attributes.push("sway", "flutter");
     }
 
     override getUniforms() {
@@ -86,8 +83,6 @@ export class FoliagePlugin extends MaterialPluginBase {
         return {
             CUSTOM_VERTEX_DEFINITIONS: `
 #ifdef FOLIAGE
-attribute float sway;
-attribute float flutter;
 vec3 folPushOne(vec3 p, vec4 u, float give) {
     // (an unused slot has a tiny radius: smoothstep with its edges the wrong way round is undefined in GLSL)
     if (u.w <= 0.2) return vec3(0.0);
@@ -104,6 +99,11 @@ vec3 folPushOne(vec3 p, vec4 u, float give) {
 #ifdef FOLIAGE
 {
     float t = folA.x, amp = folA.y, wk = folA.z;
+#ifdef VERTEXCOLOR
+    float sway = floor(color.a) / 100.0, flutter = fract(color.a);
+#else
+    float sway = 0.0, flutter = 0.0;
+#endif
     vec3 p = worldPos.xyz;
     float gust = (sin(t * 0.8 + p.x * 0.04 + p.z * 0.03) * 0.5 + 0.5) * 0.7 + 0.3;
     float osc = sin(t * 1.7 + p.x * 0.3 + p.z * 0.2);

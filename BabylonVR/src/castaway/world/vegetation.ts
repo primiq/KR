@@ -265,7 +265,7 @@ export class Vegetation {
                 if (b === undefined) { b = buckets.length; tileOf.set(k, b); buckets.push([]); bucketGeo.push(gi); }
                 buckets[b].push(i);
             });
-            // one Babylon mesh per geometry variant, cloned per tile (clones share the vertex buffers)
+            // one Babylon mesh per geometry variant, copied per tile
             const src = geos.map((g, gi) => meshFromThree(`${name}${gi}`, g, scene));
             const farSrc = farGeos?.map((g, gi) => meshFromThree(`${name}${gi}_far`, g, scene));
             src.forEach((m) => m.setEnabled(false));
@@ -273,7 +273,11 @@ export class Vegetation {
             buckets.forEach((items, bi) => {
                 if (!items.length) return;
                 const gi = bucketGeo[bi];
-                const mesh = new Inst(name, src[gi].clone(`${name}${gi}_${bi}`)!, mat, items.length, scene, castShadow && shadows);
+                // each tile gets its own copy of the geometry: Babylon caches the vertex-array state (thin-instance buffer bindings
+                // included) on the geometry, so tiles sharing one would draw each other's instance buffers
+                const own = src[gi].clone(`${name}${gi}_${bi}`)!;
+                own.makeGeometryUnique();
+                const mesh = new Inst(name, own, mat, items.length, scene, castShadow && shadows);
                 const c = new THREE.Vector3();
                 items.forEach((li, k) => {
                     const p = list[li];
@@ -293,6 +297,7 @@ export class Vegetation {
                 mesh.instanceMatrix.needsUpdate = true;
                 if (farSrc) {
                     const fm = farSrc[gi].clone(`${name}${gi}_${bi}_far`)!;
+                    fm.makeGeometryUnique();
                     fm.material = mat;
                     fm.isPickable = false;
                     fm.receiveShadows = shadows;

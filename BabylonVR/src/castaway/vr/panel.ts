@@ -72,6 +72,21 @@ export class VRPanel {
     private tabBag: Button;
     private tabCraft: Button;
     private dirty = true;
+    private tabMenu: Button;
+    private menuOpen = false;
+    private menuPane!: StackPanel;
+    private menuStatus!: TextBlock;
+    private codeText!: TextBlock;
+    private code = "";
+    /** filled in by the page: multiplayer and session actions for the in-headset menu */
+    menuActions: {
+        status(): string;
+        host(): Promise<string | null>;
+        join(code: string): Promise<string | null>;
+        leave(): void;
+        save(): void;
+        exitVR(): void;
+    } | null = null;
     private craftKey = "";
 
     constructor(private readonly scene: Scene, private readonly game: Game) {
@@ -182,8 +197,9 @@ export class VRPanel {
             top.addControl(t);
             return t;
         };
-        this.tabBag = tab("tbag", "Bag", () => { game.hud.setTab("bag"); this.dirty = true; });
-        this.tabCraft = tab("tcraft", "Craft", () => { game.hud.setTab("craft"); this.dirty = true; });
+        this.tabBag = tab("tbag", "Bag", () => { this.menuOpen = false; game.hud.setTab("bag"); this.dirty = true; });
+        this.tabCraft = tab("tcraft", "Craft", () => { this.menuOpen = false; game.hud.setTab("craft"); this.dirty = true; });
+        this.tabMenu = tab("tmenu", "Menu", () => { this.menuOpen = true; this.dirty = true; });
         tab("tclose", "Close  ✕", () => this.close());
         b.addControl(top);
 
@@ -269,8 +285,70 @@ export class VRPanel {
         this.craftPane.addControl(this.craftList);
         b.addControl(this.craftPane);
 
+        this.buildMenu(b);
         game.inv.subscribe(() => (this.dirty = true));
         game.worn.subscribe(() => (this.dirty = true));
+    }
+
+    /** The in-headset game menu: host or join a room (with a keypad for the code), save, leave VR. */
+    private buildMenu(b: Rectangle) {
+        const pane = new StackPanel("menu");
+        pane.top = "120px";
+        pane.width = "1500px";
+        pane.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+        b.addControl(pane);
+        this.menuPane = pane;
+        this.menuStatus = new TextBlock("mstatus", "");
+        this.menuStatus.height = "130px";
+        this.menuStatus.color = TXT;
+        this.menuStatus.fontSize = 38;
+        this.menuStatus.textWrapping = true;
+        pane.addControl(this.menuStatus);
+        const row = (h = 110) => {
+            const r = new StackPanel("mrow");
+            r.isVertical = false;
+            r.height = `${h}px`;
+            pane.addControl(r);
+            return r;
+        };
+        const button = (parent: StackPanel, label: string, w: number, fn: () => void, bg = "#2d6a5a") => {
+            const x = Button.CreateSimpleButton(`m${label}`, label);
+            x.width = `${w}px`;
+            x.height = "92px";
+            x.color = TXT;
+            x.fontSize = 36;
+            x.cornerRadius = 20;
+            x.thickness = 0;
+            x.background = bg;
+            x.paddingLeft = "8px";
+            x.paddingRight = "8px";
+            x.onPointerUpObservable.add(() => { fn(); this.dirty = true; });
+            parent.addControl(x);
+            return x;
+        };
+        const say = (t: string | null) => { if (t) this.game.hud.message(t); this.dirty = true; };
+        const r1 = row();
+        button(r1, "Host a room", 360, () => void this.menuActions?.host().then(say));
+        button(r1, "Leave room", 330, () => this.menuActions?.leave());
+        button(r1, "Save", 220, () => { this.menuActions?.save(); this.game.hud.message("Saved"); });
+        button(r1, "Leave VR", 300, () => this.menuActions?.exitVR(), "#7a3a3a");
+        this.codeText = new TextBlock("code", "");
+        this.codeText.height = "90px";
+        this.codeText.color = "#ffd166";
+        this.codeText.fontSize = 46;
+        pane.addControl(this.codeText);
+        const ALPHA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        for (let r = 0; r < 4; r++) {
+            const kr = row(100);
+            for (let c = 0; c < 8; c++) {
+                const ch = ALPHA[r * 8 + c];
+                button(kr, ch, 150, () => { if (this.code.length < 5) this.code += ch; }, "#ffffff22");
+            }
+        }
+        const r3 = row();
+        button(r3, "⌫ Delete", 300, () => { this.code = this.code.slice(0, -1); }, "#ffffff22");
+        button(r3, "Join room", 360, () => { if (this.code.length === 5) void this.menuActions?.join(this.code).then(say); else say("Type the 5-letter room code"); });
+        pane.isVisible = false;
     }
 
     /** the wrist display rides on the left controller, facing up at you */
@@ -289,14 +367,16 @@ export class VRPanel {
 
     get pointerBusy() { return this.board.isEnabled(); }
 
-    open(tab: "bag" | "craft") {
+    open(tab: "bag" | "craft" | "menu") {
         const g = this.game;
+        this.menuOpen = tab === "menu";
+        if (tab === "menu") tab = "bag";
         if (g.stats.dead) return;
         if (!g.hud.inventoryOpen) g.setInventory(true, tab);
         else g.hud.setTab(tab);
         this.dirty = true;
     }
-    toggle(tab: "bag" | "craft") {
+    toggle(tab: "bag" | "craft" | "menu") {
         if (this.game.hud.inventoryOpen) this.close();
         else this.open(tab);
     }
@@ -341,11 +421,14 @@ export class VRPanel {
         }
         if (!open || !this.dirty) return;
         this.dirty = false;
-        const craft = hud.tab === "craft";
-        this.bagPane.isVisible = !craft;
+        const craft = hud.tab === "craft" && !this.menuOpen;
+        this.bagPane.isVisible = !craft && !this.menuOpen;
         this.craftPane.isVisible = craft;
-        this.tabBag.background = craft ? "#ffffff18" : "#2d6a5a";
+        this.menuPane.isVisible = this.menuOpen;
+        this.tabBag.background = !craft && !this.menuOpen ? "#2d6a5a" : "#ffffff18";
         this.tabCraft.background = craft ? "#2d6a5a" : "#ffffff18";
+        this.tabMenu.background = this.menuOpen ? "#2d6a5a" : "#ffffff18";
+        if (this.menuOpen) { this.menuStatus.text = this.menuActions?.status() ?? ""; this.codeText.text = `Room code: ${this.code.padEnd(5, "_")}`; return; }
         if (craft) { this.renderCraft(); return; }
         const pick = hud.picked;
         for (let i = 0; i < this.grid.length; i++) {
