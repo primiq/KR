@@ -124,9 +124,10 @@ export function buildCat(c: Coat, shadows: boolean) {
   for (const s of [-1, 1]) {
     head.cyl(0, 0.034, 0.072, c.ear, s * 0.055, 0.072, -0.012, 1, 0.55, 4, 0, 0, -s * 0.24);
     head.cyl(0, 0.02, 0.045, '#e3b0b0', s * 0.055, 0.066, -0.004, 1, 0.35, 4, 0, 0, -s * 0.24);               // pink inside the ear
-    head.sph(1, c.eye, s * 0.038, 0.01, 0.066, 0.02, 0.023, 0.01, 10);
-    head.sph(1, '#101010', s * 0.038, 0.01, 0.073, 0.011, 0.017, 0.005, 8);
-    head.sph(1, '#ffffff', s * 0.038 + 0.006, 0.019, 0.077, 0.0045, 0.0045, 0.002, 5);                         // the catchlight
+    // (the eyes sit a little proud of the face: at Castaway's depth they were buried inside the head sphere)
+    head.sph(1, c.eye, s * 0.038, 0.01, 0.075, 0.02, 0.023, 0.01, 10);
+    head.sph(1, '#101010', s * 0.038, 0.01, 0.082, 0.011, 0.017, 0.005, 8);
+    head.sph(1, '#ffffff', s * 0.038 + 0.006, 0.019, 0.086, 0.0045, 0.0045, 0.002, 5);                         // the catchlight
     if (c.stripe) head.sph(1, c.stripe, s * 0.016, 0.06, 0.05, 0.007, 0.024, 0.012, 6);                       // the "M" on a tabby's forehead
   }
   head.sph(1, c.muzzle, 0, 0.03, 0.068, 0.022, 0.012, 0.016, 8);      // forehead blaze (ragdolls) / lighter nose bridge
