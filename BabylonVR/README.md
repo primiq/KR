@@ -290,7 +290,8 @@ come from Castaway. Rendering, materials, the ocean and the VR controls are rebu
   cats. At night something watches from the trees.
 - **The secret room:** the odd door in one ruined hut opens onto a hall floating high above the
   island, with a glass floor, a mirror and doors to other places. The cloud door lets you jump out
-  and skydive down with a parachute.
+  and skydive down with a parachute; the airstrip door leads to an island of cars to drive, ramps,
+  balloons and a spiral tower.
 - **The stone circle:** touch two stones of one colour on the hilltop and something answers. Red
   summons Mario under a cursed pink sky. Lead him to the warp pipe by the old hut and everyone
   jumps into a secret side-scrolling level together. Blue calls an alien invasion that everyone

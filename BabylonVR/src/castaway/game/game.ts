@@ -780,6 +780,15 @@ export class Game {
         if (stats.dead && !this.deathHandled) this.onDeath();
         hud.setVitals(stats);
 
+        // sitting in a car: the airstrip drives; E gets you out
+        const air = this.under.air;
+        if (air?.driving) {
+            hud.setPrompt(null); this.hideBuildUi();
+            view.visible(false);
+            if (input.interactQueued) { input.interactQueued = false; const c = air.driving; air.exitCar(this.player); if (c) this.under.onEvent?.({ k: "cr", i: c.index, on: 0 }); }
+            input.attackQueued = false; input.attackHeld = false; input.hotbarDelta = 0; input.hotbarSelect = null;
+            return;
+        }
         if (this.boats.atHelm && input.interactQueued) { input.interactQueued = false; this.leaveHelm(); }
         if (stats.dead || this.sleeping || this.wreckT >= 0 || this.warp.inLevel || this.invaders.seated) { hud.setPrompt(null); this.hideBuildUi(); return; }
 
@@ -1048,7 +1057,7 @@ export class Game {
 
     /** VR: a trigger pull (swung = false) or a real swing of the arm (swung = true). */
     vrPrimary(swung: boolean) {
-        if (this.stats.dead || this.sleeping || this.hud.inventoryOpen || this.warp.inLevel || this.invaders.seated) return;
+        if (this.stats.dead || this.sleeping || this.hud.inventoryOpen || this.warp.inLevel || this.invaders.seated || this.under.air?.driving) return;
         const held = this.equipped, def = held ? ITEMS[held.id] : null;
         if (def?.tool && def.tool.model !== "rod") {
             if (this.vrCd > 0) return;

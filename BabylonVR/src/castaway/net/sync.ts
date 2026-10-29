@@ -30,6 +30,7 @@ export class WorldSync {
     private lastHitter = 0;
     private slowTick = 0;
     private seatTmp = { x: 0, y: 0, z: 0, yaw: 0 };
+    private carT = 0;
 
     constructor(
         private game: Game,
@@ -143,6 +144,7 @@ export class WorldSync {
                 const near = (x: number, z: number) => this.targets().some((t) => Math.hypot(t.x - x, t.z - z) < 135);
                 session.sendEvent({ k: "an", r: fauna.exportState(near) });
                 session.sendEvent({ k: "sk", r: game.stalkers.exportState() });
+                if (game.under.air) session.sendEvent({ k: "bl", r: game.under.air.balloons.exportState() });
                 if (game.druids.phase === "alive" || game.druids.phase === "dying") session.sendEvent({ k: "zm", r: game.druids.exportState() });
                 session.sendEvent({ k: "tw", r: game.twins.exportState() });
                 const tu = game.turtles.exportState(); if (tu.length) session.sendEvent({ k: "tu", r: tu });
@@ -163,6 +165,7 @@ export class WorldSync {
             game.hud.message(`${p.name} left`);
             for (const [k, u] of this.users) if (u === p.id) this.users.delete(k);
             this.votes.delete(p.id);
+            game.under.air?.remoteGone(p.id);
         };
         session.snapshot = () => captureWorld(this.game);
         session.getHour = () => clock.hour;
@@ -352,6 +355,9 @@ export class WorldSync {
             case "iv": g.invaders.net(e, from); break;
             case "gs": if (typeof e.x === "number" && Array.isArray(e.s)) g.guitar.remote(e, Math.hypot(g.player.pos.x - e.x, g.player.pos.y - e.y, g.player.pos.z - e.z)); break;
             case "bo": if (e.op === "calm") { if (this.session.isHost && g.weather && g.weather.kind !== 0) g.weather.set(0); } else g.boats.net(e, from); break;
+            case "cr": if (e.on) { const c = g.under.air?.cars[e.i]; if (c && c !== g.under.air?.driving) { g.under.air?.remote.set(e.i, from); c.driver = from; } } else g.under.air?.remoteLeave(e.i); break;
+            case "cs": g.under.air?.remoteDrive(from, e.r); break;
+            case "bl": if (!this.session.isHost) g.under.air?.balloons.importState(e.r); break;
             case "ml": g.warp.net(e, from); break;
             case "mp": this.addPing(from, this.session.players.get(from)?.name ?? "Someone", playerColor(from), e.x, e.z); break;
         }
@@ -471,7 +477,7 @@ export class WorldSync {
         const st: PState = {
             x: p.pos.x, y: p.pos.y, z: p.pos.z, yaw: p.yaw, pitch: p.pitch,
             spd: Math.hypot(p.vel.x, p.vel.z), item: held ? held.id : "", swing: g.swings,
-            flags: (p.sprinting ? 1 : 0) | (p.mode === "swim" ? 2 : 0) | (g.stats.dead ? 4 : 0) | (g.isSleeping ? 8 : 0) | (g.drinking ? 32 : 0) | (g.warp.inLevel ? F_LEVEL : 0) | (g.slide.riding ? 536870912 : 0) | (g.dive?.active ? 2048 : 0) | (g.dive?.active && g.dive.phase === "chute" ? 4096 : 0),
+            flags: (p.sprinting ? 1 : 0) | (p.mode === "swim" ? 2 : 0) | (g.stats.dead ? 4 : 0) | (g.isSleeping ? 8 : 0) | (g.drinking ? 32 : 0) | (g.warp.inLevel ? F_LEVEL : 0) | (g.slide.riding ? 536870912 : 0) | (g.under.air?.driving ? 64 : 0) | (g.dive?.active ? 2048 : 0) | (g.dive?.active && g.dive.phase === "chute" ? 4096 : 0),
             hp: g.stats.health, arm: g.armorCode,
         };
         const pose = this.vrPose?.() ?? null;
@@ -479,6 +485,11 @@ export class WorldSync {
         s.setMyState(st);
         s.update(dt);
         this.pushApart(dt);
+        // a player driving a car rides the (smoothed) car, not their own laggy position packets
+        this.carT -= dt;
+        if (this.carT <= 0) { this.carT = 0.1; const cs = g.under.air?.driveState(); if (cs) s.sendEvent({ k: "cs", r: cs }); }
+        const air = g.under.air;
+        if (air) for (const [pid, ps] of s.states) if (pid !== s.myId && (ps.flags & 64) && air.seatOf(pid, this.seatTmp)) { ps.x = this.seatTmp.x; ps.y = this.seatTmp.y; ps.z = this.seatTmp.z; ps.yaw = this.seatTmp.yaw; ps.pitch = 0; }
         // a player on a boat's deck rides along with it
         for (const [pid, ps] of s.states) if (pid !== s.myId && g.boats.deckOf(pid, this.seatTmp)) { ps.x = this.seatTmp.x; ps.y = this.seatTmp.y; ps.z = this.seatTmp.z; if (!ps.v) ps.yaw = this.seatTmp.yaw; }
         this.avatars.sync(s.players, s.states, s.myId, dt, p.pos);

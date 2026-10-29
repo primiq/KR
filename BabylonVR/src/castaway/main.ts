@@ -5,6 +5,7 @@ import {
     Engine,
     ImageProcessingConfiguration,
     type Mesh,
+    Quaternion,
     Scene,
     SSAO2RenderingPipeline,
     UniversalCamera,
@@ -24,6 +25,7 @@ import { BIO } from "./world/sealife";
 import { Cats } from "./world/cats";
 import { SkyRoom } from "./world/skyroom";
 import { Skydive } from "./world/skydive";
+import { Airstrip } from "./world/airstrip";
 import { Dolphins } from "./world/dolphins";
 import { SEA } from "./world/waves";
 import { getOutfit, onOutfitChange, setPlayerOutfit } from "./net/outfit";
@@ -165,6 +167,11 @@ async function main() {
     sky.onDoorOpen = () => { game.sfx.creak(); game.sfx.setWind(0.5); game.hud.message("The door swings open onto the open sky..."); };
     sky.onJump = () => { sky.depart(); dive.start(player, spawn.x, spawn.z, Math.PI); };
     { const e = sites.doorExit(); sky.exitTo = { x: e.x, y: heightAt(e.x, e.z), z: e.z, yaw: e.yaw }; }
+    // the airstrip island (through the secret room's west door): cars, balloons and the spiral tower
+    const air = new Airstrip(game.natureRoot as unknown as THREE.Scene, q.shadows, q.name === "low" ? 0 : 1);
+    game.under.air = air;
+    air.sfx = { engine: (v) => game.sfx.engine(v), boing: (v) => game.sfx.boing(v), crash: (v) => game.sfx.crash(v) };
+    const carCam = new THREE.PerspectiveCamera();
     // the island's cats
     const cats = params.has("nocats") ? null : new Cats(game.natureRoot, vegetation.colliders, q.shadows, () => game.fauna.animals);
     if (cats) {
@@ -249,10 +256,21 @@ async function main() {
             clock.update(dt);
             vrMode?.beforePlayer(dt);
             game.preUpdate();
+            // the airstrip: keep people from being stranded there, then drive the cars
+            if (!air.active && air.contains(player.pos.x, player.pos.z) && sky.exitTo) { const e = sky.exitTo; player.teleport(e.x, e.y, e.z, e.yaw); }
+            if (air.active && !air.contains(player.pos.x, player.pos.z)) { air.leave(player); player.teleport(player.pos.x, heightAt(player.pos.x, player.pos.z), player.pos.z, player.yaw); }
+            if (air.driving && game.stats.dead) air.exitCar(player);
+            if (air.active) air.pre(dt, { gas: Math.max(-1, Math.min(1, input.move.y)), steer: Math.max(-1, Math.min(1, input.move.x)), hand: input.jumpHeld, boost: input.wantsSprint }, player, vrActive());
             if (!game.uiBlocking) player.update(dt, input);
             else input.consumeLook();
             vrMode?.afterPlayer(dt);
-            if (!vrActive()) {
+            if (air.driving && !vrActive()) {
+                // the third-person chase camera behind the car
+                air.post(dt, carCam, player);
+                camera.position.set(carCam.position.x, carCam.position.y, carCam.position.z);
+                camera.rotationQuaternion = new Quaternion(carCam.quaternion.x, carCam.quaternion.y, carCam.quaternion.z, carCam.quaternion.w);
+            } else if (!vrActive()) {
+                camera.rotationQuaternion = null;
                 camera.position.set(player.eye.x, player.eye.y + player.shakeY, player.eye.z);
                 camera.rotation.set(player.pitch + player.shakeRot.x, player.yaw + player.shakeRot.y, player.shakeRot.z);
                 const cp = Math.cos(player.pitch);
@@ -630,7 +648,7 @@ async function main() {
     // a hidden tab stops rendering: keep the room in step anyway (a host who alt-tabs must not freeze everyone else)
     setInterval(() => { if (document.hidden) sync?.update(0.1); }, 100);
 
-    Object.assign(window as unknown as Record<string, unknown>, { Wind, scene, engine, game, player, sites, caves, heightAt, weather, cats, sky, dive, vegetation, terrain, ocean, input, clock, camera, getSync: () => sync, doSave });
+    Object.assign(window as unknown as Record<string, unknown>, { Wind, scene, engine, game, player, sites, caves, heightAt, weather, cats, sky, dive, air, vegetation, terrain, ocean, input, clock, camera, getSync: () => sync, doSave });
 }
 
 main().catch((e) => {
