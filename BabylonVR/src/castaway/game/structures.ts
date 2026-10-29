@@ -1,4 +1,4 @@
-import { Color3, Constants, DynamicTexture, type Material, PBRMaterial, PointLight, type Scene, StandardMaterial, TransformNode, Vector3 } from "@babylonjs/core";
+import { type AbstractMesh, Color3, Constants, DynamicTexture, type Material, PBRMaterial, PointLight, type Scene, StandardMaterial, TransformNode, Vector3 } from "@babylonjs/core";
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { bakeGroup, disposeBaked, tok } from "../render/bake";
@@ -401,11 +401,16 @@ function poseFlame(f: { n: TransformNode; base: THREE.Quaternion }, sx: number, 
 export class StructureManager {
   readonly list: Structure[] = [];
   /** A fixed pool of fire lights: the nearest burning sources get one each, with a fade. */
-  static POOL = 4;
+  static POOL = 3;
+  /** other players' torches in their hands (set by main): they get pool lights too */
+  remoteTorches: (() => { id: number; x: number; y: number; z: number }[]) | null = null;
+  private remote = new Map<number, Structure>();
   readonly lights: PointLight[];
   private lightFor: (Structure | null)[];
   private lightFade: number[];
   readonly heldLight: PointLight;
+  /** a gentler copy of it for your own hands only (they are too close to the flame for the real one) */
+  private handLight: PointLight;
   private heldFade = 0;
   private ghosts = new Map<PlaceKind, TransformNode>();
   private ghostMat: StandardMaterial;
@@ -429,7 +434,8 @@ export class StructureManager {
       l.specular = l.diffuse.scale(0.4);
       l.intensity = 0;
       l.range = 24;
-      l.setEnabled(false);
+      // (always on, at intensity 0 when idle: switching a light on or off changes every lit material's shader, and the
+      //  recompile was a long stall each time a torch came out or was placed)
       return l;
     });
     this.lightFor = new Array(StructureManager.POOL).fill(null);
@@ -438,7 +444,13 @@ export class StructureManager {
     this.heldLight.diffuse = Color3.FromHexString("#ffa858");
     this.heldLight.intensity = 0;
     this.heldLight.range = 16;
-    this.heldLight.setEnabled(false);
+    // not on your own first-person hands (render layer HANDS_LAYER): 40 cm from the flame they would burn white
+    this.heldLight.includeOnlyWithLayerMask = 0x07ffffff;
+    this.handLight = new PointLight("heldTorchHands", Vector3.Zero(), scene);
+    this.handLight.diffuse = this.heldLight.diffuse.clone();
+    this.handLight.specular = Color3.Black();
+    this.handLight.intensity = 0;
+    // (only your own first-person hands: handMeshes keeps its list up to date)
     this.ghostMat = ghostMaterial(scene, "placeGhost");
     for (const k of Object.keys(FOOT) as PlaceKind[]) {
       const gh = bakeGroup(`ghost_${k}`, buildModel(k, false).group, scene, (key) => matFor(scene, key), false, this.ghostMat).node;
@@ -742,6 +754,16 @@ export class StructureManager {
       }
       if (s.lit && d < 44) cands.push({ s, d });
     }
+    // torches other players are carrying
+    const rt = this.remoteTorches?.() ?? [];
+    for (const id of this.remote.keys()) if (!rt.some((r) => r.id === id)) this.remote.delete(id);
+    for (const r of rt) {
+      let s = this.remote.get(r.id);
+      if (!s) { s = { kind: "torch", x: 0, y: 0, z: 0, yaw: 0, lit: true, phase: Math.random() * 10, hits: [] } as unknown as Structure; this.remote.set(r.id, s); }
+      s.x = r.x; s.y = r.y - 0.15; s.z = r.z;
+      const d = Math.hypot(r.x - px, r.z - pz);
+      if (d < 44) cands.push({ s, d });
+    }
 
     // pooled lights: keep a source's light while it stays among the nearest, give free lights to newcomers
     cands.sort((p, q) => p.d - q.d);
@@ -765,21 +787,29 @@ export class StructureManager {
         else if (n.kind === "lantern") { const h = n.hits[0]; L.position.set(h.x, h.y, h.z); }
         else L.position.set(n.x, n.y + (n.kind === "torch" ? 1.45 : 0.9), n.z);
         const fl = 0.85 + 0.15 * Math.sin(t * 13 + n.phase) + 0.08 * Math.sin(t * 31.7 + n.phase);
-        target = (n.kind === "furnace" ? 4 : n.kind === "torch" ? 6 : n.kind === "lantern" ? 4 : 9) * fl;
+        // (physical inverse-square falloff: these light the ground a few metres round them, not just the flame)
+        target = (n.kind === "furnace" ? 20 : n.kind === "torch" ? 30 : n.kind === "lantern" ? 20 : 45) * fl;
         L.range = n.kind === "campfire" ? 40 : n.kind === "torch" ? 30 : n.kind === "lantern" ? 22 : 24;
       }
       this.lightFade[i] += (target - this.lightFade[i]) * Math.min(1, dt * 6);
       L.intensity = this.lightFade[i];
-      L.setEnabled(this.lightFade[i] > 0.01);
     }
+  }
+
+  /** the meshes the first-person hands are drawn with (the hand light lights only these) */
+  set handMeshes(list: AbstractMesh[]) {
+    const cur = this.handLight.includedOnlyMeshes;
+    if (cur.length === list.length && list.every((m, i) => cur[i] === m)) return;
+    this.handLight.includedOnlyMeshes = list;
   }
 
   /** The torch in your hand. */
   setHeldLight(on: boolean, at: Vector3, dt: number, k = 1) {
     this.heldLight.position.copyFrom(at);
-    const target = on ? 6 * k * (0.86 + 0.14 * Math.sin(this.time * 12.7) + 0.07 * Math.sin(this.time * 31.1)) : 0;
+    const target = on ? 30 * k * (0.86 + 0.14 * Math.sin(this.time * 12.7) + 0.07 * Math.sin(this.time * 31.1)) : 0;
     this.heldFade += (target - this.heldFade) * Math.min(1, dt * 8);
     this.heldLight.intensity = this.heldFade;
-    this.heldLight.setEnabled(this.heldFade > 0.01);
+    this.handLight.position.copyFrom(at);
+    this.handLight.intensity = this.heldFade * 0.085;
   }
 }

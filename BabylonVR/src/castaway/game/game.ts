@@ -172,6 +172,7 @@ export class Game {
     } = {};
     /** bumps on every swing so other players can animate it */
     swings = 0;
+    private handMeshT = 0;
 
     private input: Input;
     private spawn: GameOpts["spawn"];
@@ -729,7 +730,11 @@ export class Game {
         }
         // the hands: their self-light fades with the daylight (full in the caves, where lanterns light them)
         view.drink(this.drinking && !hud.inventoryOpen);
+        // (a torch in hand lights your hands warmly, as the flame light itself is kept off them)
         { const d = this.clock.day ?? 1; view.update(dt, player, ug.active ? 1 : 0.05 + 0.95 * d * d); }
+        // the torch's gentler light for the hands holding it: on the hands' own meshes (they come and go with the item held)
+        this.handMeshT -= dt;
+        if (this.handMeshT <= 0) { this.handMeshT = 0.5; this.structures.handMeshes = this.view.scene.meshes.filter((m) => (m.metadata as { viewModel?: boolean } | null)?.viewModel === true); }
         this.fishing.update(dt);
         {
             const h = this.clock.hour, p = player;

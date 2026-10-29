@@ -4,7 +4,9 @@ import {
     DefaultRenderingPipeline,
     Engine,
     ColorCurves,
+    Effect,
     ImageProcessingConfiguration,
+    type Material,
     type Mesh,
     Quaternion,
     Scene,
@@ -13,6 +15,8 @@ import {
     Vector3,
     type WebXRDefaultExperience,
 } from "@babylonjs/core";
+// (loaded up front, not lazily with the sky material, so its sun disc can be taken out below before it is first used)
+import "@babylonjs/materials/sky/sky.fragment";
 import { createSun } from "../environment";
 import { Ocean } from "../island/ocean";
 import { createSky } from "../island/sky";
@@ -85,6 +89,16 @@ function sunDirection(): Vector3 {
     return new Vector3(-Math.cos(az) * Math.cos(el), -Math.sin(el), -Math.sin(az) * Math.cos(el)).normalize();
 }
 
+// The scattering sky draws its own sun disc 19000 times brighter than the sky round it: the bloom smeared that into a glowing
+// square, with a second sun beside it. world/skyDeco.ts draws a round sun instead, so the sky's disc is taken out here, before
+// the sky shader is first compiled. (The sun's glow, the scattering round it, stays.)
+{
+    const k = "skyPixelShader", src = Effect.ShadersStore[k];
+    // (and the bright scattering right round the sun is capped: a few hundred times the sky's brightness there made the bloom
+    //  smear a square plateau of white over it)
+    if (src) Effect.ShadersStore[k] = src.replace("19000.0", "0.0").replace("gl_FragColor=color;", "gl_FragColor=vec4(min(color.rgb,vec3(4.0)),color.a);");
+}
+
 async function main() {
     const q = pickQuality(getPref("castaway.quality") ?? "auto");
     const qSel = $<HTMLSelectElement>("quality");
@@ -98,6 +112,10 @@ async function main() {
     window.addEventListener("resize", () => engine.resize());
 
     const scene = new Scene(engine);
+    // every lit material has room for all the lights that can be on at once (sun, moon, lightning, cave fill, three fire
+    // lights, the torch in your hand): the lights are never switched on or off, so no shader ever has to be rebuilt mid-game
+    const roomForLights = (m: Material) => { const x = m as Material & { maxSimultaneousLights?: number }; if (typeof x.maxSimultaneousLights === "number") x.maxSimultaneousLights = 8; };
+    scene.onNewMaterialAddedObservable.add(roomForLights);
     // Castaway's maths is right-handed (three.js); Babylon runs the same way here so every formula ports unchanged
     scene.useRightHandedSystem = true;
     scene.clearColor = new Color4(0.55, 0.75, 0.95, 1);
@@ -229,7 +247,9 @@ async function main() {
         if (locked) { $("menu").classList.add("hidden"); $("hud").classList.remove("hidden"); }
         else if (input.enabled && !game.uiBlocking && !vrActive()) { $("menu").classList.remove("hidden"); $("hud").classList.add("hidden"); input.enabled = false; inGameMenu(); }
     });
-    const clock = new Atmosphere(scene, sun, skybox, env, ocean, sunMesh, q.name === "low");
+    // (the shared environment's flat sun disc faced one way only and read as an ellipse: SkyDeco draws a round sun instead)
+    sunMesh.setEnabled(false);
+    const clock = new Atmosphere(scene, sun, skybox, env, ocean, null, q.name === "low");
     if (params.has("hour")) clock.hour = parseFloat(params.get("hour")!);
     progress(0.82, "Washing the castaway ashore…");
     await nextFrame();
@@ -285,6 +305,12 @@ async function main() {
         paws.root.visible = on && !vrActive();
     };
     game.under.onCat = catMode;
+    // other players carrying a torch light the ground round them too
+    game.structures.remoteTorches = () => {
+        const out: { id: number; x: number; y: number; z: number }[] = [];
+        if (sync) for (const a of sync.avatars.positions) { const st = sync.session.states.get(a.id); if (st?.item === "torch") out.push({ id: a.id, x: a.x, y: a.y + 1.55, z: a.z }); }
+        return out;
+    };
     progress(0.87, "Stocking the shop and the museum…");
     await nextFrame();
     // ---- Banana or Salmon: the narrator and the co-op campaign behind the yellow door in the secret room

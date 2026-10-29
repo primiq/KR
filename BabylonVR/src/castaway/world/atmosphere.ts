@@ -97,7 +97,7 @@ export class Atmosphere {
         this.caveFill.groundColor = new Color3(0.25, 0.22, 0.2);
         this.caveFill.specular = Color3.Black();
         this.caveFill.intensity = 0.3;
-        this.caveFill.setEnabled(false);
+        this.caveFill.intensity = 0;
         // the overcast: a grey dome inside the sky that thickens as the weather closes in
         this.clouds = MeshBuilder.CreateSphere("clouds", { diameter: 900, segments: 16, sideOrientation: Mesh.BACKSIDE }, scene);
         this.cloudMat = new StandardMaterial("cloudsMat", scene);
@@ -114,7 +114,7 @@ export class Atmosphere {
         this.flashLight.diffuse = new Color3(0.8, 0.86, 1);
         this.flashLight.groundColor = new Color3(0.3, 0.32, 0.4);
         this.flashLight.specular = Color3.Black();
-        this.flashLight.setEnabled(false);
+        this.flashLight.intensity = 0;
         // (the old point stars and flat moon disc stay built but hidden: SkyDeco draws the night sky now)
         this.stars.setEnabled(false);
         this.moonDisc.setEnabled(false);
@@ -149,7 +149,7 @@ export class Atmosphere {
         const my = -sy, up = smoothstep(-0.06, 0.22, my);
         this.moon.direction.copyFrom(this.sunDir);
         this.moon.intensity = 0.55 * (1 - day) * (0.25 + 0.75 * up);
-        this.moon.setEnabled(this.moon.intensity > 0.01);
+        // (the moon and the lightning stay switched on, at intensity 0 when idle: toggling a light recompiles every lit shader)
         this.scene.environmentIntensity = lerp(0.12, 1, day);
         const night = 1 - smoothstep(-0.2, 0.05, sy);
         void night;
@@ -168,16 +168,16 @@ export class Atmosphere {
         if (this.ug) {
             this.sun.intensity = 0;
             this.sun.setEnabled(false);
-            this.moon.setEnabled(false);
+            this.moon.intensity = 0;
             this.scene.environmentIntensity = 0;
-            this.caveFill.setEnabled(true);
+            this.caveFill.intensity = 0.3;
             this.scene.fogMode = Scene.FOGMODE_EXP2;
             this.scene.fogDensity = 0.013;
             this.scene.fogColor = new Color3(0.012, 0.016, 0.03);
             return;
         }
         this.sun.setEnabled(true);
-        this.caveFill.setEnabled(false);
+        this.caveFill.intensity = 0;
         // ---- the weather: a grey sky lets less sun and sky light through; lightning lights everything up for a moment
         const ov = this.overcast;
         this.sun.intensity *= 1 - 0.85 * ov;
@@ -207,7 +207,6 @@ export class Atmosphere {
             this.scene.environmentIntensity += (0.6 - this.scene.environmentIntensity) * dw;
         }
         this.flashLight.intensity = this.flash * 1.6;
-        this.flashLight.setEnabled(this.flash > 0.01);
         if (ov > 0.02) {
             this.scene.fogMode = Scene.FOGMODE_EXP2;
             this.scene.fogDensity = 0.004 * ov;

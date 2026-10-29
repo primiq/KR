@@ -208,6 +208,42 @@ void main() {
     gl_FragColor = vec4(col * moonVis, a);
 }`;
 
+// the sun: a round, camera-facing disc where the scattering sky has its sun, white-hot by day, swollen and red at the horizon
+Effect.ShadersStore["skySunVertexShader"] = `
+precision highp float;
+attribute vec3 position;
+attribute vec2 uv;
+uniform mat4 viewProjection;
+uniform vec3 cameraPos;
+uniform vec3 camRight;
+uniform vec3 camUp;
+uniform vec3 sunDir;
+uniform float size;
+varying vec2 vUV;
+void main() {
+    vUV = uv * 2.0 - 1.0;
+    vec3 c = cameraPos + sunDir * ${(R - 30).toFixed(1)};
+    vec3 p = c + (camRight * position.x + camUp * position.y) * size;
+    gl_Position = viewProjection * vec4(p, 1.0);
+}`;
+Effect.ShadersStore["skySunFragmentShader"] = `
+precision highp float;
+uniform vec3 sunCol;
+uniform float sunVis;
+varying vec2 vUV;
+void main() {
+    float r = length(vUV);
+    const float Rs = 0.16;
+    float disc = 1.0 - smoothstep(Rs - 0.015, Rs, r);
+    float limb = 0.8 + 0.2 * sqrt(max(0.0, 1.0 - (r * r) / (Rs * Rs)));
+    float glow = pow(max(1.0 - r, 0.0), 5.0) * 0.6;
+    // (bright enough to bloom softly; much brighter and the bloom's blur turns it into a square)
+    vec3 col = sunCol * (disc * limb * 5.0 + glow * 1.2);
+    float a = clamp(disc + glow, 0.0, 1.0) * sunVis;
+    if (a < 0.002) discard;
+    gl_FragColor = vec4(col * sunVis, a);
+}`;
+
 export class SkyDeco {
     private night: Mesh;
     private nightMat: ShaderMaterial;
@@ -217,6 +253,8 @@ export class SkyDeco {
     private starMat: ShaderMaterial;
     private moon: Mesh;
     private moonMat: ShaderMaterial;
+    private sun: Mesh;
+    private sunMat: ShaderMaterial;
     private time = 0;
     private skyRot = Matrix.Identity();
     private right = new Vector3();
@@ -290,11 +328,22 @@ export class SkyDeco {
         this.moon.material = this.moonMat;
         this.moon.alwaysSelectAsActiveMesh = true; this.moon.isPickable = false; this.moon.applyFog = false; this.moon.alphaIndex = 2;
 
+        // ---- the sun
+        this.sun = MeshBuilder.CreatePlane("skySun", { size: 2 }, scene);
+        this.sunMat = new ShaderMaterial("skySunMat", scene, { vertex: "skySun", fragment: "skySun" }, {
+            attributes: [VertexBuffer.PositionKind, VertexBuffer.UVKind], uniforms: ["viewProjection", "cameraPos", "camRight", "camUp", "sunDir", "size", "sunCol", "sunVis"], needAlphaBlending: true,
+        });
+        this.sunMat.alphaMode = Constants.ALPHA_ADD;
+        this.sunMat.disableDepthWrite = true;
+        this.sunMat.backFaceCulling = false;
+        this.sun.material = this.sunMat;
+        this.sun.alwaysSelectAsActiveMesh = true; this.sun.isPickable = false; this.sun.applyFog = false; this.sun.alphaIndex = 2;
+
         scene.onBeforeRenderObservable.add(() => this.bindCamera());
     }
 
     /** the meshes (for the sea's reflection) */
-    get meshes() { return [this.night, this.stars, this.moon, this.clouds]; }
+    get meshes() { return [this.night, this.stars, this.moon, this.sun, this.clouds]; }
 
     private bindCamera() {
         const cam = this.scene.activeCamera; if (!cam) return;
@@ -303,7 +352,7 @@ export class SkyDeco {
         this.right.set(v[0], v[4], v[8]);
         this.up.set(v[1], v[5], v[9]);
         const p = cam.globalPosition;
-        for (const m of [this.starMat, this.moonMat]) { m.setVector3("cameraPos", p); m.setVector3("camRight", this.right); m.setVector3("camUp", this.up); }
+        for (const m of [this.starMat, this.moonMat, this.sunMat]) { m.setVector3("cameraPos", p); m.setVector3("camRight", this.right); m.setVector3("camUp", this.up); }
     }
 
     /**
@@ -330,6 +379,15 @@ export class SkyDeco {
         this.moonMat.setFloat("moonVis", moonUp * (1 - overcast) * (0.35 + 0.65 * (1 - day)));
         this.moonMat.setFloat("day", day);
         this.moon.setEnabled(moonUp > 0.01 && overcast < 0.98);
+        // the sun: bigger and redder near the horizon, gone below it and behind a storm
+        const sy = sunDir.y, warm = Math.min(1, Math.max(0, 1 - (sy - 0.02) / 0.3));
+        this.sunMat.setVector3("sunDir", sunDir);
+        this.sunMat.setFloat("size", 85 * (1 + 0.25 * warm));
+        this.sunMat.setColor3("sunCol", { r: 1.0, g: 0.93 - 0.55 * warm, b: 0.8 - 0.7 * warm } as never);
+        const sunVis = Math.min(1, Math.max(0, (sy + 0.03) / 0.05)) * (1 - overcast);
+        // (dimmer low down, so the tone mapping keeps its colour instead of washing it out to white)
+        this.sunMat.setFloat("sunVis", sunVis * (1 - 0.55 * warm));
+        this.sun.setEnabled(sunVis > 0.005);
         const cm = this.cloudMat;
         cm.setFloat("time", this.time);
         cm.setVector3("sunDir", sunDir);

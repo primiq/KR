@@ -85,12 +85,13 @@ export class ViewModel {
     onHit: (() => void) | null = null;
     get swinging() { return this.vm.swinging; }
 
-    constructor(private readonly scene: Scene, private readonly camera: { getWorldMatrix(): { m: ArrayLike<number> } }) {
+    constructor(readonly scene: Scene, private readonly camera: { getWorldMatrix(): { m: ArrayLike<number> } }) {
         this.cam3.matrixAutoUpdate = false;
         this.holder.add(this.cam3);
         this.vm = new Hands(this.cam3);
         this.vm.onHit = () => this.onHit?.();
-        this.mirror = new ThreeMirror(scene, this.holder, null, false, { tag: { keepUnderground: true, viewModel: true }, group: 1 });
+        // (on their own render layer, which the torch in your hand leaves unlit: so close to the flame they would burn white)
+        this.mirror = new ThreeMirror(scene, this.holder, null, false, { tag: { keepUnderground: true, viewModel: true }, group: 1, layerMask: 0x08000000 });
     }
 
     setItem(id: ItemId | null) { this.vm.setItem(id); }
