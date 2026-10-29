@@ -23,6 +23,9 @@ import { MapView, type MapMarkers } from "../ui/map";
 import { Underground, type UgTarget } from "./underground";
 import { Birds, Flamingos, Footprints, type Walker } from "./nature";
 import { Turtles } from "./turtles";
+import { Flowers } from "../world/flowers";
+import { isProbablyHeadset } from "../../config";
+import { FLOWERS } from "../world/flowerKinds";
 
 export interface GameOpts {
     scene: Scene;
@@ -65,6 +68,8 @@ export class Game {
     readonly flamingos = new Flamingos();
     readonly turtles: Turtles;
     private natureRoot = new THREE.Scene();
+    /** wild flowers to pick, and the ones people plant */
+    readonly flowers: Flowers;
     private natureMirror: ThreeMirror;
     private walkers: Walker[] = [];
     /** switch the presentation between the island and the caves (set by main) */
@@ -183,6 +188,11 @@ export class Game {
             };
         }
         this.turtles = new Turtles(this.natureRoot, o.shadows);
+        {
+            const q = o.vegetation.q, vr = isProbablyHeadset();
+            this.flowers = new Flowers(o.scene, q.name === "low" ? 46 : 60, o.shadows, vr ? 1400 : q.name === "high" ? 3200 : 2400);
+            this.resources.flowers = this.flowers;
+        }
         this.birds = new Birds(o.vegetation);
         this.natureRoot.add(this.prints.mesh, this.birds.group, this.flamingos.group);
         this.natureMirror = new ThreeMirror(o.scene, this.natureRoot, null, o.shadows);
@@ -712,6 +722,9 @@ export class Game {
             else if (an && (!t || an.dist < t.dist)) {
                 const a = an.a, hostile = a.kind === "boar" && a.state === "chase";
                 hud.setPrompt(`${a.def.name}  ${Math.max(1, Math.ceil(a.hp))}/${a.def.hp}`, def?.tool && an.dist <= def.tool.reach ? `${click} attack` : an.dist > (def?.tool?.reach ?? 0) ? "Move closer" : "", hostile);
+            } else if (def?.flower !== undefined && !t) {
+                const fa = this.flowerAim(eye, dir);
+                hud.setPrompt(def.name, fa.why || `${click} plant it here`, !fa.why);
             } else this.updatePrompt(t, def);
         }
 
@@ -720,6 +733,15 @@ export class Game {
             if (def?.tool?.model === "rod") {
                 if (input.attackQueued && !view.swinging && this.fishing.click(eye, dir)) view.swing();
             } else if (def?.tool && !view.swinging) { view.swing(); this.sfx.swing(); }
+            else if (def?.flower !== undefined && input.attackQueued && !ug.active) {
+                const fa = this.flowerAim(eye, dir);
+                if (fa.why) { hud.message(fa.why); this.sfx.denied(); }
+                else {
+                    this.flowers.plant(def.flower, fa.x, fa.y, fa.z);
+                    this.inv.takeAt(hud.selected, 1); this.sfx.place(); view.place();
+                    this.resources.burst(new Vector3(fa.x, fa.y + 0.05, fa.z), "leaf", 4, 1.2);
+                }
+            }
             else if (def?.kind === "food" && this.eatCd <= 0 && input.attackQueued) { this.eatCd = 0.9; this.eatSlot(hud.selected); }
             input.attackQueued = false;
         }
@@ -823,6 +845,10 @@ export class Game {
             }
             case "sea":
                 return this.hud.setPrompt(null);
+            case "flower": {
+                const f = FLOWERS[t.hit.k], plant = def?.flower !== undefined ? ` &nbsp;·&nbsp; ${click} plant yours here` : "";
+                return this.hud.setPrompt(t.hit.planted ? `${f.name} (planted)` : f.name, key("E", t.hit.planted ? "pick it up" : "pick") + plant, true);
+            }
         }
     }
 
@@ -831,6 +857,16 @@ export class Game {
         if (!t) {
             const held = this.equipped;
             if (pressed && held && ITEMS[held.id].kind === "food" && this.eatCd <= 0) { this.eatCd = 0.9; this.eatSlot(hud.selected); }
+            return;
+        }
+        if (t.type === "flower" && pressed) {
+            const h = t.hit, id = FLOWERS[h.k].id as ItemId;
+            if (this.inv.canFit(id, 1) <= 0) { this.hud.message("Inventory full"); this.sfx.denied(); return; }
+            if (h.planted) { if (!this.flowers.unplant(h.planted.nid)) return; }
+            else if (!this.flowers.pickWild(h.wild)) return;
+            this.inv.add(id, 1); this.hud.gain(id, 1);
+            this.sfx.pickup(); this.view.reach();
+            this.resources.burst(new Vector3(h.x, h.y + 0.15, h.z), "leaf", 3, 1);
             return;
         }
         if (t.type === "pickup" && pressed) {
@@ -950,9 +986,23 @@ export class Game {
             for (const t of this.turtles.adults) if (t.st >= 1 && t.st <= 5) W.push({ key: "t" + t.id, x: t.x, y: heightAt(t.x, t.z), z: t.z, kind: "flipper" });
         }
         this.prints.update(dt, W);
+        this.flowers.update(dt, me.x, me.z, onIsland);
         this.prints.mesh.visible = onIsland;
         this.birds.update(dt, me, threats, hour, onIsland);
         this.flamingos.update(dt, me, threats, hour, onIsland);
+    }
+
+    /** where a flower would go: the ground along the view ray (natural terrain, not on buildings) */
+    private flowerAim(eye: Vector3, dir: Vector3): { x: number; y: number; z: number; why: string } {
+        let x = 0, y = 0, z = 0, found = false;
+        for (let t = 0.5; t <= 4.2; t += 0.05) {
+            x = eye.x + dir.x * t; y = eye.y + dir.y * t; z = eye.z + dir.z * t;
+            const h = heightAt(x, z);
+            if (y <= h + 0.02) { y = h; found = true; break; }
+        }
+        if (!found) return { x, y, z, why: "Aim at the ground" };
+        if (this.building.ground(x, z, y + 1) > y + 0.25) return { x, y, z, why: "Flowers grow in the ground, not on floors" };
+        return { x, y, z, why: this.flowers.check(x, z) };
     }
 
     private hitAnimal(a: Animal, dmg: number) {

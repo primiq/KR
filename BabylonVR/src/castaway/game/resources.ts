@@ -1,4 +1,5 @@
 import { Color3, Mesh, MeshBuilder, PBRMaterial, Quaternion, type Scene, StandardMaterial, Vector3 } from "@babylonjs/core";
+import type { Flowers, FlowerHit } from "../world/flowers";
 import * as THREE from "three";
 import { clamp, mulberry32 } from "../core/noise";
 import { shakeFoliage } from "../render/foliage";
@@ -461,7 +462,8 @@ export type Target =
     | { type: "node"; node: ResNode; dist: number; point: Vector3 }
     | { type: "pickup"; pickup: Pickup; dist: number; point: Vector3 }
     | { type: "spring"; spring: Spring; dist: number; point: Vector3 }
-    | { type: "sea"; dist: number; point: Vector3 };
+    | { type: "sea"; dist: number; point: Vector3 }
+    | { type: "flower"; hit: FlowerHit; dist: number; point: Vector3 };
 
 export function raySphere(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, cx: number, cy: number, cz: number, r: number): number {
     const lx = cx - ox, ly = cy - oy, lz = cz - oz;
@@ -549,6 +551,10 @@ export class Resources {
             if (ex * ex + ez * ez > (reach + 1) * (reach + 1)) continue;
             const t = raySphere(ox, oy, oz, dx, dy, dz, p.x, p.y + 0.12, p.z, 0.42 * assist);
             if (t >= 0 && t < bt) { bt = t; best = { type: "pickup", pickup: p, dist: t, point: new Vector3(ox + dx * t, oy + dy * t, oz + dz * t) }; }
+        }
+        if (this.flowers) {
+            const f = this.flowers.find(eye, dir, Math.min(bt, reach), assist);
+            if (f && f.dist < bt) { bt = f.dist; best = { type: "flower", hit: f.hit, dist: f.dist, point: new Vector3(ox + dx * f.dist, oy + dy * f.dist, oz + dz * f.dist) }; }
         }
         for (const s of this.springs.springs) {
             const t = raySphere(ox, oy, oz, dx, dy, dz, s.x, s.y + 0.15, s.z, 1.7);
@@ -759,6 +765,7 @@ export class Resources {
     autoRespawn = true;
     others: () => { x: number; z: number }[] = () => [];
     onTreeHit: ((x: number, z: number) => void) | null = null;
+    flowers: Flowers | null = null;
     onRespawn: ((n: ResNode) => void) | null = null;
 
     respawnNode(n: ResNode) {

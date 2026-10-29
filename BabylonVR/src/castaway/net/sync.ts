@@ -56,6 +56,10 @@ export class WorldSync {
 
         game.netId = id;
         game.under.onEvent = (e) => session.sendEvent(e);
+        game.flowers.idPrefix = `f${id}-`;
+        game.flowers.onPickWild = (i) => session.sendEvent({ k: "fw", i });
+        game.flowers.onPlant = (p) => session.sendEvent({ k: "fa", n: p.nid, s: p.k, x: +p.x.toFixed(2), y: +p.y.toFixed(3), z: +p.z.toFixed(2), r: +p.rot.toFixed(2) });
+        game.flowers.onUnplant = (p) => session.sendEvent({ k: "fd", n: p.nid });
         game.net.hitPlayer = (to, dmg) => session.sendEvent({ k: "ph", to, d: +dmg.toFixed(1), x: +game.player.pos.x.toFixed(1), z: +game.player.pos.z.toFixed(1) });
         game.net.rayPlayer = (eye, dir, reach) => this.rayPlayer(eye, dir, reach);
         // ---- wildlife: the host simulates, clients mirror
@@ -130,6 +134,7 @@ export class WorldSync {
         building.onWindow = null;
         structures.onPlace = structures.onRemove = null;
         this.game.under.onEvent = null;
+        this.game.flowers.onPickWild = this.game.flowers.onPlant = this.game.flowers.onUnplant = null;
         this.game.netId = 0;
         this.game.net = {};
         this.game.mapExtras = {};
@@ -237,6 +242,9 @@ export class WorldSync {
             case "dd": g.hud.message(`${this.session.players.get(from)?.name ?? "Someone"} died`); break;
             case "lk": { const p = this.session.players.get(from), o = parseOutfit(e.l); if (p && o) p.look = o; break; }
             case "cm": case "cc": case "cd": case "ce": g.under.remote(e); break;
+            case "fw": g.flowers.pickWild(e.i, true); break;
+            case "fa": g.flowers.plant(e.s, e.x, e.y, e.z, { nid: e.n, rot: e.r, remote: true }); break;
+            case "fd": g.flowers.unplant(e.n, true); break;
             case "mp": this.addPing(from, this.session.players.get(from)?.name ?? "Someone", playerColor(from), e.x, e.z); break;
         }
     }
