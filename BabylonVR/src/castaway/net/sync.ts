@@ -14,6 +14,7 @@ export class WorldSync {
     readonly avatars: Avatars;
     private lastSent = "";
     private lastOpen: Structure | null = null;
+    private lastPaint: string | null = null;
     private stationT = 0;
     onLost: ((why: string, fatal?: boolean) => void) | null = null;
     onChat: ((from: string, id: number, text: string) => void) | null = null;
@@ -58,6 +59,13 @@ export class WorldSync {
         game.netId = id;
         game.under.onEvent = (e) => session.sendEvent(e);
         game.flowers.idPrefix = `f${id}-`;
+        game.paintings.idPrefix = `pt${id}-`;
+        game.paintings.onPlace = (p) => session.sendEvent({ k: "ga", n: p.nid, w: p.wall, x: +p.x.toFixed(3), y: +p.y.toFixed(3), z: +p.z.toFixed(3), r: +p.yaw.toFixed(4), d: p.data });
+        game.paintings.onRemove = (p) => session.sendEvent({ k: "gd", n: p.nid });
+        game.paintings.onPaint = (p) => session.sendEvent({ k: "gp", n: p.nid, d: p.data });
+        game.doors.onHang = (d) => session.sendEvent({ k: "da", key: d.key, o: d.open ? 1 : 0, s: d.sign });
+        game.doors.onToggle = (d) => session.sendEvent({ k: "dt", key: d.key, o: d.open ? 1 : 0, s: d.sign });
+        game.doors.onRemove = (d) => session.sendEvent({ k: "dx", key: d.key });
         game.saplings.onPlant = (p) => session.sendEvent({ k: "pl", s: p.slot, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), r: +p.rot.toFixed(2), a: Math.round(p.age) });
         game.flowers.onPickWild = (i) => session.sendEvent({ k: "fw", i });
         game.flowers.onPlant = (p) => session.sendEvent({ k: "fa", n: p.nid, s: p.k, x: +p.x.toFixed(2), y: +p.y.toFixed(3), z: +p.z.toFixed(2), r: +p.rot.toFixed(2) });
@@ -149,6 +157,8 @@ export class WorldSync {
         structures.onPlace = structures.onRemove = null;
         this.game.under.onEvent = null;
         this.game.saplings.onPlant = null;
+        this.game.paintings.onPlace = this.game.paintings.onRemove = this.game.paintings.onPaint = null;
+        this.game.doors.onHang = this.game.doors.onToggle = this.game.doors.onRemove = null;
         this.game.flowers.onPickWild = this.game.flowers.onPlant = this.game.flowers.onUnplant = null;
         this.game.netId = 0;
         this.game.net = {};
@@ -264,6 +274,12 @@ export class WorldSync {
             case "we": if (!this.session.isHost && (e.s === 0 || e.s === 1 || e.s === 2)) g.weather?.setRemote(e.s, Number(e.l) || 0); break;
             case "bi": if (!this.session.isHost) g.bioTonight = !!e.v; break;
             case "pl": g.saplings.plant(e.x, e.y, e.z, { slot: e.s, rot: e.r, age: e.a, remote: true }); break;
+            case "da": g.doors.hang(e.key, { open: !!e.o, sign: e.s, remote: true }); break;
+            case "dt": { const d = g.doors.at(e.key); if (d) { g.doors.set(d, !!e.o, e.s, true); if (Math.hypot(g.player.pos.x - d.group.position.x, g.player.pos.z - d.group.position.z) < 20) g.sfx.creak(); } break; }
+            case "dx": { const d = g.doors.at(e.key); if (d) g.doors.remove(d, true); break; }
+            case "ga": g.paintings.place({ x: e.x, y: e.y, z: e.z, yaw: e.r, wall: e.w }, { nid: e.n, data: e.d, remote: true }); break;
+            case "gd": { const p = g.paintings.list.find((q) => q.nid === e.n); if (p) g.paintings.remove(p, true); break; }
+            case "gp": { const p = g.paintings.list.find((q) => q.nid === e.n); if (p && typeof e.d === "string") g.paintings.setData(p, e.d, true); break; }
             case "mp": this.addPing(from, this.session.players.get(from)?.name ?? "Someone", playerColor(from), e.x, e.z); break;
         }
     }
@@ -304,6 +320,13 @@ export class WorldSync {
             if (open) { this.session.sendEvent({ k: "so", n: open.nid }); this.users.set(open.nid, this.session.myId); }
         }
         this.lastOpen = open;
+        // a picture being painted is locked the same way
+        const pn = this.game.paintingNid;
+        if (pn !== this.lastPaint) {
+            if (this.lastPaint) { this.session.sendEvent({ k: "sc", n: this.lastPaint }); this.users.delete(this.lastPaint); }
+            if (pn) { this.session.sendEvent({ k: "so", n: pn }); this.users.set(pn, this.session.myId); }
+            this.lastPaint = pn;
+        }
         if (!open || this.stationT < 0.25) return;
         this.stationT = 0;
         const st = this.stationState(open);

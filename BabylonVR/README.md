@@ -277,6 +277,8 @@ come from Castaway. Rendering, materials, the ocean and the VR controls are rebu
   cook and smelt; storage boxes hold your stuff.
 - **Building:** a 3 m grid with foundations on stilts, walls, doorways, opening windows, floors,
   stairs and joined pools, plus upgrading to stone.
+- **Homes:** hang doors in doorways, frame pictures on the walls and paint them (everyone sees
+  them), put flowers in pots, and plant saplings that grow into trees.
 - **Wildlife, fishing and the map:** crabs, boars and jaguars are Castaway's procedurally rigged
   animals and their AI, with meat and hides to collect. You can cast a rod for fish, cook on a
   campfire, and use the explored island map (M).

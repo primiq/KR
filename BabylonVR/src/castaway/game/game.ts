@@ -24,6 +24,9 @@ import { Underground, type UgTarget } from "./underground";
 import { Birds, Flamingos, Footprints, type Walker } from "./nature";
 import { Turtles } from "./turtles";
 import { Saplings } from "./saplings";
+import { type Door, Doors } from "./doors";
+import { type FrameAim, type Painting, Paintings } from "./paintings";
+import { Painter } from "../ui/painter";
 import type { Weather } from "../world/weather";
 import { FISH_WIGGLE, SeaLife } from "../world/sealife";
 import { fishMaterial } from "../render/materials";
@@ -78,6 +81,13 @@ export class Game {
     private walkers: Walker[] = [];
     /** saplings people plant, growing into trees */
     readonly saplings: Saplings;
+    /** doors hung in doorways, and pictures on the walls (with the paint editor) */
+    readonly doors: Doors;
+    readonly paintings: Paintings;
+    readonly painter = new Painter();
+    /** the picture this player is painting (multiplayer: nobody else can open it meanwhile) */
+    paintingNid: string | null = null;
+    private frameAim: FrameAim | null = null;
     /** showers and storms (the host decides; see world/weather). Set by main. */
     weather: Weather | null = null;
     /** schools of fish, and the glowing sea on some nights (the host decides at dusk) */
@@ -148,7 +158,7 @@ export class Game {
     get armorCode() { let c = 0; for (const s of this.worn.slots) c = c * 10 + (s ? ITEMS[s.id].armor?.tier ?? 0 : 0); return c; }
     get equipped() { return this.inv.slots[this.hud.selected]; }
     get equippedDef() { const e = this.equipped; return e ? ITEMS[e.id] : null; }
-    get uiBlocking() { return this.hud.inventoryOpen || this.map.open || this.stats.dead || this.sleeping; }
+    get uiBlocking() { return this.hud.inventoryOpen || this.map.open || this.stats.dead || this.sleeping || this.painter.open; }
     get isSleeping() { return this.sleeping; }
     get openStruct() { return this.openS; }
     get bedNid() { return this.hasBed ? this.bed!.nid : null; }
@@ -206,6 +216,18 @@ export class Game {
         }
         this.turtles = new Turtles(this.natureRoot, o.shadows);
         this.saplings = new Saplings(o.vegetation, this.resources);
+        this.doors = new Doors(o.scene, this.building, o.shadows);
+        this.paintings = new Paintings(o.scene, o.shadows);
+        this.building.afterRemove = (p, silent) => {
+            // a doorway came down: its door drops out; pictures on a wall fall off
+            const d = this.doors.wallGone(p.key);
+            if (d && !silent) { const g = p.group.position; this.resources.pickups.spawn("door", 1, g.x + 0.6, this.building.ground(g.x + 0.6, g.z + 0.6, p.H + 0.5), g.z + 0.6); }
+            for (const q of this.paintings.wallGone(p.key)) {
+                if (silent) continue;
+                const x = q.x + Math.sin(q.yaw) * 0.5, z = q.z + Math.cos(q.yaw) * 0.5;
+                this.resources.pickups.spawn("picture_frame", 1, x, this.building.ground(x, z, q.y), z);
+            }
+        };
         this.saplings.onGrow = (p) => this.resources.burst(new Vector3(p.x, p.y + 0.6, p.z), "leaf", 8);
         {
             const q = o.vegetation.q, vr = isProbablyHeadset();
@@ -440,6 +462,39 @@ export class Game {
         this.setInventory(true);
         this.openS = s;
     }
+    private toggleDoor(d: Door) {
+        const p = this.player.pos;
+        this.doors.set(d, !d.open, this.doors.swingFrom(d, p.x, p.z));
+        this.sfx.creak();
+    }
+    private takeDoor(d: Door) {
+        if (!d.open) { const p = this.player.pos; this.doors.set(d, true, this.doors.swingFrom(d, p.x, p.z)); }
+        this.doors.remove(d); this.give("door", 1); this.sfx.remove();
+    }
+
+    /** open the paint editor on a picture */
+    private openPainting(p: Painting) {
+        const user = this.net.inUse?.({ nid: p.nid } as Structure);
+        if (user) { this.hud.message(`${user} is painting this`); this.sfx.denied(); return; }
+        this.paintingNid = p.nid;
+        this.input.uiOpen = true;
+        if (document.pointerLockElement) document.exitPointerLock();
+        this.painter.show("Paint a picture", p.data, (data) => {
+            this.paintingNid = null;
+            if (data !== null && this.paintings.list.includes(p)) { this.paintings.setData(p, data); this.sfx.place(); this.hud.message("Saved. Everybody can see your picture."); }
+            else if (data !== null) this.hud.message("That picture is gone (its wall came down).");
+            this.input.uiOpen = this.hud.inventoryOpen || this.stats.dead || this.sleeping;
+            if (!this.input.uiOpen && !this.input.touch && !this.vr.active) this.input.requestLock();
+        });
+    }
+
+    private takeDownPainting(p: Painting) {
+        if (this.net.inUse?.({ nid: p.nid } as Structure)) { this.hud.message("Somebody is painting it"); this.sfx.denied(); return; }
+        this.paintings.remove(p);
+        this.give("picture_frame", 1);
+        this.sfx.remove();
+    }
+
     private pickupStructure(s: Structure) {
         if (s.inv && s.inv.slots.some(Boolean)) { this.hud.message(s.kind === "box" ? "Empty the box first" : "Take everything out first"); this.sfx.denied(); return; }
         if (s.kind === "table" && this.structures.onTable(s).length) { this.hud.message("Take the things off the table first"); this.sfx.denied(); return; }
@@ -527,6 +582,7 @@ export class Game {
         this.hurtCd -= dt; this.vrCd -= dt; this.eatCd -= dt; this.seaCd -= dt; this.drinkCd -= dt;
         this.resources.update(dt, player.pos.x, player.pos.z);
         this.saplings.update(dt);
+        this.doors.update(dt);
         this.building.update(dt);
         const ug = this.under;
         this.structures.update(dt, player.pos.x + (ug.active ? 1e6 : 0), player.pos.y, player.pos.z);
@@ -723,9 +779,32 @@ export class Game {
         const useStruct = st && (!t || st.dist < t.dist);
         const ugT: UgTarget | null = ug.target(eye, dir, def?.tool?.reach ?? 3.2, this.assist);
         const useUg = !!ugT && !useStruct && (ug.active || !t || ugT.dist < t.dist);
-        const wh = ug.active ? null : this.building.findPiece(eye, dir, 3.2);
+        // doors in doorways (and hanging a door: hold one and look at an empty doorway)
+        const dt0 = ug.active ? null : this.doors.target(eye, dir, 3.2);
+        const useDoor = !!dt0 && (!!dt0.door || def?.id === "door") && (!t || dt0.dist < t.dist + 0.3) && (!st || dt0.dist < st.dist);
+        this.doors.showGhost(useDoor && dt0 && !dt0.door && def?.id === "door" ? dt0.piece : null);
+        const wh = ug.active || useDoor ? null : this.building.findPiece(eye, dir, 3.2);
         const useWin = !!wh && wh.piece.kind === "window" && (!t || wh.dist < t.dist + 0.3) && (!st || wh.dist < st.dist);
-        if (useWin && wh) {
+        // pictures on the walls; holding a frame shows where it would hang
+        const pt = ug.active ? null : this.paintings.findTarget(eye, dir, 3.4);
+        const usePaint = !!pt && (!t || pt.dist < t.dist) && (!st || pt.dist < st.dist) && !useUg;
+        this.frameAim = def?.frame && !ug.active && !usePaint ? this.paintings.aim(eye, dir, this.building.findPiece(eye, dir, 3.6)) : null;
+        this.paintings.showGhost(this.frameAim);
+        if (useDoor && dt0) {
+            const d = dt0.door, clk = `<b>${this.vr.active ? "Trigger" : this.input.touch ? "HIT" : "Click"}</b>`;
+            if (d) {
+                hud.setPrompt("Door", `${this.keyLabel("E")} ${d.open ? "close" : "open"} &nbsp;·&nbsp; hold ${this.keyLabel("E")} take it out`, true);
+                this.runHold(dt, d, () => this.toggleDoor(d), () => this.takeDoor(d));
+            } else {
+                hud.setPrompt("Doorway", `${clk} hang the door here`, true);
+                this.runHold(dt, null, () => {}, () => {});
+                if (input.attackQueued) { input.attackQueued = false; if (this.doors.hang(dt0.piece.key)) { this.inv.takeAt(hud.selected, 1); this.sfx.place(); view.place(); hud.message("Door hung. E opens and closes it."); } }
+            }
+        } else if (usePaint && pt && !(useWin && wh && wh.dist < pt.dist)) {
+            const p = pt.p;
+            hud.setPrompt("Picture", `${this.keyLabel("E")} paint &nbsp;·&nbsp; hold ${this.keyLabel("E")} take it down (the picture is lost)`, true);
+            this.runHold(dt, p, () => this.openPainting(p), () => this.takeDownPainting(p));
+        } else if (useWin && wh) {
             const w = wh.piece, open = this.building.windowOpen(w);
             hud.setPrompt(this.building.isStone(w) ? "Stone window" : "Window", `${this.keyLabel("E")} ${open ? "close" : "open"}`, true);
             this.runHold(dt, w, () => { const p = this.player.pos; this.building.setWindow(w, !open, this.building.swingFrom(w, p.x, p.z)); this.sfx.creak(); }, () => {});
@@ -745,6 +824,9 @@ export class Game {
             else if (an && (!t || an.dist < t.dist)) {
                 const a = an.a, hostile = a.kind === "boar" && a.state === "chase";
                 hud.setPrompt(`${a.def.name}  ${Math.max(1, Math.ceil(a.hp))}/${a.def.hp}`, def?.tool && an.dist <= def.tool.reach ? `${click} attack` : an.dist > (def?.tool?.reach ?? 0) ? "Move closer" : "", hostile);
+            } else if (this.frameAim) {
+                const fa = this.frameAim;
+                hud.setPrompt(def!.name, fa.ok ? `${click} hang it here` : fa.reason, fa.ok);
             } else if (def?.flower !== undefined && !t) {
                 const fa = this.flowerAim(eye, dir);
                 hud.setPrompt(def.name, fa.why || `${click} plant it here`, !fa.why);
@@ -759,6 +841,11 @@ export class Game {
             if (def?.tool?.model === "rod") {
                 if (input.attackQueued && !view.swinging && this.fishing.click(eye, dir)) view.swing();
             } else if (def?.tool && !view.swinging) { view.swing(); this.sfx.swing(); }
+            else if (def?.frame && input.attackQueued && !ug.active) {
+                const fa = this.frameAim;
+                if (!fa || !fa.ok) { hud.message(fa?.reason || "Aim at a plain wall"); this.sfx.denied(); }
+                else { this.paintings.place(fa); this.inv.takeAt(hud.selected, 1); this.sfx.place(); view.place(); hud.message("Hung. Press E on it to paint a picture."); }
+            }
             else if (def?.flower !== undefined && input.attackQueued && !ug.active) {
                 const fa = this.flowerAim(eye, dir);
                 if (fa.why) { hud.message(fa.why); this.sfx.denied(); }
@@ -783,7 +870,7 @@ export class Game {
 
         // interact (pick up / forage / drink)
         if (useUg && ugT && input.interactQueued) { ug.interact(ugT); input.interactQueued = false; }
-        if (!useStruct && !useWin && !useUg && (input.interactQueued || input.interactHeld)) this.interact(t, dt, input.interactQueued);
+        if (!useStruct && !useWin && !useUg && !useDoor && !usePaint && (input.interactQueued || input.interactHeld)) this.interact(t, dt, input.interactQueued);
         input.interactQueued = false;
     }
 
@@ -802,6 +889,8 @@ export class Game {
     }
 
     private hideBuildUi() {
+        this.paintings.showGhost(null);
+        this.doors.showGhost(null);
         this.hud.setBuild(null, false, false);
         this.building.hideGhost();
         this.structures.hideGhost();
