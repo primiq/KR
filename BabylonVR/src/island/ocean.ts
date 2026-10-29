@@ -240,12 +240,7 @@ export class Ocean {
         const n = this.waves.length;
         this.waveA = new Float32Array(n * 4);
         this.waveB = new Float32Array(n * 4);
-        this.waves.forEach((w, i) => {
-            const k = (2 * Math.PI) / w.length;
-            const omega = Math.sqrt(9.81 * k);
-            this.waveA.set([Math.cos(w.dir), Math.sin(w.dir), k, w.amp], i * 4);
-            this.waveB.set([omega, w.steep / (k * w.amp * n), i * 1.7, 0], i * 4);
-        });
+        this.setWaves(0);
 
         // Grid denser near the centre (which follows the camera) and sparse towards the horizon.
         const res = q === "high" ? 256 : q === "medium" ? 192 : 128;
@@ -318,6 +313,25 @@ export class Ocean {
     }
 
     /** Height of the water surface at (x, z) (Gerstner swell; ripples are cosmetic). */
+    private rough = 0;
+    /** weather: 0 = a calm day, 1 = a storm (the long swells grow most), more out in a gale at sea */
+    get roughness() { return this.rough; }
+    set roughness(r: number) {
+        if (Math.abs(r - this.rough) < 0.004) return;
+        this.rough = r;
+        this.setWaves(r);
+    }
+    private setWaves(r: number) {
+        const n = this.waves.length;
+        this.waves.forEach((w, i) => {
+            const k = (2 * Math.PI) / w.length;
+            const omega = Math.sqrt(9.81 * k);
+            const amp = w.amp * (1 + r * (2.6 - i * 0.3));
+            this.waveA.set([Math.cos(w.dir), Math.sin(w.dir), k, amp], i * 4);
+            this.waveB.set([omega, Math.min(1, w.steep * (1 + r * 0.4)) / (k * amp * n), i * 1.7, 0], i * 4);
+        });
+    }
+
     surfaceAt(x: number, z: number): number {
         const depth = -this.opts.seabedAt(x, z);
         const att = 0.12 + 0.88 * smoothstep(0, 6, depth);

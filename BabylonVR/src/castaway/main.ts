@@ -19,6 +19,7 @@ import { Chat } from "./net/chat";
 import * as THREE from "three";
 import { planSites, SurfaceSites } from "./world/sites";
 import { CaveView } from "./world/caveView";
+import { Weather } from "./world/weather";
 import { getOutfit, onOutfitChange, setPlayerOutfit } from "./net/outfit";
 import { SKINS } from "./net/playerModel";
 import { setupCustomise, setNameLocked } from "./ui/customise";
@@ -140,6 +141,17 @@ async function main() {
     const sites = new SurfaceSites(game.ugRoot as unknown as THREE.Scene, sitePlan, vegetation.colliders, q.shadows);
     game.under.sites = sites;
     const caves = new CaveView(scene, game, clock, q.shadows);
+    // showers and storms
+    const weather = new Weather(scene, q.name, clock, ocean);
+    game.weather = weather;
+    weather.onLightning = (d) => { setTimeout(() => game.sfx.thunder(d), (d / 343) * 1000); };
+    if (params.has("weather")) {
+        const k = ["clear", "rain", "storm"].indexOf(params.get("weather")!) as 0 | 1 | 2;
+        if (k >= 0) {
+            weather.set(k, 1e6);
+            if (params.has("instant")) { weather.overcast = [0, 0.72, 1][k]; weather.rain = [0, 0.55, 1][k]; weather.wind = [1, 1.9, 4.2][k]; weather.rough = [0, 0.25, 1][k]; weather.wet = k ? 1 : 0; weather.apply(); }
+        }
+    }
     game.building.onTerrain = (x0, z0, x1, z1) => {
         terrain.refresh(x0, z0, x1, z1);
         vegetation.reseat(x0, z0, x1, z1);
@@ -578,7 +590,7 @@ async function main() {
     // a hidden tab stops rendering: keep the room in step anyway (a host who alt-tabs must not freeze everyone else)
     setInterval(() => { if (document.hidden) sync?.update(0.1); }, 100);
 
-    Object.assign(window as unknown as Record<string, unknown>, { Wind, scene, engine, game, player, sites, caves, heightAt, vegetation, terrain, ocean, input, clock, camera, getSync: () => sync, doSave });
+    Object.assign(window as unknown as Record<string, unknown>, { Wind, scene, engine, game, player, sites, caves, heightAt, weather, vegetation, terrain, ocean, input, clock, camera, getSync: () => sync, doSave });
 }
 
 main().catch((e) => {

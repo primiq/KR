@@ -26,6 +26,7 @@ export class WorldSync {
     private votes = new Map<number, number>();
     private orig: { sound: Game["fauna"]["onSound"]; blood: Game["fauna"]["onBlood"]; kill: Game["fauna"]["onKill"] } | null = null;
     private lastHitter = 0;
+    private slowTick = 0;
 
     constructor(
         private game: Game,
@@ -65,6 +66,11 @@ export class WorldSync {
         // ---- wildlife: the host simulates, clients mirror
         const fauna = game.fauna;
         if (!session.isHost) { fauna.remote = true; game.turtles.remote = true; }
+        // weather: the host decides, the others follow
+        if (game.weather) {
+            game.weather.remote = !session.isHost;
+            game.weather.onChange = session.isHost ? (s, l) => session.sendEvent({ k: "we", s, l: Math.round(l) }) : null;
+        }
         game.net.targets = () => this.targets();
         game.net.hitAnimal = (i, dmg, px, pz) => session.sendEvent({ k: "ah", i, d: +dmg.toFixed(1), x: +px.toFixed(1), z: +pz.toFixed(1) });
         game.net.hurtRemote = (to, dmg, fx, fz, by) => session.sendEvent({ k: "hurt", to, d: dmg, x: +fx.toFixed(1), z: +fz.toFixed(1), by });
@@ -78,6 +84,8 @@ export class WorldSync {
                 const near = (x: number, z: number) => this.targets().some((t) => Math.hypot(t.x - x, t.z - z) < 135);
                 session.sendEvent({ k: "an", r: fauna.exportState(near) });
                 const tu = game.turtles.exportState(); if (tu.length) session.sendEvent({ k: "tu", r: tu });
+                // the weather, for anyone who joined since it started
+                if (++this.slowTick % 40 === 0 && game.weather) session.sendEvent({ k: "we", s: game.weather.kind, l: Math.round(game.weather.left) });
             };
         }
 
@@ -141,6 +149,7 @@ export class WorldSync {
         const f = this.game.fauna;
         if (f.remote) f.promote();
         if (this.game.turtles.remote) this.game.turtles.promote();
+        if (this.game.weather) { this.game.weather.remote = false; this.game.weather.onChange = null; }
         if (this.orig) { f.onSound = this.orig.sound; f.onBlood = this.orig.blood; f.onKill = this.orig.kill; this.orig = null; }
         this.session.onFast = null;
         resources.autoRespawn = true;
@@ -245,6 +254,7 @@ export class WorldSync {
             case "fw": g.flowers.pickWild(e.i, true); break;
             case "fa": g.flowers.plant(e.s, e.x, e.y, e.z, { nid: e.n, rot: e.r, remote: true }); break;
             case "fd": g.flowers.unplant(e.n, true); break;
+            case "we": if (!this.session.isHost && (e.s === 0 || e.s === 1 || e.s === 2)) g.weather?.setRemote(e.s, Number(e.l) || 0); break;
             case "mp": this.addPing(from, this.session.players.get(from)?.name ?? "Someone", playerColor(from), e.x, e.z); break;
         }
     }

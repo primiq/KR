@@ -23,6 +23,7 @@ import { MapView, type MapMarkers } from "../ui/map";
 import { Underground, type UgTarget } from "./underground";
 import { Birds, Flamingos, Footprints, type Walker } from "./nature";
 import { Turtles } from "./turtles";
+import type { Weather } from "../world/weather";
 import { Flowers } from "../world/flowers";
 import { isProbablyHeadset } from "../../config";
 import { FLOWERS } from "../world/flowerKinds";
@@ -72,6 +73,10 @@ export class Game {
     readonly flowers: Flowers;
     private natureMirror: ThreeMirror;
     private walkers: Walker[] = [];
+    /** showers and storms (the host decides; see world/weather). Set by main. */
+    weather: Weather | null = null;
+    private roofT = 0;
+    private roofed = false;
     /** switch the presentation between the island and the caves (set by main) */
     onUnderground: ((on: boolean) => void) | null = null;
     private faunaMirror: ThreeMirror;
@@ -988,8 +993,17 @@ export class Game {
         this.prints.update(dt, W);
         this.flowers.update(dt, me.x, me.z, onIsland);
         this.prints.mesh.visible = onIsland;
-        this.birds.update(dt, me, threats, hour, onIsland);
+        this.birds.update(dt, me, threats, (this.weather?.rain ?? 0) > 0.35 ? 0 : hour, onIsland);
         this.flamingos.update(dt, me, threats, hour, onIsland);
+        // weather: rain stops under a roof (and in the caves, and under water); the sky, sea and plants follow the host's weather
+        this.roofT -= dt;
+        if (this.roofT <= 0) { this.roofT = 0.4; this.roofed = onIsland && this.structures.ceilingAt?.(me.x, me.y, me.z) != null; }
+        const wx = this.weather;
+        if (wx) {
+            const local = onIsland && !p.cave;
+            wx.update(dt, this.vr.active ? this.vr.eye : p.eye, local, this.roofed, p.underwater);
+            this.sfx.setWeather(local && !p.underwater ? wx.rain : 0, local ? Math.max(0, Math.min(1, (wx.wind - 1.4) / 2.8)) : 0, this.roofed, dt);
+        }
     }
 
     /** where a flower would go: the ground along the view ray (natural terrain, not on buildings) */

@@ -21,6 +21,14 @@ export class Atmosphere {
     set underground(on: boolean) { if (on === this.ug) return; this.ug = on; this.apply(!on); }
     private ug = false;
     private caveFill: HemisphericLight;
+    /** weather (world/weather): 0..1 how grey the sky is, a lightning flash, how wet the ground is */
+    overcast = 0;
+    flash = 0;
+    wet = 0;
+    private lastOvercast = 0;
+    private clouds: Mesh;
+    private cloudMat: StandardMaterial;
+    private flashLight: HemisphericLight;
     readonly moon: DirectionalLight;
     private lastCapture = -1e9;
     private stars: Mesh;
@@ -81,6 +89,23 @@ export class Atmosphere {
         this.caveFill.specular = Color3.Black();
         this.caveFill.intensity = 0.3;
         this.caveFill.setEnabled(false);
+        // the overcast: a grey dome inside the sky that thickens as the weather closes in
+        this.clouds = MeshBuilder.CreateSphere("clouds", { diameter: 900, segments: 16, sideOrientation: Mesh.BACKSIDE }, scene);
+        this.cloudMat = new StandardMaterial("cloudsMat", scene);
+        this.cloudMat.disableLighting = true;
+        this.cloudMat.fogEnabled = false;
+        this.cloudMat.disableDepthWrite = true;
+        this.cloudMat.backFaceCulling = false;
+        this.clouds.material = this.cloudMat;
+        this.clouds.infiniteDistance = true;
+        this.clouds.isPickable = false;
+        this.clouds.applyFog = false;
+        this.clouds.setEnabled(false);
+        this.flashLight = new HemisphericLight("flash", new Vector3(0, 1, 0), scene);
+        this.flashLight.diffuse = new Color3(0.8, 0.86, 1);
+        this.flashLight.groundColor = new Color3(0.3, 0.32, 0.4);
+        this.flashLight.specular = Color3.Black();
+        this.flashLight.setEnabled(false);
         this.apply(true);
     }
 
@@ -125,7 +150,7 @@ export class Atmosphere {
         if (this.ocean) this.ocean.daylight = 0.05 + 0.95 * day;
         if (om) {
             om.setVector3("sunDir", this.lightDir);
-            om.setColor3("sunColor", Color3.Lerp(new Color3(1, 0.86, 0.68), warm, low * 0.8).scale(5 * day + 0.3 * (1 - day) * up));
+            om.setColor3("sunColor", Color3.Lerp(new Color3(1, 0.86, 0.68), warm, low * 0.8).scale((5 * day + 0.3 * (1 - day) * up) * (1 - 0.85 * this.overcast)));
         }
         if (this.ug) {
             this.sun.intensity = 0;
@@ -140,7 +165,26 @@ export class Atmosphere {
         }
         this.sun.setEnabled(true);
         this.caveFill.setEnabled(false);
-        this.scene.fogMode = Scene.FOGMODE_NONE;
+        // ---- the weather: a grey sky lets less sun and sky light through; lightning lights everything up for a moment
+        const ov = this.overcast;
+        this.sun.intensity *= 1 - 0.85 * ov;
+        this.moon.intensity *= 1 - ov;
+        this.scene.environmentIntensity *= 1 - 0.5 * ov;
+        this.clouds.setEnabled(ov > 0.01);
+        if (ov > 0.01) {
+            const g = (0.08 + 0.55 * day) * (1 - 0.35 * ov) + this.flash * 0.9;
+            this.cloudMat.emissiveColor.set(g * 0.92, g * 0.95, g * 1.02);
+            this.cloudMat.alpha = Math.min(0.94, ov * 1.05);
+        }
+        this.flashLight.intensity = this.flash * 1.6;
+        this.flashLight.setEnabled(this.flash > 0.01);
+        if (ov > 0.02) {
+            this.scene.fogMode = Scene.FOGMODE_EXP2;
+            this.scene.fogDensity = 0.004 * ov;
+            const g = 0.08 + 0.5 * day;
+            this.scene.fogColor = new Color3(g * 0.9, g * 0.93, g);
+        } else this.scene.fogMode = Scene.FOGMODE_NONE;
+        if (Math.abs(ov - this.lastOvercast) > 0.15) { this.lastOvercast = ov; force = true; }
         // re-capture the sky lighting every ~20 game minutes (or straight away when time jumps)
         const step = Math.abs(this.hour - this.lastCapture);
         if ((force || step > 0.33) && !this.capturing) void this.capture();
