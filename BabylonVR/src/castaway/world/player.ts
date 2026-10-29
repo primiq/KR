@@ -50,6 +50,8 @@ export class Player {
     world: WorldShape | null = null;
     /** something else carries the body (the warp level, a cannon seat, a boat): while it returns true the player stays put */
     ride: ((dt: number) => boolean) | null = null;
+    /** something moves the body itself this frame (the skydive): like `ride`, but set and cleared by its owner */
+    seated = false;
     /** underground: the cave replaces the island's ground, walls and water */
     cave: { floor(x: number, z: number, y: number): number; resolve(x: number, z: number, r: number, feetY: number, out: { x: number; z: number }): void } | null = null;
     /** sea surface height (waves) at a point */
@@ -127,8 +129,8 @@ export class Player {
             this.vel.set(0, 0, 0);
         }
 
-        if (this.ride) {
-            if (this.ride(dt)) {
+        if (this.ride || this.seated) {
+            if (this.seated || this.ride!(dt)) {
                 this.mode = "walk"; this.onGround = true; this.moving = false; this.sprinting = false; this.jumped = false;
                 this.vel.set(0, 0, 0);
                 this.eye.set(this.pos.x, this.pos.y + this.body.eye, this.pos.z);

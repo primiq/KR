@@ -88,8 +88,12 @@ export class ThreeMirror {
             if (isCanvas) cv = img as HTMLCanvasElement;
             else {
                 cv = document.createElement("canvas");
-                cv.width = img.width; cv.height = img.height;
-                cv.getContext("2d")!.drawImage(img as CanvasImageSource, 0, 0);
+                const el = img as HTMLImageElement;
+                const loading = typeof HTMLImageElement !== "undefined" && el instanceof HTMLImageElement && !el.complete;
+                cv.width = loading ? 2 : img.width; cv.height = loading ? 2 : img.height;
+                if (!loading) cv.getContext("2d")!.drawImage(img as CanvasImageSource, 0, 0);
+                // (a texture still loading, a photo say: drawn and uploaded once it arrives)
+                else el.addEventListener("load", () => { cv.width = el.width; cv.height = el.height; cv.getContext("2d")!.drawImage(el, 0, 0); this.mats.get(m)?.getActiveTextures().forEach((tx) => (tx as DynamicTexture).update?.(map.flipY !== false)); }, { once: true });
             }
             const t = new DynamicTexture("mirrorCanvas", cv, { scene: this.scene, invertY: map.flipY !== false } as never);
             t.update(map.flipY !== false);
@@ -150,7 +154,7 @@ export class ThreeMirror {
         return b;
     }
 
-    private bucket(g: THREE.BufferGeometry, m: THREE.Material): Bucket {
+    private bucket(g: THREE.BufferGeometry, m: THREE.Material, src?: THREE.Object3D): Bucket {
         const key = `${this.id(g)}:${this.id(m)}`;
         let b = this.buckets.get(key);
         if (!b) {
@@ -159,6 +163,8 @@ export class ThreeMirror {
             mesh.isPickable = false;
             mesh.receiveShadows = true;
             if (this.opts.tag) mesh.metadata = { ...this.opts.tag };
+            // a three.js group can tag the Babylon meshes drawn for it (userData.babylonTag): the sky room's mirror uses this
+            for (let o: THREE.Object3D | null = src ?? null; o; o = o.parent) if (o.userData.babylonTag) { mesh.metadata = { ...(mesh.metadata ?? {}), ...o.userData.babylonTag }; break; }
             mesh.alwaysSelectAsActiveMesh = true;
             const lit = !(mesh.material instanceof StandardMaterial);
             if (this.shadows && lit) shadowCasters.add(mesh);
@@ -266,7 +272,7 @@ export class ThreeMirror {
             if ((m as THREE.SkinnedMesh).isSkinnedMesh) this.skin(m as THREE.SkinnedMesh);
             else if (m.isMesh && !(o as THREE.Sprite).isSprite) {
                 const mt = Array.isArray(m.material) ? m.material[0] : m.material;
-                const b = this.bucket(m.geometry, mt);
+                const b = this.bucket(m.geometry, mt, m);
                 // basic materials can fade (beacons): follow the three material's opacity
                 const bm = b.mesh.material;
                 if (bm instanceof StandardMaterial && (mt.transparent || mt.opacity < 1)) bm.alpha = mt.opacity;

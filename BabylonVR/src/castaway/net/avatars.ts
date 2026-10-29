@@ -691,7 +691,7 @@ export class Avatars {
   private holder = new THREE.Scene();
   readonly three = new ThreeAvatars(this.holder, false);
   private mirror: ThreeMirror;
-  constructor(scene: Scene, shadows: boolean) { this.mirror = new ThreeMirror(scene, this.holder, null, shadows, { tag: { keepUnderground: true } }); }
+  constructor(scene: Scene, shadows: boolean) { this.mirror = new ThreeMirror(scene, this.holder, null, shadows, { tag: { keepUnderground: true, avatar: true } }); }
   set onStep(f: ((x: number, y: number, z: number) => void) | null) { this.three.onStep = f ? (x, y, z) => f(x, y, z) : null; }
   set surfaceAt(f: (x: number, z: number) => number) { setSwimSurface(f); }
   get positions() { return this.three.positions; }

@@ -33,6 +33,8 @@ import { Invaders } from "../world/invaders";
 import { CHORDS, Guitar } from "./guitar";
 import { Slide } from "../world/slide";
 import { type Boat, Boats } from "../world/boat";
+import { skyMirrorMaterial } from "../world/skyView";
+import type { Skydive } from "../world/skydive";
 import { Twins } from "./twins";
 import { type Door, Doors } from "./doors";
 import { type FrameAim, type Painting, Paintings } from "./paintings";
@@ -110,6 +112,8 @@ export class Game {
     private guitarHinted = false;
     /** the giant water slide on the far side */
     readonly slide: Slide;
+    /** the cloud door's skydive (set by main) */
+    dive: Skydive | null = null;
     /** boats on the sea, and the storm out past the reef */
     readonly boats: Boats;
     private boatAim: { ok: boolean; why: string; x: number; z: number; yaw: number } | null = null;
@@ -354,7 +358,7 @@ export class Game {
         this.sealife = new SeaLife(this.natureRoot, !o.shadows);
         this.natureMirror = new ThreeMirror(o.scene, this.natureRoot, null, o.shadows, {
             custom: (m) => (m.name.startsWith("fish") ? fishMaterial(o.scene, FISH_WIGGLE[+m.name.slice(4)] ?? 0.1)
-                : m.name === "woodSlab" ? woodMaterials(o.scene).slab : m.name === "glass" ? glassMaterial(o.scene) : druidMaterial(o.scene, m)),
+                : m.name === "skyMirror" ? skyMirrorMaterial(o.scene) : m.name === "woodSlab" ? woodMaterials(o.scene).slab : m.name === "glass" ? glassMaterial(o.scene) : druidMaterial(o.scene, m)),
         });
         this.birds.sound = (k, v) => { if (k === "chirp") this.sfx.chirp(v); else this.sfx.flutter(v); };
         this.flamingos.sound = (k, v) => { if (k === "honk") this.sfx.honk(v); else this.sfx.flutter(v); };

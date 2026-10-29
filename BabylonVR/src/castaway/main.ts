@@ -22,6 +22,8 @@ import { CaveView } from "./world/caveView";
 import { Weather } from "./world/weather";
 import { BIO } from "./world/sealife";
 import { Cats } from "./world/cats";
+import { SkyRoom } from "./world/skyroom";
+import { Skydive } from "./world/skydive";
 import { Dolphins } from "./world/dolphins";
 import { SEA } from "./world/waves";
 import { getOutfit, onOutfitChange, setPlayerOutfit } from "./net/outfit";
@@ -150,6 +152,19 @@ async function main() {
     const dolphins = new Dolphins(game.natureRoot, (x, z) => ocean.surfaceAt(x, z));
     if (params.has("nodolphins")) dolphins.enabled = false;
     if (params.has("dolphintest")) { dolphins.wait = 1; dolphins.rate = 0.08; }
+    // the secret room behind the odd door in the hut, and the skydive from its cloud door
+    const sky = new SkyRoom(game.natureRoot as unknown as THREE.Scene);
+    game.under.sky = sky;
+    sky.muted = () => game.sfx.muted;
+    const dive = new Skydive(game.natureRoot as unknown as THREE.Scene);
+    game.dive = dive;
+    dive.say = (t) => game.hud.message(t);
+    dive.wind = (v) => game.sfx.setWind(v);
+    dive.onChute = () => game.sfx.boing(0.25);
+    sky.skydiving = () => dive.active;
+    sky.onDoorOpen = () => { game.sfx.creak(); game.sfx.setWind(0.5); game.hud.message("The door swings open onto the open sky..."); };
+    sky.onJump = () => { sky.depart(); dive.start(player, spawn.x, spawn.z, Math.PI); };
+    { const e = sites.doorExit(); sky.exitTo = { x: e.x, y: heightAt(e.x, e.z), z: e.z, yaw: e.yaw }; }
     // the island's cats
     const cats = params.has("nocats") ? null : new Cats(game.natureRoot, vegetation.colliders, q.shadows, () => game.fauna.animals);
     if (cats) {
@@ -246,6 +261,10 @@ async function main() {
             game.update(dt, true);
             game.under.sites?.update(dt);
             if (cats && !game.under.active) cats.update(dt, player.pos.x, player.pos.z, player.pos.y);
+            dive.update(dt, player, input.move, game.stats.dead);
+            const sy = sync;
+            if (sy) dive.updateRemote(sy.avatars.positions.map((a) => { const st = sy.session.states.get(a.id); return { id: a.id, x: a.x, y: a.y, z: a.z, yaw: st?.yaw ?? 0, flags: st?.flags ?? 0 }; }));
+            sky.update(dt, player, (x, z) => heightAt(x, z));
             dolphins.update(dt, player.pos.x, player.pos.z, player.yaw, game.under.active);
             ocean.bio = BIO.value;
             clock.curse = game.druids.curse;
@@ -611,7 +630,7 @@ async function main() {
     // a hidden tab stops rendering: keep the room in step anyway (a host who alt-tabs must not freeze everyone else)
     setInterval(() => { if (document.hidden) sync?.update(0.1); }, 100);
 
-    Object.assign(window as unknown as Record<string, unknown>, { Wind, scene, engine, game, player, sites, caves, heightAt, weather, cats, vegetation, terrain, ocean, input, clock, camera, getSync: () => sync, doSave });
+    Object.assign(window as unknown as Record<string, unknown>, { Wind, scene, engine, game, player, sites, caves, heightAt, weather, cats, sky, dive, vegetation, terrain, ocean, input, clock, camera, getSync: () => sync, doSave });
 }
 
 main().catch((e) => {

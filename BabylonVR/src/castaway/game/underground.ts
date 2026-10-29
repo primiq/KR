@@ -8,6 +8,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { CaveWorld, CAVE_Y, type Ore, type Chest } from '../world/cave';
 import { heightAt } from '../world/island';
 import type { SurfaceSites, SiteChest } from '../world/sites';
+import type { SkyRoom } from '../world/skyroom';
 import { rayGround } from './building';
 import type { ItemId } from './items';
 import { ITEMS } from './items';
@@ -34,7 +35,10 @@ export type UgTarget =
   | { kind: 'rope'; index: number; dist: number }
   | { kind: 'pit'; index: number; dist: number }
   | { kind: 'crack'; index: number; dist: number }
-  | { kind: 'loot'; chest: SiteChest; dist: number };
+  | { kind: 'loot'; chest: SiteChest; dist: number }
+  | { kind: 'skydoor'; dist: number }
+  | { kind: 'skyexit'; dist: number }
+  | { kind: 'clouddoor'; dist: number };
 
 const DIG_HITS = 6;
 
@@ -47,6 +51,8 @@ export class Underground {
   dig = new Map<string, number>();
   /** ruined huts and shipwrecks on the surface (set by main) */
   sites: SurfaceSites | null = null;
+  /** the secret room behind the odd door (set by main) */
+  sky: SkyRoom | null = null;
   private surf = new THREE.Group();
   private hintCd = 0;
   private marks: { crack: THREE.Group; pit: THREE.Group }[] = [];
@@ -187,6 +193,12 @@ export class Underground {
     });
     const lt = this.sites?.pick(eye, dir, Math.max(reach, 3.2), assist);
     if (lt && (!best || lt.dist < (best as UgTarget).dist)) best = { kind: 'loot', chest: lt.chest, dist: lt.dist };
+    const dt = this.sites?.pickDoor(eye, dir, Math.max(reach, 3.2), assist);
+    if (dt != null && (!best || dt < (best as UgTarget).dist)) best = { kind: 'skydoor', dist: dt };
+    const xt = this.sky?.pick(eye, dir, Math.max(reach, 3.2), assist);
+    if (xt != null && (!best || xt < (best as UgTarget).dist)) best = { kind: 'skyexit', dist: xt };
+    const cd2 = this.sky?.pickCloud(eye, dir, Math.max(reach, 3.2), assist);
+    if (cd2 != null && (!best || cd2 < (best as UgTarget).dist)) best = { kind: 'clouddoor', dist: cd2 };
     return best;
   }
 
@@ -200,6 +212,9 @@ export class Underground {
         if (t.ore.kind === 'diamond' && !pick) return { name: nm, hint: 'Needs a pickaxe', ok: false };
         return { name: nm, hint: '<b>Click</b> mine', ok: true };
       }
+      case 'clouddoor': return { name: 'Cloud door', hint: '<b>E</b> open · jump out and parachute down', ok: true };
+      case 'skydoor': return { name: 'Strange door', hint: '<b>E</b> open', ok: true };
+      case 'skyexit': return { name: 'Door', hint: '<b>E</b> go back down', ok: true };
       case 'loot': return t.chest.opened ? { name: 'Empty chest', hint: '', ok: false } : { name: t.chest.kind === 'wreck' ? 'Sea-battered chest' : 'Old chest', hint: '<b>E</b> open', ok: true };
       case 'chest': return t.chest.opened ? { name: 'Empty chest', hint: '', ok: false } : { name: 'Old chest', hint: '<b>E</b> open', ok: true };
       case 'rope': return { name: 'Rope ladder', hint: '<b>E</b> climb up', ok: true };
@@ -214,6 +229,9 @@ export class Underground {
       case 'pit': this.enter(t.index); break;
       case 'chest': this.openChest(t.chest); break;
       case 'loot': this.openSiteChest(t.chest); break;
+      case 'clouddoor': this.sky?.openCloud(); break;
+      case 'skydoor': this.sky?.enter(this.h.player); this.h.message('The door opens onto… somewhere far above the island.'); this.h.sfx.creak(); break;
+      case 'skyexit': { const e = this.sites?.doorExit(); if (e && this.sky) { this.sky.leave(this.h.player, { x: e.x, y: heightAt(e.x, e.z), z: e.z, yaw: e.yaw }); this.h.sfx.creak(); } break; }
       default: break;
     }
   }
