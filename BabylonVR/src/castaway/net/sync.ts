@@ -7,6 +7,7 @@ import type { Structure } from "../game/structures";
 import { heightAt } from "../world/island";
 import { Avatars, playerColor } from "./avatars";
 import { parseOutfit } from "./outfit";
+import { F_LEVEL } from "../world/warp";
 import { type PState, Session, type VRPoseData } from "./session";
 import { applyWorld, captureWorld, packInv, unpackInv } from "./world";
 
@@ -89,6 +90,16 @@ export class WorldSync {
             dr.onPhase = session.isHost ? (p) => session.sendEvent({ k: "zp", p }) : null;
             dr.onHit = session.isHost ? null : (d) => session.sendEvent({ k: "zh", d: +d.toFixed(1), x: +game.player.pos.x.toFixed(1), z: +game.player.pos.z.toFixed(1) });
         }
+        // the warp pipe and the secret level: the host decides who goes in and when it is over, and runs Mario
+        {
+            const w = game.warp;
+            w.remote = !session.isHost; w.myId = session.myId;
+            w.onEvent = (e) => session.sendEvent({ k: "ml", ...e });
+            w.present = (pid) => pid === session.myId || session.players.has(pid);
+            w.who = (pid) => ({ name: session.players.get(pid)?.name ?? (pid === session.myId ? "You" : "Friend"), color: playerColor(pid) });
+        }
+        // gone down the warp pipe (the secret level): their body is not on the island
+        this.avatars.three.hideIf = (flags) => (flags & F_LEVEL) !== 0;
         // weather, whales and ships: the host decides, the others follow
         game.offshore.remote = !session.isHost;
         if (session.isHost) {
@@ -194,6 +205,7 @@ export class WorldSync {
         if (this.game.twins.remote) this.game.twins.promote();
         if (this.game.weather) { this.game.weather.remote = false; this.game.weather.onChange = null; }
         this.game.offshore.remote = false; this.game.offshore.onWhale = this.game.offshore.onShip = null;
+        { const w = this.game.warp; w.remote = false; w.onEvent = null; w.present = () => true; w.who = () => ({ name: "You", color: "#3cb043" }); w.myId = 0; }
         { const dr = this.game.druids; dr.remote = false; dr.onTouch = null; dr.onPhase = null; dr.onHit = null; dr.players = () => [{ id: 0, x: this.game.player.pos.x, y: this.game.player.pos.y, z: this.game.player.pos.z }]; }
         if (this.orig) { f.onSound = this.orig.sound; f.onBlood = this.orig.blood; f.onKill = this.orig.kill; this.orig = null; }
         this.session.onFast = null;
@@ -316,6 +328,7 @@ export class WorldSync {
             case "sh": { const q = this.session.isHost ? g.stalkers.list[e.i] : undefined; if (q) g.stalkers.hit(q, e.x, e.z); break; }
             case "wh": if (!this.session.isHost) g.offshore.startWhale(+e.x, +e.z, +e.h, +e.s); break;
             case "sx": if (!this.session.isHost && !g.offshore.shipActive) g.offshore.startShip(+e.a, e.d < 0 ? -1 : 1, +e.p || 0); break;
+            case "ml": g.warp.net(e, from); break;
             case "mp": this.addPing(from, this.session.players.get(from)?.name ?? "Someone", playerColor(from), e.x, e.z); break;
         }
     }
@@ -434,7 +447,7 @@ export class WorldSync {
         const st: PState = {
             x: p.pos.x, y: p.pos.y, z: p.pos.z, yaw: p.yaw, pitch: p.pitch,
             spd: Math.hypot(p.vel.x, p.vel.z), item: held ? held.id : "", swing: g.swings,
-            flags: (p.sprinting ? 1 : 0) | (p.mode === "swim" ? 2 : 0) | (g.stats.dead ? 4 : 0) | (g.isSleeping ? 8 : 0) | (g.drinking ? 32 : 0),
+            flags: (p.sprinting ? 1 : 0) | (p.mode === "swim" ? 2 : 0) | (g.stats.dead ? 4 : 0) | (g.isSleeping ? 8 : 0) | (g.drinking ? 32 : 0) | (g.warp.inLevel ? F_LEVEL : 0),
             hp: g.stats.health, arm: g.armorCode,
         };
         const pose = this.vrPose?.() ?? null;

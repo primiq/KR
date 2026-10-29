@@ -28,6 +28,7 @@ import { Stalkers } from "./stalker";
 import { Offshore } from "../world/offshore";
 import { Druids } from "../world/druids";
 import { druidMaterial } from "../world/druidView";
+import { Warp } from "../world/warp";
 import { Twins } from "./twins";
 import { type Door, Doors } from "./doors";
 import { type FrameAim, type Painting, Paintings } from "./paintings";
@@ -94,6 +95,9 @@ export class Game {
     readonly offshore: Offshore;
     /** the stone circle on the hilltop, and Mario */
     readonly druids: Druids;
+    /** Mario's warp pipe and the secret level */
+    readonly warp: Warp;
+    private pipeHinted = false;
     /** doors hung in doorways, and pictures on the walls (with the paint editor) */
     readonly doors: Doors;
     readonly paintings: Paintings;
@@ -118,7 +122,7 @@ export class Game {
     /** multiplayer: friends and pings for the map (set by net/sync) */
     mapExtras: { friends?: () => { x: number; z: number; name: string; color: string }[]; pings?: () => { x: number; z: number; name: string; color: string; age: number }[] } = {};
     /** VR: aim comes from the hand, not the head; the VR rig fills this in every frame */
-    readonly vr = { active: false, eye: new Vector3(), dir: new Vector3(0, 0, -1), haptic: null as null | ((strength: number) => void) };
+    readonly vr = { active: false, eye: new Vector3(), dir: new Vector3(0, 0, -1), head: null as Vector3 | null, headDir: null as Vector3 | null, haptic: null as null | ((strength: number) => void) };
     /** multiplayer glue (set by net/sync) */
     netId = 0;
     net: {
@@ -235,6 +239,31 @@ export class Game {
         this.offshore = new Offshore(this.natureRoot);
         this.druids = new Druids(this.natureRoot, o.vegetation.colliders, o.shadows);
         this.druids.say = (t) => this.hud.message(t);
+        this.warp = new Warp(this.natureRoot, o.vegetation.colliders, !!o.shadows);
+        this.warp.say = (t) => this.hud.message(t);
+        this.warp.sfx = this.sfx;
+        this.warp.voice = (line) => {
+            if (line === "start") this.druids.sayItsMe(1);
+            else {
+                // (no recording of this one: the browser's own voice, pitched up, if it has one)
+                try { const u = new SpeechSynthesisUtterance("Thank you so much for-a playing my game!"); u.pitch = 1.6; u.rate = 1.05; window.speechSynthesis?.speak(u); } catch { /* */ }
+            }
+        };
+        this.warp.onExit = () => {
+            // out of the pipe, next to it, facing it
+            const P = this.warp.pipeAt, p = this.player;
+            p.ride = null;
+            if (P) {
+                const a = (this.netId % 6) * 1.05, x = P.x + Math.sin(a) * 2.6, z = P.z + Math.cos(a) * 2.6;
+                p.teleport(x, this.building.ground(x, z, P.y + 2), z, Math.atan2(x - P.x, z - P.z));
+            }
+            this.sfx.pipe8();
+            this.hud.message("You pop out of the pipe, back on the island.");
+        };
+        this.warp.onFinished = () => {
+            this.druids.setPhase("idle");
+            this.hud.message("Mario waves goodbye and goes home. The sky clears.");
+        };
         this.druids.myId = () => this.netId;
         this.druids.players = () => (this.net.targets?.() ?? [{ id: this.netId, x: this.player.pos.x, y: this.player.pos.y, z: this.player.pos.z }]).filter((p) => Math.abs(p.x) < 500 && Math.abs(p.z) < 500);
         this.druids.sound = (k, v) => { if (k === "bonk") this.sfx.bonk(); else if (k === "hop") this.sfx.hop(v); else if (k === "poof") this.sfx.poof(v); else if (k === "touch") this.sfx.hum(v); else this.sfx.whoosh(); };
@@ -681,14 +710,14 @@ export class Game {
             this.wasSwim = swim;
         }
         if (!active) { view.visible(false); return; }
-        view.visible(!stats.dead && !this.vr.active);
+        view.visible(!stats.dead && !this.vr.active && !this.warp.inLevel);
 
         stats.godMode = player.mode === "fly";
         if (!stats.dead) stats.update({ dt, moving: player.moving && player.mode !== "fly", sprinting: player.sprinting && player.mode !== "fly", swimming: player.mode === "swim", jumped: player.jumped, underwater: player.underwater });
         if (stats.dead && !this.deathHandled) this.onDeath();
         hud.setVitals(stats);
 
-        if (stats.dead || this.sleeping) { hud.setPrompt(null); this.hideBuildUi(); return; }
+        if (stats.dead || this.sleeping || this.warp.inLevel) { hud.setPrompt(null); this.hideBuildUi(); return; }
 
         if (hud.inventoryOpen) {
             hud.setPrompt(null);
@@ -917,7 +946,7 @@ export class Game {
 
     /** VR: a trigger pull (swung = false) or a real swing of the arm (swung = true). */
     vrPrimary(swung: boolean) {
-        if (this.stats.dead || this.sleeping || this.hud.inventoryOpen) return;
+        if (this.stats.dead || this.sleeping || this.hud.inventoryOpen || this.warp.inLevel) return;
         const held = this.equipped, def = held ? ITEMS[held.id] : null;
         if (def?.tool && def.tool.model !== "rod") {
             if (this.vrCd > 0) return;
@@ -1138,6 +1167,34 @@ export class Game {
         this.wearHeld();
     }
 
+    // ------------------------------------------------------------ Mario's warp pipe and the secret level
+    private updateWarp(dt: number) {
+        const w = this.warp, dr = this.druids, p = this.player;
+        w.place(this.under.sites?.door ?? null);
+        if (w.running) dr.away = true;
+        const alive = dr.phase === "alive";
+        w.setShown(alive && !dr.away);
+        if (alive && !dr.away && w.pipeAt && !this.pipeHinted) { this.pipeHinted = true; this.hud.message("A green warp pipe has popped up by the old hut with the odd door. Lead Mario to it!"); }
+        if (!alive) this.pipeHinted = false;
+        // host: Mario has followed somebody to the pipe: in they all go (everybody near it)
+        if (!w.remote && !w.running && alive && !dr.away && w.pipeAt) {
+            const P = w.pipeAt, m = dr.marioPos();
+            if (Math.hypot(m.x - P.x, m.z - P.z) < 4.5) {
+                const pl = dr.players();
+                if (pl.some((q) => Math.hypot(q.x - P.x, q.z - P.z) < 8)) {
+                    dr.away = true;
+                    w.hostStart(pl.filter((q) => Math.hypot(q.x - P.x, q.z - P.z) < 25).map((q) => q.id));
+                }
+            }
+        }
+        // in the level: the body waits on the island (hidden from the others), the keys / stick / buttons play the level
+        if (w.inLevel && !p.ride) p.ride = () => this.warp.inLevel;
+        const inp = this.input;
+        // (VR: the screen goes up in front of your eyes, the way your head faces)
+        const vr = this.vr.active && w.inLevel ? { on: true, head: this.vr.head ?? this.vr.eye, fwd: this.vr.headDir ?? this.vr.dir } : null;
+        w.update(dt, { x: inp.move.x, jump: inp.jumpHeld || inp.move.y > 0.6, run: inp.wantsSprint }, vr);
+    }
+
     /** footprints in the sand, and the birds and flamingos (which take off when someone comes too close) */
     private updateNature(dt: number, hour: number, away: boolean) {
         const p = this.player, me = p.pos, onIsland = !away && Math.abs(me.x) < 500 && Math.abs(me.z) < 500 && me.y < heightAt(me.x, me.z) + 60;
@@ -1186,6 +1243,7 @@ export class Game {
             const local = onIsland && !p.cave;
             wx.update(dt, this.vr.active ? this.vr.eye : p.eye, local, this.roofed, p.underwater);
             this.druids.update(dt, me, onIsland && !p.cave);
+            this.updateWarp(dt);
             this.offshore.tick(hour, wx.kind === 0);
             this.offshore.update(dt, me, performance.now() / 1000, wx.rough, 1 - (this.clock.day ?? 1), !onIsland || !!p.cave);
             this.sfx.setWeather(local && !p.underwater ? wx.rain : 0, local ? Math.max(0, Math.min(1, (wx.wind - 1.4) / 2.8)) : 0, this.roofed, dt);

@@ -48,6 +48,8 @@ export class Player {
     /** VR: the headset moves the eyes itself, so no bob, shake or step easing */
     vr = false;
     world: WorldShape | null = null;
+    /** something else carries the body (the warp level, a cannon seat, a boat): while it returns true the player stays put */
+    ride: ((dt: number) => boolean) | null = null;
     /** underground: the cave replaces the island's ground, walls and water */
     cave: { floor(x: number, z: number, y: number): number; resolve(x: number, z: number, r: number, feetY: number, out: { x: number; z: number }): void } | null = null;
     /** sea surface height (waves) at a point */
@@ -125,6 +127,19 @@ export class Player {
             this.vel.set(0, 0, 0);
         }
 
+        if (this.ride) {
+            if (this.ride(dt)) {
+                this.mode = "walk"; this.onGround = true; this.moving = false; this.sprinting = false; this.jumped = false;
+                this.vel.set(0, 0, 0);
+                this.eye.set(this.pos.x, this.pos.y + this.body.eye, this.pos.z);
+                const sf = this.surfaceAt(this.eye.x, this.eye.z);
+                this.waterDepth = Math.max(0, sf - heightAt(this.pos.x, this.pos.z));
+                this.underwater = this.eye.y < sf - 0.03 && this.waterDepth > 0;
+                this.lastY = this.pos.y; this.stepOffset = 0; input.jumpQueued = false;
+                return;
+            }
+            this.ride = null; this.onGround = false; this.lastY = this.pos.y;
+        }
         const sinY = Math.sin(this.yaw), cosY = Math.cos(this.yaw);
         const mx = input.move.x, my = input.move.y;
         const wishX = -sinY * my + cosY * mx;

@@ -45,6 +45,7 @@ export class ThreeMirror {
     private mats = new Map<THREE.Material, Material>();
     private sprites = new Map<THREE.Sprite, SpriteView>();
     private skins = new Map<THREE.SkinnedMesh, SkinView>();
+    private live: { map: THREE.Texture; tex: DynamicTexture; version: number }[] = [];
     private frame = 0;
     private ids = new WeakMap<object, number>();
     private nextId = 1;
@@ -93,6 +94,20 @@ export class ThreeMirror {
             const t = new DynamicTexture("mirrorCanvas", cv, { scene: this.scene, invertY: map.flipY !== false } as never);
             t.update(map.flipY !== false);
             t.wrapU = t.wrapV = 1;
+            // a canvas that keeps changing (the warp level's screen, a picture): re-uploaded when three's version moves on
+            if (isCanvas) this.live.push({ map, tex: t, version: map.version });
+            if (m.type === "MeshBasicMaterial") {
+                // unlit: the canvas as it is
+                const u = new StandardMaterial(`mirror_screen${this.id(m)}`, this.scene);
+                u.disableLighting = true;
+                u.emissiveTexture = t;
+                u.backFaceCulling = m.side !== THREE.DoubleSide;
+                if (!m.depthTest) { u.depthFunction = Constants.ALWAYS; u.disableDepthWrite = true; }
+                if (map.magFilter === THREE.NearestFilter) t.updateSamplingMode(1);
+                p.dispose();
+                this.mats.set(m, u);
+                return u;
+            }
             p.albedoTexture = t;
             if (isCanvas) { p.emissiveTexture = t; p.emissiveColor = new Color3(0.3, 0.3, 0.3); }
             p.roughness = (anyM as THREE.MeshStandardMaterial).roughness ?? 0.8;
@@ -290,6 +305,7 @@ export class ThreeMirror {
             if (b.n) { b.mesh.thinInstanceBufferUpdated("matrix"); if (b.col) b.mesh.thinInstanceBufferUpdated("color"); }
         }
         for (const v of this.skins.values()) if (v.seen !== this.frame) v.mesh.setEnabled(false);
+        for (const l of this.live) if (l.map.version !== l.version) { l.version = l.map.version; l.tex.update(l.map.flipY !== false); }
         for (const [s, v] of this.sprites) {
             if (v.seen === this.frame) continue;
             v.plane.setEnabled(false);
