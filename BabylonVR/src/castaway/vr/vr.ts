@@ -11,13 +11,20 @@ import {
 import type { Input } from "../core/input";
 import type { Game } from "../game/game";
 import { ITEMS, type ItemId } from "../game/items";
+import * as THREE from "three";
 import { heldModel, ITEM_COLOR } from "../game/viewmodel";
 import { bakeGroup, disposeBaked } from "../render/bake";
 import { glow, solid } from "../render/materials";
+import { ThreeMirror } from "../render/mirror";
+import { buildGorillaHand } from "../campaign/gorilla";
+import { buildPaw, type Coat } from "../world/cats";
 import type { Player } from "../world/player";
 import { VRPanel } from "./panel";
 
 const SNAP = Math.PI / 6;
+/** a cat is about a quarter of your size; its paws are drawn bigger than life so you can see them */
+const CAT_SCALE = 0.24, PAW_SCALE = 1.9, PULL_GAIN = 1.5, THROW_GAIN = 3.2, GOR_SCALE = 1.12;
+const _v = new THREE.Vector3(), _gd = new THREE.Vector3();
 
 interface Hand {
     src: WebXRInputSource;
@@ -26,6 +33,14 @@ interface Hand {
     speed: number;
     /** button states last frame (edge detection) */
     trig: boolean; sq: boolean; a: boolean; b: boolean; x: boolean; y: boolean; stick: boolean;
+    /** a three.js stand-in following the grip (the gorilla hand or the cat paw hang under it, drawn by the hand mirror) */
+    rig: THREE.Group;
+    /** smoothed world velocity of the hand and where it was last frame (throwing things) */
+    mvel: THREE.Vector3; mprev: THREE.Vector3 | null;
+    /** Banana or Salmon: holding something; left trigger last frame */
+    cheld: boolean; ctrig: boolean;
+    /** cat house: holding the mouse; claws dug in, and where the paw was last frame (play-space) */
+    mouse: boolean; cgrip: boolean; cprev: Vector3 | null;
 }
 
 const btn = (h: Hand | null, i: number) => !!h?.src.inputSource.gamepad?.buttons?.[i]?.pressed;
@@ -48,6 +63,19 @@ export class CastawayVR {
     private slotArmed = true;
     readonly panel: VRPanel;
     private yawOffset = 0;
+    /** the guitar is held by the neck in the left hand (the right one strums) */
+    private guitar: TransformNode | null = null;
+    private strumZone: TransformNode | null = null;
+    private zone3 = new THREE.Object3D();
+    /** the hand extras (gorilla hands, cat paws): a three.js scene of their own, drawn by a mirror */
+    private handHolder = new THREE.Scene();
+    private handMirror: ThreeMirror;
+    catOn = false;
+    gorOn = false;
+    private catCoat: Coat | null = null;
+    /** the comfort vignette: grows with stick movement and snap turns, fades back */
+    private vigK = 0;
+    private vig0 = 0;
 
     constructor(
         private readonly scene: Scene,
@@ -55,10 +83,12 @@ export class CastawayVR {
         private readonly game: Game,
         private readonly player: Player,
         private readonly input: Input,
-        pipeline: DefaultRenderingPipeline,
+        private readonly pipeline: DefaultRenderingPipeline,
     ) {
         const base = xr.baseExperience;
         this.panel = new VRPanel(scene, game);
+        this.zone3.matrixAutoUpdate = false;
+        this.handMirror = new ThreeMirror(scene, this.handHolder, null, false, { tag: { keepUnderground: true } });
         base.onStateChangedObservable.add((s) => {
             if (s === WebXRState.IN_XR) {
                 this.active = true;
@@ -73,10 +103,13 @@ export class CastawayVR {
                 base.camera.maxZ = 1600;
                 this.placeRig(true);
                 game.vr.haptic = (k) => this.pulse("right", k);
+                if (pipeline.imageProcessing) this.vig0 = pipeline.imageProcessing.vignetteWeight;
+                this.applyScale();
                 document.body.classList.add("in-vr");
             } else if (s === WebXRState.NOT_IN_XR) {
                 this.active = false;
                 game.vr.active = false;
+                game.vr.head = game.vr.headDir = null;
                 player.vr = false;
                 this.panel.setVisible(false);
                 document.body.classList.remove("in-vr");
@@ -84,11 +117,14 @@ export class CastawayVR {
         });
         xr.input.onControllerAddedObservable.add((src) => {
             const side = src.inputSource.handedness === "left" ? "left" : "right";
-            this.hands.set(side, { src, side, prev: null, speed: 0, trig: false, sq: false, a: false, b: false, x: false, y: false, stick: false });
+            const rig = new THREE.Group(); rig.matrixAutoUpdate = false; this.handHolder.add(rig);
+            const h: Hand = { src, side, prev: null, speed: 0, trig: false, sq: false, a: false, b: false, x: false, y: false, stick: false, rig, mvel: new THREE.Vector3(), mprev: null, cheld: false, ctrig: false, mouse: false, cgrip: false, cprev: null };
+            this.hands.set(side, h);
+            this.dressHand(h);
             if (side === "left") src.onMotionControllerInitObservable.add(() => this.panel.attach(src));
         });
         xr.input.onControllerRemovedObservable.add((src) => {
-            for (const [k, h] of this.hands) if (h.src === src) this.hands.delete(k);
+            for (const [k, h] of this.hands) if (h.src === src) { this.handHolder.remove(h.rig); this.hands.delete(k); }
         });
     }
 
@@ -113,9 +149,42 @@ export class CastawayVR {
         return Math.atan2(-f.x, -f.z);
     }
 
+    /** eye height above the feet: your own, shrunk for a cat and a little taller for a gorilla */
+    private get eyeH() { return this.cam.realWorldHeight || 1.6 * this.scale; }
+    private get scale() { return this.catOn ? CAT_SCALE : this.gorOn ? GOR_SCALE : 1; }
+    private applyScale() {
+        const sm = this.xr.baseExperience.sessionManager as unknown as { worldScalingFactor?: number };
+        // (Babylon multiplies the tracked head and hand positions by this, real height included: a cat's head is near the floor)
+        if ("worldScalingFactor" in sm) sm.worldScalingFactor = this.scale;
+    }
+
+    /** Banana or Salmon: a gorilla is a bit bigger than you, with big hands */
+    setGorilla(on: boolean) {
+        if (on === this.gorOn) return;
+        this.gorOn = on;
+        if (on && this.catOn) this.setCat(false, this.catCoat!);
+        this.applyScale();
+        for (const h of this.hands.values()) this.dressHand(h);
+    }
+    /** become a cat (or not): shrink, and swap the hands for paws */
+    setCat(on: boolean, coat: Coat) {
+        this.catOn = on; this.catCoat = coat;
+        if (on) this.gorOn = false;
+        this.applyScale();
+        for (const h of this.hands.values()) this.dressHand(h);
+        this.player.clingHeld = false; this.player.pull.set(0, 0, 0);
+    }
+    private dressHand(h: Hand) {
+        h.rig.clear();
+        if (this.gorOn) { const g = buildGorillaHand(h.side === "left"); g.scale.setScalar(1.5); h.rig.add(g); }
+        if (this.catOn && this.catCoat) { const p = buildPaw(this.catCoat, false); p.scale.setScalar(PAW_SCALE); if (h.side === "left") p.scale.x *= -1; h.rig.add(p); }
+        h.cgrip = false; h.cprev = null;
+        this.heldId = "__redress" as ItemId;      // the item in the hand is hidden for a gorilla or a cat: rebuild it
+    }
+
     private placeRig(face = false) {
         const cam = this.cam;
-        const h = cam.realWorldHeight || 1.6;
+        const h = this.eyeH;
         cam.position.set(this.player.pos.x, this.player.pos.y + h, this.player.pos.z);
         if (face) {
             // turn the play space so you face the way the player was facing
@@ -125,7 +194,7 @@ export class CastawayVR {
     }
 
     /** Before the player moves: sticks and buttons become the same inputs the keyboard produces; room-scale walking. */
-    beforePlayer(_dt: number) {
+    beforePlayer(dt: number) {
         if (!this.active) return;
         const { input, game, player } = this;
         const L = this.hands.get("left") ?? null, R = this.hands.get("right") ?? null;
@@ -142,50 +211,87 @@ export class CastawayVR {
         cam.getDirection(Vector3.Forward(true)).normalizeToRef(player.look);
 
         // left stick: walk relative to where you look
-        const sx = axis(L, 2) || axis(L, 0), sy = axis(L, 3) || axis(L, 1);
+        let sx = axis(L, 2) || axis(L, 0), sy = axis(L, 3) || axis(L, 1);
         const len = Math.hypot(sx, sy), dead = 0.15;
-        if (len > dead) {
-            const k = Math.min(1, (len - dead) / (1 - dead)) / len;
-            input.move.x = sx * k;
-            input.move.y = -sy * k;
-        } else { input.move.x = 0; input.move.y = 0; }
-        input.sprint = btn(L, 1) || len > 0.97;
-        input.diveVR = val(L, 0) > 0.6;
+        if (len > dead) { const k = Math.min(1, (len - dead) / (1 - dead)) / len; sx *= k; sy *= k; } else { sx = 0; sy = 0; }
+        input.move.x = sx;
+        input.move.y = -sy;
+        const lGrip = btn(L, 1), lTrig = val(L, 0) > 0.6;
+
+        // ---- the secret level (a floating screen): left stick runs left / right, A, B, X, Y or either trigger jumps, grip runs fast
+        if (game.warp.inLevel) {
+            const rawX = axis(L, 2) || axis(L, 0) || axis(R, 2) || axis(R, 0);
+            input.move.x = Math.abs(rawX) > 0.2 ? rawX : 0; input.move.y = 0;
+            input.jumpHeld = btn(R, 4) || btn(R, 5) || btn(L, 4) || btn(L, 5) || val(R, 0) > 0.5 || val(L, 0) > 0.5;
+            input.sprint = btn(R, 1) || lGrip;
+            input.attackQueued = input.interactQueued = false;
+            this.endInput(dt, L, R);
+            return;
+        }
+        // ---- the alien invasion: you sit in a laser cannon that points where you look; either trigger or any face button fires
+        if (game.invaders.seated) {
+            input.move.x = input.move.y = 0; input.jumpHeld = false; input.interactHeld = false; input.attackQueued = input.interactQueued = false;
+            input.attackHeld = val(R, 0) > 0.5 || val(L, 0) > 0.5 || btn(R, 4) || btn(R, 5) || btn(L, 4) || btn(L, 5);
+            this.snapTurn(R);
+            this.endInput(dt, L, R);
+            return;
+        }
+        // ---- driving a car or steering a boat: left stick steers, right trigger is gas, left trigger brakes / reverses
+        if (game.under.air?.driving || game.boatHelm) {
+            input.move.x = sx;
+            input.move.y = Math.max(val(R, 0), -sy) - val(L, 0);
+            input.sprint = lGrip;
+            if (R) {
+                const a = btn(R, 4), sq = btn(R, 1), b = btn(R, 5), used = a || sq;
+                if (used && !(R.a || R.sq)) input.interactQueued = true;       // A / grip: get out
+                input.interactHeld = used;
+                input.jumpHeld = b;                                            // B: handbrake
+                R.trig = val(R, 0) > 0.6; R.a = a; R.sq = sq; R.b = b;
+            }
+            this.vigK += (0.25 - this.vigK) * Math.min(1, dt * 2);
+            this.endInput(dt, L, R);
+            return;
+        }
+
+        // sprint: push the stick all the way, or hold the left grip (a cat's grips are claws instead)
+        input.sprint = (lGrip && !this.catOn) || len > 0.97;
+        // in deep water the left trigger takes you down (B brings you up); look where you want to swim
+        input.diveVR = !game.under.camp?.active && !this.catOn && lTrig;
 
         // right stick: snap turn (x) and hotbar (y)
-        const rx = axis(R, 2) || axis(R, 0), ry = axis(R, 3) || axis(R, 1);
-        if (Math.abs(rx) < 0.35) this.turnArmed = true;
-        else if (this.turnArmed && Math.abs(rx) > 0.75) {
-            this.turnArmed = false;
-            const a = rx > 0 ? -SNAP : SNAP;
-            // turn about the head, not the play-space origin
-            const head = cam.position.clone();
-            cam.rotationQuaternion = Quaternion.RotationAxis(Vector3.Up(), a).multiply(cam.rotationQuaternion ?? Quaternion.Identity());
-            cam.position.copyFrom(head);
-            this.yawOffset += a;
-        }
+        this.snapTurn(R);
+        const ry = axis(R, 3) || axis(R, 1);
         if (Math.abs(ry) < 0.35) this.slotArmed = true;
         else if (this.slotArmed && Math.abs(ry) > 0.75) { this.slotArmed = false; input.hotbarDelta += ry > 0 ? 1 : -1; }
 
         // buttons
+        const camp = game.under.camp?.active ? game.under.camp : null;
         if (R) {
             const trig = val(R, 0) > 0.6, sq = btn(R, 1), a = btn(R, 4), b = btn(R, 5);
-            const used = sq || a;
+            const used = this.catOn ? a : sq || a;
             if (trig && !R.trig && !this.panel.pointerBusy) {
                 if (game.stats.dead) game.respawn();
-                else game.vrPrimary(false);
-            }
+                else if (camp) { if (!this.campHand(R, true)) game.vrPrimary(false); }
+                else if (!this.catOn) game.vrPrimary(false);
+            } else if (!trig && R.trig && camp) this.campHand(R, false);
             if (used && !(R.a || R.sq)) input.interactQueued = true;
             input.interactHeld = used;
             if (b && !R.b) input.jumpQueued = true;
             input.jumpHeld = b;
             R.trig = trig; R.sq = sq; R.a = a; R.b = b;
         }
-        if (L) {
+        if (L && game.equipped?.id === "guitar") {
+            // holding the guitar: X, Y and the left trigger are the chord fingers (8 chords), nothing else
+            const x = btn(L, 4), y = btn(L, 5);
+            game.guitar.chord = (x ? 1 : 0) | (y ? 2 : 0) | (lTrig ? 4 : 0);
+            L.x = x; L.y = y;
+        } else if (L) {
             const x = btn(L, 4), y = btn(L, 5), stick = btn(L, 3);
             const def = game.equippedDef;
             if (x && !L.x) {
-                if (def?.kind === "plan" || (def?.kind === "placeable" && def.place !== "torch")) input.rotateQueued++;
+                if (this.catOn) input.meowQueued = true;
+                // anything being placed (furniture, a building piece, a boat): X turns it; otherwise it opens crafting
+                else if (def?.kind === "plan" || (def?.kind === "placeable" && (def.place !== "torch" || game.torchPlacing)) || def?.boat) input.rotateQueued++;
                 else if (!game.stats.dead) this.panel.open("craft");
             }
             if (y && !L.y) {
@@ -195,7 +301,106 @@ export class CastawayVR {
             if (stick && !L.stick) this.panel.toggle("bag");
             L.x = x; L.y = y; L.stick = stick;
         }
-        input.lookDX = input.lookDY = 0;
+        if (this.catOn) { this.catPull(L, R, lGrip, btn(R, 1)); this.catMouse(L, R, lTrig, val(R, 0) > 0.6, dt); }
+        if (camp && L) {
+            if (lTrig && !L.ctrig) this.campHand(L, true); else if (!lTrig && L.ctrig) this.campHand(L, false);
+            L.ctrig = lTrig;
+        }
+        // comfort vignette: grows with stick use and turning, fades back
+        const target = Math.min(1, Math.hypot(input.move.x, input.move.y)) * 0.55 + (this.turnArmed ? 0 : 0.6);
+        this.vigK += (target - this.vigK) * Math.min(1, dt * (target > this.vigK ? 10 : 3));
+        this.endInput(dt, L, R);
+    }
+
+    /** the end of every input frame: no mouse look in a headset, hand velocities, the comfort vignette */
+    private endInput(dt: number, L: Hand | null, R: Hand | null) {
+        this.input.lookDX = this.input.lookDY = 0;
+        this.player.pitch = 0;
+        this.trackHands(L, R, dt);
+        const ip = this.pipeline.imageProcessing;
+        if (ip) { ip.vignetteEnabled = true; ip.vignetteWeight = this.vig0 + this.vigK * 4; }
+    }
+
+    private snapTurn(R: Hand | null) {
+        const rx = axis(R, 2) || axis(R, 0);
+        if (Math.abs(rx) < 0.35) this.turnArmed = true;
+        else if (this.turnArmed && Math.abs(rx) > 0.75) {
+            this.turnArmed = false;
+            const a = rx > 0 ? -SNAP : SNAP, cam = this.cam;
+            // turn about the head, not the play-space origin
+            const head = cam.position.clone();
+            cam.rotationQuaternion = Quaternion.RotationAxis(Vector3.Up(), a).multiply(cam.rotationQuaternion ?? Quaternion.Identity());
+            cam.position.copyFrom(head);
+            this.yawOffset += a;
+            for (const h of this.hands.values()) h.prev = null;
+        }
+    }
+
+    private gripPos(h: Hand, out: THREE.Vector3) { const g = (h.src.grip ?? h.src.pointer).absolutePosition; return out.set(g.x, g.y, g.z); }
+    /** hand world velocity (smoothed), for throwing things */
+    private trackHands(L: Hand | null, R: Hand | null, dt: number) {
+        for (const h of [L, R]) {
+            if (!h) continue;
+            this.gripPos(h, _v);
+            if (h.mprev && dt > 0) { _gd.copy(_v).sub(h.mprev).divideScalar(Math.max(dt, 1 / 120)); if (_gd.length() < 30) h.mvel.lerp(_gd, 0.45); }
+            (h.mprev ??= new THREE.Vector3()).copy(_v);
+        }
+    }
+    /** Banana or Salmon: a trigger squeezed (down) or let go near something you can pick up; returns true when it did something */
+    private campHand(h: Hand, down: boolean): boolean {
+        const camp = this.game.under.camp; if (!camp) return false;
+        this.gripPos(h, _v);
+        if (down) { const ok = camp.vrGrab(_v, true, h.mvel); h.cheld = ok; if (ok) this.pulse(h.side, 0.5); return ok; }
+        if (h.cheld) { h.cheld = false; camp.vrGrab(_v, false, h.mvel.clone().multiplyScalar(this.catOn ? 0.6 : 1)); this.pulse(h.side, 0.2); return true; }
+        return false;
+    }
+    /** the hand that holds things (the right one if there is one): world position */
+    handPos(out: { x: number; y: number; z: number; set(x: number, y: number, z: number): unknown }): boolean {
+        if (!this.active) return false;
+        const hs = [...this.hands.values()];
+        const h = hs.find((x) => x.cheld) ?? this.hands.get("right") ?? this.hands.get("left"); if (!h) return false;
+        this.gripPos(h, _v); out.set(_v.x, _v.y, _v.z); return true;
+    }
+    /** cat house: squeeze a trigger with a paw on the mouse to pick it up, let go while swinging to throw it */
+    private catMouse(L: Hand | null, R: Hand | null, lTrig: boolean, rTrig: boolean, _dt: number) {
+        const cat = this.game.under.cat; if (!cat?.active) return;
+        for (const [h, t] of [[L, lTrig], [R, rTrig]] as const) {
+            if (!h) continue;
+            this.gripPos(h, _v);
+            const pv = h.mvel;
+            if (t && !h.mouse && !cat.mouseMine && cat.canGrab(_v.x, _v.y, _v.z)) { cat.grabMouse(); h.mouse = true; this.pulse(h.side, 0.5); }
+            if (h.mouse) {
+                if (t && cat.mouseMine) cat.holdMouse(_v.x, _v.y, _v.z);
+                else {
+                    if (cat.mouseMine) { cat.throwMouse(pv.x * THROW_GAIN, pv.y * THROW_GAIN + 0.6, pv.z * THROW_GAIN); this.pulse(h.side, 0.3); }
+                    h.mouse = false;
+                }
+            }
+        }
+    }
+    /** I Am Cat style: squeeze a grip to dig the claws in, then pull the paw towards you to drag the body along (or up a post) */
+    private catPull(L: Hand | null, R: Hand | null, lGrip: boolean, rGrip: boolean) {
+        const { player } = this;
+        player.pull.set(0, 0, 0);
+        player.clingHeld = lGrip || rGrip;
+        const cam = this.cam;
+        for (const [h, g] of [[L, lGrip], [R, rGrip]] as const) {
+            if (!h) continue;
+            // the paw relative to the head, so walking does not count as a pull
+            const p = (h.src.grip ?? h.src.pointer).absolutePosition.subtract(cam.position);
+            if (g && h.cgrip && h.cprev) {
+                player.pull.x += (h.cprev.x - p.x) * PULL_GAIN;
+                player.pull.z += (h.cprev.z - p.z) * PULL_GAIN;
+                player.pull.y += (h.cprev.y - p.y) * PULL_GAIN;
+            }
+            h.cprev = p;
+            if (g && !h.cgrip) this.pulse(h.side, 0.2);
+            h.cgrip = g;
+        }
+        // sanity: one frame never drags further than a sprint would (a tracking glitch must not fling you)
+        const lim = 0.25, m = Math.hypot(player.pull.x, player.pull.z);
+        if (m > lim) { player.pull.x *= lim / m; player.pull.z *= lim / m; }
+        player.pull.y = Math.max(-0.2, Math.min(0.2, player.pull.y));
     }
 
     /** After the player moves: put the headset on the body, read the right hand for aim and swings. */
@@ -203,13 +408,31 @@ export class CastawayVR {
         if (!this.active) return;
         const { game, player } = this;
         const cam = this.cam;
-        const h = cam.realWorldHeight || 1.6;
-        cam.position.set(player.pos.x, player.pos.y + h, player.pos.z);
+        cam.position.set(player.pos.x, player.pos.y + this.eyeH, player.pos.z);
         player.eye.copyFrom(cam.position);
+        // the game reads the headset's own position and gaze (the warp level's screen, the invasion cannon, sound)
+        game.vr.head = cam.position;
+        game.vr.headDir = cam.getDirection(Vector3.Forward(true));
+        // the hand extras follow the grips
+        for (const hd of this.hands.values()) { hd.rig.matrix.fromArray((hd.src.grip ?? hd.src.pointer).getWorldMatrix().m as unknown as number[]); hd.rig.matrixWorldNeedsUpdate = true; }
+        this.handHolder.updateMatrixWorld();
+        this.handMirror.sync();
 
-        const R = this.hands.get("right") ?? null;
-        const id = game.equipped?.id ?? null;
+        const R = this.hands.get("right") ?? null, L = this.hands.get("left") ?? null;
+        const heldId = game.equipped?.id ?? null;
+        // the guitar is held by the neck in the left hand, so the right hand is free to strum; gorillas and cats hold nothing
+        const guitar = heldId === "guitar" && !!L && !!R && !this.catOn;
+        const id = guitar || this.catOn || this.gorOn ? null : heldId;
         this.setHeld(R, id);
+        this.setGuitar(guitar ? L : null);
+        if (guitar && this.strumZone && R) {
+            this.zone3.matrix.fromArray(this.strumZone.getWorldMatrix().m as unknown as number[]);
+            const g = R.src.grip ?? R.src.pointer, fwd = g.getDirection(Vector3.Forward(true));
+            // (a little out along the fingers)
+            const at = g.absolutePosition.add(fwd.scale(0.07));
+            const hit = game.guitar.track(dt, this.zone3, _v.set(at.x, at.y, at.z), new THREE.Vector3(player.pos.x, player.pos.y, player.pos.z));
+            if (hit > 0) this.pulse("right", 0.12 + 0.3 * hit);
+        } else if (heldId === "guitar") game.guitar.reset();
         if (R) {
             const grip = R.src.grip ?? R.src.pointer;
             const ptr = R.src.pointer;
@@ -246,6 +469,25 @@ export class CastawayVR {
             return [a.x - p.x, a.y - p.y, a.z - p.z, q.x, q.y, q.z, q.w];
         };
         return { h, r: hand("right"), l: hand("left") };
+    }
+
+    /** the guitar in the left hand (null: none) */
+    private setGuitar(L: Hand | null) {
+        if (!L) { if (this.guitar) { disposeBaked(this.guitar); this.guitar = null; this.strumZone = null; } return; }
+        if (this.guitar?.parent) return;
+        const b = bakeGroup("vrGuitar", heldModel("guitar"), this.scene, (k) => {
+            const map: Record<string, [string, number, number]> = { handle: ["#8b5e34", 0.85, 0], steel: ["#d8d2c4", 0.3, 0.6], soot: ["#0d0b0a", 1, 0] };
+            const m = map[k] ?? [ITEM_COLOR.guitar ?? "#b5763a", 0.6, 0];
+            return solid(this.scene, m[0], m[1], m[2]);
+        }, false);
+        this.guitar = b.node;
+        this.guitar.parent = L.src.grip ?? L.src.pointer;
+        // the neck points forward out of the fist, the strings face up, the body rests towards you
+        this.guitar.position.set(0, 0, -0.18);
+        this.guitar.rotationQuaternion = Quaternion.RotationAxis(Vector3.Right(), -Math.PI / 2).multiply(Quaternion.RotationAxis(Vector3.Up(), Math.PI));
+        this.strumZone = new TransformNode("vrStrum", this.scene);
+        this.strumZone.parent = this.guitar;
+        this.strumZone.position.set(0, -0.53, -0.05);
     }
 
     /** the tool / item in your right hand */

@@ -249,6 +249,7 @@ async function main() {
     camp.haptic = (v) => game.vr.haptic?.(v);
     camp.inVR = () => vrActive();
     camp.carryAt = (out) => {
+        if (vrMode?.handPos(out)) return;
         const d = player.look, dy = Math.max(-0.4, Math.min(0.4, d.y));
         if (camp.species === "c") out.set(player.pos.x + d.x * 0.3, player.pos.y + 0.05, player.pos.z + d.z * 0.3);
         else out.set(player.eye.x + d.x * 0.85, player.eye.y - 0.55 + dy * 0.5, player.eye.z + d.z * 0.85);
@@ -260,6 +261,7 @@ async function main() {
         camera.minZ = sp === "c" ? 0.04 : 0.1;
         catMode(sp === "c");
         fpGor.root.visible = sp === "g" && !vrActive();
+        vrMode?.setGorilla(sp === "g");
     };
     // Locations, Locations: the monitor room (the levels themselves come with the baked map data)
     const locs = new LocationsRoom(game.natureRoot as unknown as THREE.Scene); game.under.locs = locs;
@@ -469,6 +471,8 @@ async function main() {
                     if (sync && (cat.landed || (cat.mouseMine && mouseSend <= 0))) { sync.session.sendEvent({ k: "mt", r: cat.exportThrow() }); mouseSend = 0.08; }
                     cat.landed = false;
                 }
+                const wantCat = cat.active || campCat();
+                if (vrMode && vrMode.catOn !== wantCat) vrMode.setCat(wantCat, PLAYER_COATS[game.netId % PLAYER_COATS.length]);
                 cat.ghost = cat.active && player.climbing;
                 paws.root.visible = (cat.active || campCat()) && !vrActive();
                 if (cat.active || campCat()) paws.update(dt, Math.hypot(player.vel.x, player.vel.z), player.vel.y, player.sprinting);

@@ -201,6 +201,8 @@ export class Game {
     /** drinking at a spring this frame (avatars show it) */
     drinking = false;
     private torchPlace = false;
+    /** a torch out in placing mode (not carried) */
+    get torchPlacing() { return this.torchPlace; }
 
     get armorPct() { let t = 0; for (const s of this.worn.slots) if (s) t += ITEMS[s.id].armor?.def ?? 0; return Math.min(75, t); }
     get armorCode() { let c = 0; for (const s of this.worn.slots) c = c * 10 + (s ? ITEMS[s.id].armor?.tier ?? 0 : 0); return c; }
