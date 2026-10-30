@@ -145,14 +145,26 @@ export class Atmosphere {
         this.sun.direction.copyFrom(sy > -0.02 ? this.lightDir : this.lightDir.scale(-1));
         const warm = new Color3(1.0, 0.42, 0.14), white = new Color3(1.0, 0.9, 0.76);
         this.sun.diffuse = Color3.Lerp(white, warm, low * 0.9);
-        this.sun.intensity = 6.5 * day;
+        // a low sun is softer (the light comes through more air), so sunlit and shaded sides are closer together
+        this.sun.intensity = 6.5 * day * (1 - 0.35 * low);
         const my = -sy, up = smoothstep(-0.06, 0.22, my);
         this.moon.direction.copyFrom(this.sunDir);
         this.moon.intensity = 0.55 * (1 - day) * (0.25 + 0.75 * up);
         // (the moon and the lightning stay switched on, at intensity 0 when idle: toggling a light recompiles every lit shader)
-        this.scene.environmentIntensity = lerp(0.12, 1, day);
-        const night = 1 - smoothstep(-0.2, 0.05, sy);
-        void night;
+        this.scene.environmentIntensity = lerp(0.3, 1, day);
+        // ---- the sky's own light, so places out of the sun never fall to black: a soft fill from the whole sky (blue by day,
+        //      a warm pink glow at dusk and dawn, a cool moonlit blue at night) with warm light bounced up off the sand and
+        //      grass. (The cave fill light does this job above ground: one light fewer for every material.)
+        const dusk = smoothstep(-0.16, 0.04, sy) * (1 - smoothstep(0.04, 0.32, sy));
+        const nightK = 1 - smoothstep(-0.16, 0.02, sy);
+        const fill = this.caveFill;
+        fill.direction.set(0, 1, 0);
+        const skyDay = new Color3(0.62, 0.76, 1.0), skyDusk = new Color3(0.95, 0.72, 0.66), skyNight = new Color3(0.42, 0.55, 0.95);
+        fill.diffuse = Color3.Lerp(Color3.Lerp(skyDay, skyNight, nightK), skyDusk, dusk);
+        fill.groundColor = Color3.Lerp(Color3.Lerp(new Color3(0.42, 0.33, 0.22), new Color3(0.12, 0.13, 0.2), nightK), new Color3(0.5, 0.38, 0.32), 0.6 * dusk);
+        fill.intensity = 0.25 * day + 0.7 * dusk + 0.16 * dusk * this.sun.intensity + 0.32 * nightK * (0.55 + 0.45 * up);
+        // eyes adapt: the dark is lifted a little (not so much that night looks like day)
+        this.scene.imageProcessingConfiguration.exposure = 1 + 0.45 * (1 - day) + 0.15 * dusk;
         const sm = this.sky.material as SkyMaterial;
         sm.sunPosition = this.sunDir.scale(100);
         if (this.sunDisc) {
@@ -171,18 +183,22 @@ export class Atmosphere {
             this.moon.intensity = 0;
             this.scene.environmentIntensity = 0;
             this.caveFill.intensity = 0.3;
+            this.caveFill.diffuse.set(0.45, 0.55, 0.9);
+            this.caveFill.groundColor.set(0.25, 0.22, 0.2);
+            this.scene.imageProcessingConfiguration.exposure = 1;
             this.scene.fogMode = Scene.FOGMODE_EXP2;
             this.scene.fogDensity = 0.013;
             this.scene.fogColor = new Color3(0.012, 0.016, 0.03);
             return;
         }
         this.sun.setEnabled(true);
-        this.caveFill.intensity = 0;
         // ---- the weather: a grey sky lets less sun and sky light through; lightning lights everything up for a moment
         const ov = this.overcast;
         this.sun.intensity *= 1 - 0.85 * ov;
         this.moon.intensity *= 1 - ov;
         this.scene.environmentIntensity *= 1 - 0.5 * ov;
+        // under a storm the sky fill grows a little greyer and stronger: overcast light is soft and even
+        this.caveFill.intensity *= 1 + 0.4 * ov;
         const cu = this.curse;
         this.clouds.setEnabled(ov > 0.01 || cu > 0.01);
         if (ov > 0.01 || cu > 0.01) {

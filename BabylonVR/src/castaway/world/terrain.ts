@@ -104,13 +104,13 @@ export class Terrain {
             float nB = sin(wxz.x * 0.21 + 0.6 * sin(wxz.y * 0.17)) * sin(wxz.y * 0.19 + 0.4);
             vec3 sandC = mix(vec3(0.92, 0.74, 0.42), vec3(0.84, 0.62, 0.32), nB * 0.5 + 0.5);
             vec3 grassC = mix(vec3(0.22, 0.38, 0.03), vec3(0.11, 0.25, 0.02), nB * 0.5 + 0.5);
-            vec3 jungleC = vec3(0.035, 0.1, 0.012);
+            vec3 jungleC = vec3(0.05, 0.14, 0.018);
             vec3 rockC = mix(vec3(0.34, 0.29, 0.21), vec3(0.15, 0.11, 0.07), nB * 0.5 + 0.5);
             if (texReady > 0.5) {
                 sandC = surfaceAlbedo * mix(vec3(1.08, 0.98, 0.86), vec3(0.95, 0.86, 0.72), nB * 0.5 + 0.5);
                 vec3 g = toLinearSpace(texture2D(grassSampler, wxz * 0.29).rgb);
                 grassC = g * mix(vec3(0.95, 1.05, 0.55), vec3(0.75, 0.95, 0.5), nB * 0.5 + 0.5);
-                jungleC = g * vec3(0.36, 0.55, 0.3);
+                jungleC = g * vec3(0.5, 0.72, 0.38);
                 vec3 rk = toLinearSpace(texture2D(rockSampler, wxz * 0.11 + vec2(nW.x, nW.z) * 0.6).rgb);
                 rockC = rk * vec3(1.0, 0.94, 0.85);
             }
