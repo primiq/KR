@@ -139,6 +139,8 @@ uniform vec3 deepColor;
 uniform float daylight;
 uniform float bio;
 uniform float time;
+uniform float flash;
+uniform float rough;
 uniform vec3 hzAway;
 uniform vec3 hzSun;
 uniform vec3 hzSunXZ;
@@ -212,20 +214,36 @@ void main(void) {
     body *= 0.4 * daylight + 0.6 * max(dot(N, L), 0.0) * length(sunColor) * 0.18;
 
     vec3 col = under ? mix(body * 0.6, refl * 0.3, fresnel) : mix(body, refl, fresnel) + spec;
+    // a storm: under a grey sky the sea reflects one flat grey and the swell vanishes into it. Shade it by its own shape
+    // instead (the tops lighter, the steep sides dark, the crests lighter still), so you can see how big the waves are
+    float storm = clamp((rough - 0.3) / 1.1, 0.0, 1.0);
+    if (!under && storm > 0.0) {
+        vec3 Ng = normalize(vNormal);
+        vec3 gloom = mix(vec3(0.012, 0.035, 0.045), vec3(0.12, 0.18, 0.2), smoothstep(0.6, 0.98, Ng.y));
+        gloom += vec3(0.05, 0.09, 0.1) * clamp(vCrest * 1.6, 0.0, 1.0);
+        gloom *= 0.25 + 0.75 * daylight;
+        col = mix(col, gloom + spec * 0.3, 0.65 * storm);
+    }
 
     // Foam: along the shoreline and on steep crests.
     // Lacy foam right at the waterline, pulsing with the swell, plus streaks on the steepest crests.
     float shore = 1.0 - smoothstep(0.0, 0.35 + 0.2 * sin(time * 0.8 + vPos.x * 0.15), depth);
     float foamNoise = fbm(vPos.xz * 2.2 + vec2(time * 0.12, -time * 0.08));
     float lace = smoothstep(0.45, 0.65, foamNoise);
-    float foam = clamp(shore * lace * 1.2 + smoothstep(0.7, 1.0, vCrest) * lace * 0.8, 0.0, 1.0);
-    col = mix(col, vec3(0.9, 0.93, 0.95) * (0.35 * daylight + 0.65 * length(sunColor) * 0.2), foam * 0.75);
+    // (a storm whips the sea white: whitecaps on every big crest, and they still show at night)
+    float foam = clamp(shore * lace * 1.2 + smoothstep(0.7 - 0.4 * storm, 1.0, vCrest) * lace * (0.8 + 0.7 * storm), 0.0, 1.0);
+    col = mix(col, vec3(0.9, 0.93, 0.95) * max(0.35 * daylight + 0.65 * length(sunColor) * 0.2, 0.2 * storm), foam * 0.75);
+    // the swell readable in the gloom: crests a shade lighter than the troughs
+    col += vec3(0.03, 0.07, 0.075) * storm * clamp(vCrest * 1.4 + 0.35, 0.0, 1.2);
+    // lightning lights the sea up for a moment (the surface, the foam, and the sky in it)
+    col += vec3(0.55, 0.62, 0.78) * flash * (0.12 + fresnel * 1.2 + foam * 0.7);
     // Bioluminescence (Castaway's glowing nights): the breaking water and foam light up blue
     col += vec3(0.12, 0.62, 1.0) * bio * (foam * 1.6 + smoothstep(0.45, 1.0, vCrest) * 0.5 + shore * 0.4) * (0.7 + 0.3 * sin(time * 2.3 + vPos.x * 0.7 + vPos.z * 0.5));
 
     // Shallow water is clear; deep water is opaque.
     float alpha = clamp(1.0 - exp(-depth * 1.6) + fresnel * 0.6 + foam, 0.0, 1.0);
     if (under) alpha = 0.92;
+    else alpha = max(alpha, storm);
 
     // Blend into the sky at the horizon.
     vec3 horizon = textureCube(envMap, normalize(vec3(-V.x, 0.02, -V.z))).rgb;
@@ -259,6 +277,8 @@ export class Ocean {
     bio = 0;
     /** the planar reflection, when turned on (enableReflection) */
     private reflection: MirrorTexture | null = null;
+    /** a lightning flash (0..1): the sea lights up with the sky */
+    flash = 0;
     /** the colour the far sea fades into (looking away from the sun, towards it, and where the sun is): null, the sky's own */
     horizon: { away: Color3; toSun: Color3; sunX: number; sunZ: number } | null = null;
     /** the reflection can be paused (in a headset, underground...) without throwing it away */
@@ -325,7 +345,7 @@ export class Ocean {
             { vertex: "ocean", fragment: "ocean" },
             {
                 attributes: ["position"],
-                uniforms: ["world", "viewProjection", "time", "waveA", "waveB", "seabedRect", "rippleRect", "rippleTexel", "cameraPos", "sunDir", "sunColor", "shallowColor", "deepColor", "daylight", "bio", "useRefl", "screenSize", "hzAway", "hzSun", "hzSunXZ"],
+                uniforms: ["world", "viewProjection", "time", "waveA", "waveB", "seabedRect", "rippleRect", "rippleTexel", "cameraPos", "sunDir", "sunColor", "shallowColor", "deepColor", "daylight", "bio", "useRefl", "screenSize", "hzAway", "hzSun", "hzSunXZ", "flash", "rough"],
                 samplers: ["seabed", "ripples", "envMap", "reflTex"],
                 defines: [`#define NUM_WAVES ${n}`],
                 needAlphaBlending: true,
@@ -344,6 +364,8 @@ export class Ocean {
             e.setFloat("time", this.time);
             e.setFloat("daylight", this.daylight);
             e.setFloat("bio", this.bio);
+            e.setFloat("flash", this.flash);
+            e.setFloat("rough", this.rough);
             const hz = this.horizon;
             if (hz) { e.setColor3("hzAway", hz.away); e.setColor3("hzSun", hz.toSun); }
             e.setFloat3("hzSunXZ", hz?.sunX ?? 0, hz?.sunZ ?? 0, hz ? 1 : 0);

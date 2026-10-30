@@ -19,9 +19,13 @@ const glassMaterial = () => new THREE.MeshStandardMaterial({ name: 'glass', colo
 interface PV { x: number; y: number; z: number; set(x: number, y: number, z: number): unknown }
 
 /** distance from the middle of the island where the storm starts, where it is at full force, and where the wave comes regardless */
-export const STORM_R0 = 360, STORM_R1 = 420, WRECK_R = 470;
+export const STORM_R0 = 360, STORM_R1 = 430, WRECK_R = 560;
 /** how long you can stay out in the full storm before the big wave finds you (s) */
-const STORM_HOLD = 30;
+const STORM_HOLD = 70;
+/** how far out the big wave rises (m): you watch it come, growing, for half a minute or so */
+const WAVE_FROM = 420;
+/** the giant wave's profile across it: d along the way it travels (the face is at +d), y up (m) */
+export const WAVE_PROFILE: [number, number][] = [[-70, 0], [-42, 4.5], [-22, 10.5], [-9, 15.5], [0, 17.5], [6.5, 16.6], [10.5, 14], [11, 11], [8.5, 9.2], [5.5, 8.4], [3.4, 6.2], [4, 3], [8, 1.1], [16, -0.6]];
 // boat space: origin on the waterline in the middle, +z is the stern (the bow points at -z, like a player's yaw), +x starboard
 const LEN = 11, HB = 2.0;              // length, half the beam
 /** the deck, above the waterline */
@@ -87,6 +91,8 @@ function hullGeo(): THREE.BufferGeometry {
   pos.push(0, (keel(1) + sheer(1)) / 2, LEN / 2); c.set('#f2efe6'); col.push(c.r, c.g, c.b);
   for (let j = 0; j <= K; j++) { a.length = 0; hullPt(1, j / K * 2 - 1, a); pos.push(a[0], a[1], a[2]); c.set(a[1] < 0.08 ? '#9c3324' : '#f2efe6'); col.push(c.r, c.g, c.b); }
   for (let j = 0; j < K; j++) idx.push(base, base + j + 1, base + j + 2);
+  // ... closed at the top (the fan's centre is halfway up: without this a V between the two top corners was left open)
+  idx.push(base, base + K + 1, base + 1);
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
@@ -297,9 +303,12 @@ class Wave {
   active = false;
   x = 0; z = 0; dx = 0; dz = 0;       // where its foot is and where it is heading
   t = 0;
+  /** how tall it has grown (0..1): it rises as it rolls in */
+  grow = 0;
+  private fadeT = 0;
   constructor(scene: THREE.Scene) {
-    // the profile across the wave: d is along the way it travels (the face is at +d), y up
-    const P = [[-70, 0], [-42, 4.5], [-22, 10.5], [-9, 15.5], [0, 17.5], [6.5, 16.6], [10.5, 14], [11, 11], [8.5, 9.2], [5.5, 8.4], [3.4, 6.2], [4, 3], [8, 1.1], [16, -0.6]];
+    // (the three.js mesh is kept for its shape only: the Babylon side draws the wave itself, world/bigWave.ts)
+    const P = WAVE_PROFILE;
     const W = 130, NW = 40, pos: number[] = [], col: number[] = [], idx: number[] = [];
     const deep = new THREE.Color('#0f3a3c'), face = new THREE.Color('#2a7a76'), foam = new THREE.Color('#e9f4f2'), c = new THREE.Color();
     for (let i = 0; i <= NW; i++) {
@@ -326,23 +335,31 @@ class Wave {
   start(x: number, z: number) {
     const r = Math.hypot(x, z) || 1, ux = x / r, uz = z / r;
     this.dx = -ux; this.dz = -uz;
-    this.x = x + ux * 115; this.z = z + uz * 115;
-    this.t = 0; this.active = true; this.mesh.visible = true;
+    this.x = x + ux * WAVE_FROM; this.z = z + uz * WAVE_FROM;
+    this.t = 0; this.active = true; this.grow = 0.3; this.fadeT = 0;
   }
   /** how far in front of the wave's foot (x, z) is */
   ahead(x: number, z: number) { return (x - this.x) * this.dx + (z - this.z) * this.dz; }
-  /** `push`: how fast its target runs away from it (it never lets them outrun it); `keep`: don't fade out yet */
-  update(dt: number, push = 0, keep = false) {
+  /**
+   * `push`: how fast its target runs away from it (it never lets them outrun it); `keep`: it has not reached them yet (else
+   * it rolls on a few seconds more and is gone); `d`: how far in front of it they are (it grows as it comes)
+   */
+  update(dt: number, push = 0, keep = false, d = 0) {
     if (!this.active) return;
     this.t += dt;
-    const sp = 19 + Math.max(0, push);
+    // slow while it is a dark line far out, faster as it rears up
+    const near = Math.max(0, Math.min(1, 1 - (d - 25) / (WAVE_FROM - 25)));
+    this.grow = Math.max(this.grow, 0.3 + 0.7 * Math.pow(near, 1.4));
+    const sp = 9 + 7 * near + Math.max(0, push);
     this.x += this.dx * sp * dt; this.z += this.dz * sp * dt;
     this.mesh.position.set(this.x, -0.6, this.z);
     this.mesh.rotation.y = Math.atan2(this.dx, this.dz);
-    if (this.t > 11 && !keep) { this.active = false; this.mesh.visible = false; }
+    this.mesh.scale.set(1, this.grow, 1);
+    if (keep && this.t < 150) this.fadeT = 0;
+    else if ((this.fadeT += dt) > 6) { this.active = false; this.mesh.visible = false; }
   }
   /** how high the water under something `d` metres in front of the foot is lifted */
-  liftAt(d: number) { return d > 26 || d < -4 ? 0 : 15 * Math.pow(Math.max(0, Math.min(1, (26 - d) / 24)), 2.2); }
+  liftAt(d: number) { return d > 26 || d < -4 ? 0 : 15 * this.grow * Math.pow(Math.max(0, Math.min(1, (26 - d) / 24)), 2.2); }
 }
 
 // ------------------------------------------------------------------ the boats
@@ -621,7 +638,8 @@ export class Boats {
     // ---- the storm round me
     const r = away ? 0 : Math.hypot(me.x, me.z);
     const want = Math.max(0, Math.min(1, (r - STORM_R0) / (STORM_R1 - STORM_R0)));
-    this.storm += (want - this.storm) * Math.min(1, dt / (want > this.storm ? 7 : 5));
+    // (it builds over half a minute or so: the sky darkens, the rain comes on, the waves grow)
+    this.storm += (want - this.storm) * Math.min(1, dt / (want > this.storm ? 22 : 6));
     if (this.storm > 0.85) this.fullT += dt; else this.fullT = Math.max(0, this.fullT - dt * 0.5);
     if (this.storm > 0.1 && this.warned < 1) { this.warned = 1; this.say?.('The sky is turning black out here…'); }
     if (this.storm > 0.6 && this.warned < 2) { this.warned = 2; this.say?.('This is no sea for a little boat. Turn back!'); }
@@ -680,14 +698,16 @@ export class Boats {
     {
       const w = this.wave, f = this.waveFor;
       const run = f ? (-Math.sin(f.yaw) * f.v) * w.dx + (-Math.cos(f.yaw) * f.v) * w.dz : 0;
-      w.update(dt, run, this.waveMine && w.t < 40);
+      const dt0 = w.active ? w.ahead(f ? f.x : me.x, f ? f.z : me.z) : 0;
+      w.update(dt, run, this.waveMine || f !== null, dt0);
     }
     if (this.wave.active) {
       const tgt = this.waveFor ?? null;
       const tx = tgt ? tgt.x : me.x, tz = tgt ? tgt.z : me.z;
       const d = this.wave.ahead(tx, tz);
       this.roarT -= dt;
-      if (this.roarT <= 0 && d < 140) { this.roarT = 0.45; const k = Math.max(0.2, 1 - d / 120); this.sfx?.blow(k); this.sfx?.bigSplash(k * 0.6); }
+      if (this.roarT <= 0 && d < 330) { this.roarT = 0.45; const k = Math.max(0.12, 1 - d / 300); this.sfx?.blow(k); this.sfx?.bigSplash(k * 0.6); }
+      if ((this.waveMine || (tgt && this.on === tgt)) && this.warned < 4 && d < 170) { this.warned = 4; this.say?.('It\'s a wave! Hold on!'); }
       // it hits whoever is aboard when it arrives (or the swimmer it came for)
       if (this.waveMine || (tgt && this.on === tgt)) {
         this.shake?.(Math.max(0, 1 - d / 60) * 0.6);
@@ -758,6 +778,8 @@ export class Boats {
   /** the sea has had enough: a wave for my boat (and everybody on it), or just for me */
   private bringWave(remote = false, b: Boat | null = this.on) {
     if (this.wave.active) return;
+    if (!remote) this.say?.('Something is rising out there on the horizon…');
+    if (this.warned < 3) this.warned = 3;
     if (!b && !remote) { this.waveFor = null; this.waveMine = true; this.wave.start(this.selfX, this.selfZ); }
     else if (b) { b.doomed = true; this.waveFor = b; this.waveMine = false; this.wave.start(b.x, b.z); }
     this.roarT = 0;

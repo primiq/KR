@@ -209,6 +209,8 @@ export class Game {
     get armorCode() { let c = 0; for (const s of this.worn.slots) c = c * 10 + (s ? ITEMS[s.id].armor?.tier ?? 0 : 0); return c; }
     get equipped() { return this.under?.cat?.active ? undefined : this.inv.slots[this.hud.selected]; }
     get equippedDef() { const e = this.equipped; return e ? ITEMS[e.id] : null; }
+    /** how fast your avatar is walking (for its legs): standing still at a boat's wheel, however fast the boat goes */
+    get walkSpeed() { return this.boats.atHelm ? 0 : Math.hypot(this.player.vel.x, this.player.vel.z); }
     get uiBlocking() { return this.hud.inventoryOpen || this.map.open || this.stats.dead || this.sleeping || this.painter.open; }
     get isSleeping() { return this.sleeping; }
     get openStruct() { return this.openS; }
@@ -1446,7 +1448,7 @@ export class Game {
 
     /** footprints in the sand, and the birds and flamingos (which take off when someone comes too close) */
     private updateNature(dt: number, hour: number, away: boolean) {
-        const p = this.player, me = p.pos, onIsland = !away && Math.abs(me.x) < 500 && Math.abs(me.z) < 500 && me.y < heightAt(me.x, me.z) + 60;
+        const p = this.player, me = p.pos, onIsland = !away && Math.abs(me.x) < 900 && Math.abs(me.z) < 900 && me.y < heightAt(me.x, me.z) + 60;
         const W = this.walkers; W.length = 0;
         const threats: { x: number; z: number; fast: boolean }[] = [];
         if (onIsland) {

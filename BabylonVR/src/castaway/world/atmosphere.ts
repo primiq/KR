@@ -50,7 +50,7 @@ export class Atmosphere {
         private readonly sun: DirectionalLight,
         private readonly sky: Mesh,
         private readonly env: RenderTargetTexture,
-        private readonly ocean: { mesh: Mesh; daylight: number; horizon: { away: Color3; toSun: Color3; sunX: number; sunZ: number } | null } | null,
+        private readonly ocean: { mesh: Mesh; daylight: number; flash: number; horizon: { away: Color3; toSun: Color3; sunX: number; sunZ: number } | null } | null,
         private readonly sunDisc: Mesh | null,
         lite = false,
     ) {
@@ -111,6 +111,9 @@ export class Atmosphere {
         this.clouds.infiniteDistance = true;
         this.clouds.isPickable = false;
         this.clouds.applyFog = false;
+        // (drawn with the sky, before the sea and anything else see-through: its lower half used to be drawn over the sea, so
+        // under a storm the whole sea was a flat dark grey)
+        this.clouds.alphaIndex = 3.5;
         this.clouds.setEnabled(false);
         this.flashLight = new HemisphericLight("flash", new Vector3(0, 1, 0), scene);
         this.flashLight.diffuse = new Color3(0.8, 0.86, 1);
@@ -176,7 +179,7 @@ export class Atmosphere {
             this.sunDisc.setEnabled(sy > -0.05);
         }
         const om = this.ocean?.mesh.material as ShaderMaterial | undefined;
-        if (this.ocean) this.ocean.daylight = 0.05 + 0.95 * day;
+        if (this.ocean) { this.ocean.daylight = 0.05 + 0.95 * day; this.ocean.flash = this.ug ? 0 : this.flash; }
         if (om) {
             om.setVector3("sunDir", this.lightDir);
             om.setColor3("sunColor", Color3.Lerp(new Color3(1, 0.86, 0.68), warm, low * 0.8).scale((5 * day + 0.3 * (1 - day) * up) * (1 - 0.85 * this.overcast)));
@@ -239,7 +242,7 @@ export class Atmosphere {
             if (this.ocean) this.ocean.horizon = { away: this.hzAway, toSun: this.hzSun, sunX: this.sunDir.x, sunZ: this.sunDir.z };
             // the fog is never switched off (that would rebuild every lit shader: a freeze, just as a storm blows up)
             this.scene.fogMode = Scene.FOGMODE_EXP2;
-            this.scene.fogDensity = 0.0008 + 0.004 * ov;
+            this.scene.fogDensity = 0.0008 + 0.0017 * ov;
             this.scene.fogColor = Color3.Lerp(this.hzAway, this.hzSun, 0.35);
         }
         if (Math.abs(ov - this.lastOvercast) > 0.15) { this.lastOvercast = ov; force = true; }

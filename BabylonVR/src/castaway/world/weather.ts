@@ -224,7 +224,7 @@ export class Weather {
         const B = LOOK[local ? this.kind : 0], sea = this.sea;
         // out at sea the storm is worse than anything the island gets: black sky, a gale, and waves several metres high
         const L = sea > 0 ? { rain: B.rain + (1 - B.rain) * sea, overcast: B.overcast + (1 - B.overcast) * sea, wind: B.wind + (6 - B.wind) * sea, rough: B.rough + (1.6 - B.rough) * sea } : B;
-        const quick = 1 + sea * 5; // ... and it blows up in seconds, not minutes
+        const quick = 1 + sea * 2; // ... and it blows up in a minute or so, not ten
         const ease = (v: number, to: number, up: number, down: number) => v + (to - v) * Math.min(1, (dt * quick) / (to > v ? up : down));
         this.overcast = ease(this.overcast, L.overcast, 30, 45);
         this.rain = ease(this.rain, this.overcast > L.overcast * 0.6 ? L.rain : 0, 20, 14);

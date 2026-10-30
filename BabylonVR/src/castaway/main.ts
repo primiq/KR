@@ -26,6 +26,7 @@ import { Chat } from "./net/chat";
 import * as THREE from "three";
 import { planSites, SurfaceSites } from "./world/sites";
 import { CaveView } from "./world/caveView";
+import { BigWave } from "./world/bigWave";
 import { Weather } from "./world/weather";
 import { BIO } from "./world/sealife";
 import { Cats } from "./world/cats";
@@ -431,6 +432,8 @@ async function main() {
     }
     // showers and storms
     const weather = new Weather(scene, q.name, clock, ocean);
+    // the giant wave at the end of a trip too far out (world/boat.ts moves it; this draws it)
+    const bigWave = new BigWave(scene);
     game.weather = weather;
     weather.onLightning = (d) => { setTimeout(() => game.sfx.thunder(d), (d / 343) * 1000); };
     if (params.has("weather")) {
@@ -581,11 +584,12 @@ async function main() {
             const sy = sync;
             if (sy) dive.updateRemote(sy.avatars.positions.map((a) => { const st = sy.session.states.get(a.id); return { id: a.id, x: a.x, y: a.y, z: a.z, yaw: st?.yaw ?? 0, flags: st?.flags ?? 0 }; }));
             sky.update(dt, player, (x, z) => heightAt(x, z));
+            bigWave.update(dt, game.boats.wave, clock.day, clock.flash);
             // you, as everybody else sees you: a private copy only mirrors draw (the secret room's mirror, the sea), and a
             // head-less one the camera draws, so you see your body and legs when you look down (in a headset, your arms too)
             {
                 const held = game.equipped, pose = vrMode?.pose() ?? null;
-                const me: PState = { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch, spd: Math.hypot(player.vel.x, player.vel.z), item: held ? held.id : "", swing: game.swings, flags: (player.sprinting ? 1 : 0) | (player.mode === "swim" ? 2 : 0) | (game.stats.dead ? 4 : 0) | (game.isSleeping ? 8 : 0) | (game.drinking ? 32 : 0), hp: game.stats.health, arm: game.armorCode };
+                const me: PState = { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch, spd: game.walkSpeed, item: held ? held.id : "", swing: game.swings, flags: (player.sprinting && !game.boats.atHelm ? 1 : 0) | (player.mode === "swim" ? 2 : 0) | (game.stats.dead ? 4 : 0) | (game.isSleeping ? 8 : 0) | (game.drinking ? 32 : 0), hp: game.stats.health, arm: game.armorCode };
                 if (pose) { me.v = pose; me.yaw = pose.h[3]; me.pitch = pose.h[4]; }
                 const mirrorOn = sky.active || (seaReflOn && !game.under.active);
                 const fpOn = !game.stats.dead && !game.isSleeping && player.mode !== "swim" && !game.warp.inLevel && !game.invaders.seated && !game.under.cat?.active && !game.under.camp?.active && !game.under.air?.driving && !game.dive?.active && !game.slide.riding;
