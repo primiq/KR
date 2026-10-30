@@ -24,7 +24,8 @@ export function isTouchDevice(): boolean {
 
 export function pickQuality(pref = "auto"): Quality {
     const headset = isProbablyHeadset();
-    let name: Quality["name"] = pref === "low" || pref === "medium" || pref === "high" ? pref : headset ? "medium" : isTouchDevice() ? "low" : "high";
+    // (a standalone headset is a phone-class GPU drawing two eyes at a high frame rate: low)
+    let name: Quality["name"] = pref === "low" || pref === "medium" || pref === "high" ? pref : headset || isTouchDevice() ? "low" : "high";
     const q = new URLSearchParams(location.search).get("quality");
     if (q === "low" || q === "medium" || q === "high") name = q;
     if (name === "high") return { name, tier: "high", shadows: true, terrainSegments: 384, bushes: 1400, grass: 9000, treeCull: 260, palmDetail: 1, scale: 1 };

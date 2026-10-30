@@ -1,3 +1,4 @@
+import { lightRoom } from "../render/mirror";
 import { type AbstractMesh, Color3, Color4, type Material, PBRMaterial, PointLight, type Scene, Vector3 } from "@babylonjs/core";
 import { PBRCustomMaterial } from "@babylonjs/materials";
 import * as THREE from "three";
@@ -51,7 +52,7 @@ export class CaveView {
             const m = new PBRCustomMaterial("caveRock", s);
             m.metallic = 0;
             m.roughness = 0.96;
-            m.maxSimultaneousLights = 8;
+            m.maxSimultaneousLights = lightRoom.n;
             m.Fragment_Definitions(NOISE_GLSL);
             m.Fragment_Custom_Albedo(`
                 vec3 wp = vPositionW;
@@ -100,7 +101,7 @@ export class CaveView {
         m.albedoColor = Color3.White();
         m.metallic = ore ? 0.25 : 0;
         m.roughness = ore ? 0.55 : 0.85;
-        m.maxSimultaneousLights = 8;
+        m.maxSimultaneousLights = lightRoom.n;
         m.emissiveColor = new Color3(0.06, 0.06, 0.06);
         return m;
     }

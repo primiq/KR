@@ -169,6 +169,7 @@ void main(void) {
         float cell = rippleRect.z * rippleTexel.x;
         N = normalize(N + vec3(-(hr - hl), 0.0, -(hu - hd)) * rippleRect.w * 2.5 / (2.0 * cell));
     }
+#ifndef LITE
     // Fine wind ripples on top of the swell.
     vec2 q = vPos.xz;
     float dn = 0.08;
@@ -176,6 +177,7 @@ void main(void) {
     float nx = fbm((q + vec2(dn, 0.0)) * 0.9 + vec2(time * 0.35, time * 0.2));
     float nz = fbm((q + vec2(0.0, dn)) * 0.9 + vec2(time * 0.35, time * 0.2));
     N = normalize(N + vec3(n0 - nx, 0.0, n0 - nz) * 1.4);
+#endif
 
     vec3 toCam = cameraPos - vPos;
     float dist = length(toCam);
@@ -347,7 +349,7 @@ export class Ocean {
                 attributes: ["position"],
                 uniforms: ["world", "viewProjection", "time", "waveA", "waveB", "seabedRect", "rippleRect", "rippleTexel", "cameraPos", "sunDir", "sunColor", "shallowColor", "deepColor", "daylight", "bio", "useRefl", "screenSize", "hzAway", "hzSun", "hzSunXZ", "flash", "rough"],
                 samplers: ["seabed", "ripples", "envMap", "reflTex"],
-                defines: [`#define NUM_WAVES ${n}`],
+                defines: [`#define NUM_WAVES ${n}`, ...(q === "mobile" ? ["#define LITE"] : [])],
                 needAlphaBlending: true,
             },
         );

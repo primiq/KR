@@ -49,7 +49,10 @@ import { Shop } from "./campaign/shop";
 import { Museum } from "./campaign/museum";
 import { FPGorilla } from "./campaign/gorilla";
 import { Mosquito, setListener } from "./campaign/mosquito";
-import { ThreeMirror } from "./render/mirror";
+import { lightRoom, ThreeMirror } from "./render/mirror";
+import { toneMapOwnShaders } from "./render/headsetTone";
+import { StructureManager } from "./game/structures";
+import { isProbablyHeadset } from "../config";
 import { Dolphins } from "./world/dolphins";
 import { SEA } from "./world/waves";
 import { getOutfit, onOutfitChange, setPlayerOutfit } from "./net/outfit";
@@ -103,6 +106,11 @@ function sunDirection(): Vector3 {
 
 async function main() {
     const q = pickQuality(getPref("castaway.quality") ?? "auto");
+    // a standalone headset (a Quest): every pixel is drawn twice on a phone-class GPU, so the game is built leaner there from
+    // the start (nothing here can be switched later without rebuilding every shader): no post-processing, room for 5 lights
+    // not 8 (the moon and the lightning ride on the sun and the sky fill light), two fire lights not three
+    const headset = isProbablyHeadset() || params.has("headset");
+    if (headset) { lightRoom.n = 5; StructureManager.POOL = 2; toneMapOwnShaders(); }
     const qSel = $<HTMLSelectElement>("quality");
     qSel.value = getPref("castaway.quality") ?? "auto";
     qSel.addEventListener("change", () => { setPref("castaway.quality", qSel.value); location.reload(); });
@@ -119,7 +127,7 @@ async function main() {
     // lights, the torch in your hand): the lights are never switched on or off, so no shader ever has to be rebuilt mid-game
     // (set after the material is made: this fires inside its constructor, before its own default of 4 is in place, and a
     // material first compiled for 4 lights is rebuilt later: a freeze mid-game, typically far out at sea)
-    const roomForLights = (m: Material) => { const x = m as Material & { maxSimultaneousLights?: number }; if (typeof x.maxSimultaneousLights === "number" && x.maxSimultaneousLights < 8) x.maxSimultaneousLights = 8; };
+    const roomForLights = (m: Material) => { const x = m as Material & { maxSimultaneousLights?: number }; if (typeof x.maxSimultaneousLights === "number" && x.maxSimultaneousLights !== lightRoom.n) x.maxSimultaneousLights = lightRoom.n; };
     // (a material made mid-frame, as the three.js mirrors do, is drawn that same frame: catch it before the meshes are picked)
     const newMats: Material[] = [];
     scene.onNewMaterialAddedObservable.add((m) => { newMats.push(m); queueMicrotask(() => roomForLights(m)); });
@@ -260,6 +268,7 @@ async function main() {
     // (the shared environment's flat sun disc faced one way only and read as an ellipse: SkyDeco draws a round sun instead)
     sunMesh.setEnabled(false);
     const clock = new Atmosphere(scene, sun, skybox, env, ocean, null, q.name !== "high");
+    if (headset) clock.beLean();
     if (params.has("hour")) clock.hour = parseFloat(params.get("hour")!);
     progress(0.82, "Washing the castaway ashore…");
     await nextFrame();
@@ -477,18 +486,26 @@ async function main() {
     });
     let seaReflOn = !!seaRefl;
     // ---- post processing (flat screens; the headset gets a lighter chain)
-    const pipeline = new DefaultRenderingPipeline("castawayPipeline", true, scene, [camera]);
-    // (multisampling on high only: medium and low smooth the edges with FXAA, much cheaper)
-    pipeline.samples = q.name === "high" ? 4 : 1;
-    pipeline.fxaaEnabled = q.name !== "high";
-    pipeline.bloomEnabled = q.name !== "low";
-    pipeline.bloomThreshold = 0.9;
-    pipeline.bloomWeight = 0.25;
-    pipeline.bloomKernel = 64;
-    pipeline.sharpenEnabled = q.name === "high";
-    if (pipeline.sharpenEnabled) pipeline.sharpen.edgeAmount = 0.2;
-    pipeline.imageProcessing.vignetteEnabled = true;
-    pipeline.imageProcessing.vignetteWeight = 1.4;
+    // (none in a headset: each eye would be drawn to a texture and copied again. The tone mapping, colour grading and the
+    //  comfort vignette are worked out in the materials themselves instead)
+    const pipeline = headset ? null : new DefaultRenderingPipeline("castawayPipeline", true, scene, [camera]);
+    if (pipeline) {
+        // (multisampling on high only: medium and low smooth the edges with FXAA, much cheaper)
+        pipeline.samples = q.name === "high" ? 4 : 1;
+        pipeline.fxaaEnabled = q.name !== "high";
+        pipeline.bloomEnabled = q.name !== "low";
+        pipeline.bloomThreshold = 0.9;
+        pipeline.bloomWeight = 0.25;
+        pipeline.bloomKernel = 64;
+        pipeline.sharpenEnabled = q.name === "high";
+        if (pipeline.sharpenEnabled) pipeline.sharpen.edgeAmount = 0.2;
+        pipeline.imageProcessing.vignetteEnabled = true;
+        pipeline.imageProcessing.vignetteWeight = 1.4;
+    } else {
+        // (the vignette stays on, weight 0 until the comfort vignette needs it: switching it would rebuild every shader)
+        scene.imageProcessingConfiguration.vignetteEnabled = true;
+        scene.imageProcessingConfiguration.vignetteWeight = 0;
+    }
     if (q.name === "high" && !params.has("nossao")) {
         const ssao = new SSAO2RenderingPipeline("ssao", scene, { ssaoRatio: 0.5, blurRatio: 1 }, [camera]);
         ssao.radius = 1.6;
@@ -505,7 +522,8 @@ async function main() {
     const vrActive = () => !!vrMode?.active;
     if (navigator.xr && (await navigator.xr.isSessionSupported("immersive-vr").catch(() => false))) {
         try {
-            xr = await scene.createDefaultXRExperienceAsync({ disableDefaultUI: true, disableTeleportation: true, optionalFeatures: true });
+            // (a headset draws a little under its recommended resolution: about a third fewer pixels, hardly softer)
+            xr = await scene.createDefaultXRExperienceAsync({ disableDefaultUI: true, disableTeleportation: true, optionalFeatures: true, outputCanvasOptions: { canvasOptions: { framebufferScaleFactor: headset ? 0.8 : 1 } } });
             const { CastawayVR } = await import("./vr/vr");
             vrMode = new CastawayVR(scene, xr, game, player, input, pipeline);
             $("play-vr").classList.remove("hidden");

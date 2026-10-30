@@ -42,6 +42,16 @@ export class Atmosphere {
     /** the clouds, the night sky with its stars and the Milky Way, and the moon */
     readonly deco: SkyDeco;
     private low = 0;
+    /**
+     * A headset: two lights fewer for every lit pixel. The moon's light is the sun light turned round at night, the lightning
+     * is the sky fill light flaring; and the sky lighting is re-captured less often (a stall each time on a headset).
+     */
+    private lean = false;
+    beLean() {
+        this.lean = true;
+        this.moon.setEnabled(false);
+        this.flashLight.setEnabled(false);
+    }
     private hzAway = new Color3(0.7, 0.8, 0.92);
     private hzSun = new Color3(0.86, 0.88, 0.9);
 
@@ -230,6 +240,14 @@ export class Atmosphere {
             this.scene.environmentIntensity += (0.6 - this.scene.environmentIntensity) * dw;
         }
         this.flashLight.intensity = this.flash * 1.6;
+        if (this.lean) {
+            if (this.moon.intensity > this.sun.intensity) {
+                this.sun.direction.copyFrom(this.moon.direction);
+                this.sun.diffuse = this.moon.diffuse;
+                this.sun.intensity = this.moon.intensity;
+            }
+            this.caveFill.intensity += this.flash * 1.6;
+        }
         // ---- the horizon: one colour the far sea, the bottom of the sky and the haze over distant land all fade into (towards
         //      the sun and away from it), so there is no seam where the sea ends; a storm greys it over
         {
@@ -248,7 +266,7 @@ export class Atmosphere {
         if (Math.abs(ov - this.lastOvercast) > 0.15) { this.lastOvercast = ov; force = true; }
         // re-capture the sky lighting every ~20 game minutes (or straight away when time jumps)
         const step = Math.abs(this.hour - this.lastCapture);
-        if ((force || step > 0.33) && !this.capturing) void this.capture();
+        if ((force || step > (this.lean ? 1.5 : 0.33)) && !this.capturing) void this.capture();
     }
 
     private async capture() {

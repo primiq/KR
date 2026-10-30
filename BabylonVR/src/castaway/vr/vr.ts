@@ -86,7 +86,7 @@ export class CastawayVR {
         private readonly game: Game,
         private readonly player: Player,
         private readonly input: Input,
-        private readonly pipeline: DefaultRenderingPipeline,
+        private readonly pipeline: DefaultRenderingPipeline | null,
     ) {
         const base = xr.baseExperience;
         this.panel = new VRPanel(scene, game);
@@ -104,17 +104,17 @@ export class CastawayVR {
                 game.vr.active = true;
                 player.vr = true;
                 const sm = base.sessionManager;
-                if (sm.isFixedFoveationSupported) sm.fixedFoveation = 0.6;
-                // the headset keeps a lighter post chain: bloom and the vignette only
-                pipeline.samples = 1;
-                pipeline.addCamera(base.camera);
+                // (full foveation: the edges of the view, which the lenses blur anyway, are drawn at a fraction of the pixels)
+                if (sm.isFixedFoveationSupported) sm.fixedFoveation = pipeline ? 0.6 : 1;
+                // a PC headset keeps a lighter post chain (bloom and the vignette); a standalone one has none at all
+                if (pipeline) { pipeline.samples = 1; pipeline.addCamera(base.camera); }
                 // (10 cm, as on a screen: headsets often give a 16-bit depth buffer, and at 5 cm the room decorations a centimetre or
                 //  two apart fought a few metres away)
                 base.camera.minZ = 0.1;
                 base.camera.maxZ = 1600;
                 this.placeRig(true);
                 game.vr.haptic = (k) => this.pulse("right", k);
-                if (pipeline.imageProcessing) this.vig0 = pipeline.imageProcessing.vignetteWeight;
+                this.vig0 = pipeline?.imageProcessing ? pipeline.imageProcessing.vignetteWeight : 0;
                 this.applyScale();
                 document.body.classList.add("in-vr");
             } else if (s === WebXRState.NOT_IN_XR) {
@@ -351,7 +351,7 @@ export class CastawayVR {
         this.input.lookDX = this.input.lookDY = 0;
         this.player.pitch = 0;
         this.trackHands(L, R, dt);
-        const ip = this.pipeline.imageProcessing;
+        const ip = this.pipeline ? this.pipeline.imageProcessing : this.scene.imageProcessingConfiguration;
         if (ip) { ip.vignetteEnabled = true; ip.vignetteWeight = this.vig0 + this.vigK * 4; }
     }
 
