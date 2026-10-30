@@ -352,6 +352,7 @@ export class CastawayVR {
         // comfort vignette: grows with stick use and turning, fades back
         const target = Math.min(1, Math.hypot(input.move.x, input.move.y)) * 0.55 + (this.turnArmed ? 0 : 0.6);
         this.vigK += (target - this.vigK) * Math.min(1, dt * (target > this.vigK ? 10 : 3));
+        if (target === 0 && this.vigK < 0.004) this.vigK = 0;
         this.endInput(dt, L, R);
     }
 
@@ -361,7 +362,12 @@ export class CastawayVR {
         this.player.pitch = 0;
         this.trackHands(L, R, dt);
         const ip = this.pipeline ? this.pipeline.imageProcessing : this.scene.imageProcessingConfiguration;
-        if (ip) { ip.vignetteEnabled = true; ip.vignetteWeight = this.vig0 + this.vigK * 4; }
+        // (only when it has changed: every change makes every material check itself again, a few ms each time on a headset)
+        if (ip) {
+            if (!ip.vignetteEnabled) ip.vignetteEnabled = true;
+            const w = this.vig0 + this.vigK * 4;
+            if (Math.abs(ip.vignetteWeight - w) > 0.02 || (w === this.vig0 && ip.vignetteWeight !== w)) ip.vignetteWeight = w;
+        }
     }
 
     private snapTurn(R: Hand | null) {

@@ -1,4 +1,4 @@
-import { Color3, Constants, DynamicTexture, type Material, Matrix, Mesh, MeshBuilder, PBRMaterial, Quaternion, type Scene, StandardMaterial } from "@babylonjs/core";
+import { BoundingInfo, Color3, Constants, DynamicTexture, type Material, Matrix, Mesh, MeshBuilder, PBRMaterial, Quaternion, type Scene, StandardMaterial, Vector3 } from "@babylonjs/core";
 import * as THREE from "three";
 import { meshFromThree } from "./geometry";
 import { VColorGlowPlugin } from "./vcGlow";
@@ -34,11 +34,25 @@ function softDot(col: THREE.Color) {
     return c;
 }
 
-interface SkinView { mesh: Mesh; pos: Float32Array; seen: number }
+/** `bones`: the bone matrices it was last skinned with */
+interface SkinView { mesh: Mesh; pos: Float32Array; seen: number; bones: Float32Array | null }
 
-interface Bucket { mesh: Mesh; data: Float32Array; cap: number; n: number; col: Float32Array | null }
+/** `last`: how many instances it drew last frame; `dirty`: something moved, appeared or changed colour since */
+interface Bucket { key: string; sphere: [number, number, number, number]; mesh: Mesh; data: Float32Array; cap: number; n: number; col: Float32Array | null; last: number; dirty: boolean }
 
-const _im = new THREE.Matrix4(), _wm = new THREE.Matrix4(), _sv = new THREE.Vector3();
+/** a matrix into a bucket's buffer, noting whether it changed (most of the world stands still: no upload then) */
+function putMatrix(b: Bucket, src: ArrayLike<number>) {
+    const d = b.data, o = b.n * 16;
+    // (three's matrices are doubles, the buffer floats: compare what would be stored)
+    if (!b.dirty) for (let k = 0; k < 16; k++) if (d[o + k] !== Math.fround(src[k])) { b.dirty = true; break; }
+    if (b.dirty) d.set(src as Float32Array, o);
+}
+function putColour(b: Bucket, r: number, g: number, bl: number, a: number) {
+    const c = b.col!, o = b.n * 4;
+    if (c[o] !== Math.fround(r) || c[o + 1] !== Math.fround(g) || c[o + 2] !== Math.fround(bl) || c[o + 3] !== Math.fround(a)) { b.dirty = true; c[o] = r; c[o + 1] = g; c[o + 2] = bl; c[o + 3] = a; }
+}
+
+const _im = new THREE.Matrix4(), _wm = new THREE.Matrix4();
 interface SpriteView { plane: Mesh; mat: StandardMaterial; tex: DynamicTexture; version: number; seen: number }
 
 /**
@@ -53,6 +67,7 @@ export class ThreeMirror {
     private mats = new Map<THREE.Material, Material>();
     private sprites = new Map<THREE.Sprite, SpriteView>();
     private skins = new Map<THREE.SkinnedMesh, SkinView>();
+    private memo = new WeakMap<THREE.Object3D, { g: THREE.BufferGeometry; m: THREE.Material; b: Bucket }>();
     private liveMats: { m: THREE.MeshStandardMaterial; p: PBRMaterial }[] = [];
     private live: { map: THREE.Texture; tex: DynamicTexture; version: number }[] = [];
     private frame = 0;
@@ -167,8 +182,13 @@ export class ThreeMirror {
     }
 
     private bucket(g: THREE.BufferGeometry, m: THREE.Material, src?: THREE.Object3D): Bucket {
+        // (remembered per three mesh: building the key string for every mesh every frame added up. Not in its userData:
+        //  three copies that through JSON when an object is cloned)
+        const memo = src ? this.memo.get(src) : undefined;
+        if (memo && memo.g === g && memo.m === m && this.buckets.get(memo.b.key) === memo.b) return memo.b;
         const key = `${this.id(g)}:${this.id(m)}`;
         let b = this.buckets.get(key);
+        if (b && src) this.memo.set(src, { g, m, b });
         if (!b) {
             const mesh = meshFromThree("mirror", g, this.scene);
             mesh.material = this.material(m);
@@ -179,7 +199,7 @@ export class ThreeMirror {
             if (this.opts.layerMask !== undefined) mesh.layerMask = this.opts.layerMask;
             // a three.js group can tag the Babylon meshes drawn for it (userData.babylonTag): the sky room's mirror uses this
             for (let o: THREE.Object3D | null = src ?? null; o; o = o.parent) if (o.userData.babylonTag) { mesh.metadata = { ...(mesh.metadata ?? {}), ...o.userData.babylonTag }; break; }
-            mesh.alwaysSelectAsActiveMesh = true;
+            // (culled like any other mesh: its bounds are worked out from its instances whenever they change, in sync())
             const lit = !(mesh.material instanceof StandardMaterial);
             if (this.shadows && lit) shadowCasters.add(mesh);
             const cap = 8;
@@ -187,11 +207,17 @@ export class ThreeMirror {
             mesh.thinInstanceSetBuffer("matrix", data, 16, false);
             mesh.thinInstanceCount = 0;
             mesh.setEnabled(false);
-            b = { mesh, data, cap, n: 0, col: null };
+            // (its geometry's bounding sphere, for culling: the Babylon mesh's own is computed from its instances)
+            if (!g.boundingSphere) g.computeBoundingSphere();
+            const gs = g.boundingSphere!;
+            const sphere: [number, number, number, number] = [gs.center.x, gs.center.y, gs.center.z, Number.isFinite(gs.radius) ? gs.radius : 1];
+            b = { key, sphere, mesh, data, cap, n: 0, col: null, last: -1, dirty: true };
+            mesh.doNotSyncBoundingInfo = true;
             this.buckets.set(key, b);
             // the three geometry went away (a cave chunk dropped, a rig rebuilt): free its Babylon copy too
             g.addEventListener("dispose", () => { const q = this.buckets.get(key); if (!q) return; shadowCasters.delete(q.mesh); q.mesh.dispose(false, false); this.buckets.delete(key); });
         }
+        if (src) this.memo.set(src, { g, m, b });
         return b;
     }
 
@@ -210,21 +236,61 @@ export class ThreeMirror {
             if (this.opts.layerMask !== undefined) mesh.layerMask = this.opts.layerMask;
             if (this.shadows) shadowCasters.add(mesh);
             mesh.rotationQuaternion = new Quaternion();
-            v = { mesh, pos: new Float32Array(P.count * 3), seen: 0 };
+            v = { mesh, pos: new Float32Array(P.count * 3), seen: 0, bones: null };
             mesh.setVerticesData("position", v.pos, true);
             this.skins.set(m, v);
         }
         m.skeleton.update();
-        const t = _sv;
-        for (let i = 0; i < P.count; i++) {
-            t.fromBufferAttribute(P, i);
-            m.applyBoneTransform(i, t);
-            v.pos[i * 3] = t.x; v.pos[i * 3 + 1] = t.y; v.pos[i * 3 + 2] = t.z;
+        // skinned straight from the bone matrices (what three's applyBoneTransform does, a vertex at a time, many times
+        // slower); and not at all while the bones are still
+        const bm = m.skeleton.boneMatrices!;
+        if (!v.bones || v.bones.length !== bm.length) v.bones = new Float32Array(bm.length).fill(NaN);
+        let moved = false;
+        for (let k = 0; k < bm.length; k++) if (bm[k] !== v.bones[k]) { moved = true; break; }
+        if (moved) {
+            v.bones.set(bm);
+            const src = P.array as ArrayLike<number>, si = m.geometry.getAttribute("skinIndex").array as ArrayLike<number>, sw = m.geometry.getAttribute("skinWeight").array as ArrayLike<number>;
+            const B = m.bindMatrix.elements, BI = m.bindMatrixInverse.elements, out = v.pos;
+            const ident = (e: ArrayLike<number>) => e[0] === 1 && e[5] === 1 && e[10] === 1 && e[15] === 1 && e[1] === 0 && e[2] === 0 && e[4] === 0 && e[6] === 0 && e[8] === 0 && e[9] === 0 && e[12] === 0 && e[13] === 0 && e[14] === 0;
+            const bindI = ident(B) && ident(BI);
+            for (let i = 0; i < P.count; i++) {
+                let x = src[i * 3], y = src[i * 3 + 1], z = src[i * 3 + 2];
+                if (!bindI) { const X = B[0] * x + B[4] * y + B[8] * z + B[12], Y = B[1] * x + B[5] * y + B[9] * z + B[13], Z = B[2] * x + B[6] * y + B[10] * z + B[14]; x = X; y = Y; z = Z; }
+                let ox = 0, oy = 0, oz = 0;
+                for (let j = 0; j < 4; j++) {
+                    const w = sw[i * 4 + j];
+                    if (w === 0) continue;
+                    const o = si[i * 4 + j] * 16;
+                    ox += w * (bm[o] * x + bm[o + 4] * y + bm[o + 8] * z + bm[o + 12]);
+                    oy += w * (bm[o + 1] * x + bm[o + 5] * y + bm[o + 9] * z + bm[o + 13]);
+                    oz += w * (bm[o + 2] * x + bm[o + 6] * y + bm[o + 10] * z + bm[o + 14]);
+                }
+                if (!bindI) { const X = BI[0] * ox + BI[4] * oy + BI[8] * oz + BI[12], Y = BI[1] * ox + BI[5] * oy + BI[9] * oz + BI[13], Z = BI[2] * ox + BI[6] * oy + BI[10] * oz + BI[14]; ox = X; oy = Y; oz = Z; }
+                out[i * 3] = ox; out[i * 3 + 1] = oy; out[i * 3 + 2] = oz;
+            }
+            v.mesh.updateVerticesData("position", out, false, false);
         }
-        v.mesh.updateVerticesData("position", v.pos, false, false);
         Matrix.FromArray(m.matrixWorld.elements).decompose(v.mesh.scaling, v.mesh.rotationQuaternion!, v.mesh.position);
         v.mesh.setEnabled(true);
         v.seen = this.frame;
+    }
+
+    /**
+     * The box round all of a bucket's instances (its geometry's bounding sphere, moved and scaled by each one), so it is
+     * culled like any other mesh. (Babylon's own thinInstanceRefreshBoundingInfo upset the rest of the scene here.)
+     */
+    private bound(b: Bucket) {
+        const [cx, cy, cz, r] = b.sphere, d = b.data;
+        let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+        for (let i = 0; i < b.n; i++) {
+            const o = i * 16;
+            const wx = d[o] * cx + d[o + 4] * cy + d[o + 8] * cz + d[o + 12], wy = d[o + 1] * cx + d[o + 5] * cy + d[o + 9] * cz + d[o + 13], wz = d[o + 2] * cx + d[o + 6] * cy + d[o + 10] * cz + d[o + 14];
+            const sc = Math.sqrt(Math.max(d[o] ** 2 + d[o + 1] ** 2 + d[o + 2] ** 2, d[o + 4] ** 2 + d[o + 5] ** 2 + d[o + 6] ** 2, d[o + 8] ** 2 + d[o + 9] ** 2 + d[o + 10] ** 2));
+            const rr = r * sc + 0.05;
+            if (wx - rr < x0) x0 = wx - rr; if (wy - rr < y0) y0 = wy - rr; if (wz - rr < z0) z0 = wz - rr;
+            if (wx + rr > x1) x1 = wx + rr; if (wy + rr > y1) y1 = wy + rr; if (wz + rr > z1) z1 = wz + rr;
+        }
+        b.mesh.setBoundingInfo(new BoundingInfo(new Vector3(x0, y0, z0), new Vector3(x1, y1, z1)));
     }
 
     private grow(b: Bucket) {
@@ -235,12 +301,15 @@ export class ThreeMirror {
         b.data = d;
         b.mesh.thinInstanceSetBuffer("matrix", d, 16, false);
         if (b.col) { const c = new Float32Array(b.cap * 4); c.set(b.col); b.col = c; b.mesh.thinInstanceSetBuffer("color", c, 4, false); }
+        // (a new buffer resets the instance count to its size: set it again)
+        b.last = -1; b.dirty = true;
     }
 
     /** this bucket draws an instanced mesh with colours or a fade: give it a per-instance colour buffer */
     private colours(b: Bucket) {
         b.col = new Float32Array(b.cap * 4).fill(1);
         b.mesh.thinInstanceSetBuffer("color", b.col, 4, false);
+        b.last = -1; b.dirty = true;
     }
 
     private sprite(s: THREE.Sprite) {
@@ -307,28 +376,33 @@ export class ThreeMirror {
                         this.grow(b);
                         _im.fromArray(ia, o16);
                         _wm.multiplyMatrices(im.matrixWorld, _im);
-                        b.data.set(_wm.elements, b.n * 16);
+                        putMatrix(b, _wm.elements);
                         if (b.col) {
-                            const c4 = b.n * 4;
-                            if (ic) { b.col[c4] = ic[i * 3]; b.col[c4 + 1] = ic[i * 3 + 1]; b.col[c4 + 2] = ic[i * 3 + 2]; } else b.col[c4] = b.col[c4 + 1] = b.col[c4 + 2] = 1;
-                            b.col[c4 + 3] = alpha ? alpha[i] : 1;
+                            if (ic) putColour(b, ic[i * 3], ic[i * 3 + 1], ic[i * 3 + 2], alpha ? alpha[i] : 1);
+                            else putColour(b, 1, 1, 1, alpha ? alpha[i] : 1);
                         }
                         b.n++;
                     }
                 } else {
                     this.grow(b);
-                    b.data.set(m.matrixWorld.elements, b.n * 16);
-                    if (b.col) b.col.fill(1, b.n * 4, b.n * 4 + 4);
+                    putMatrix(b, m.matrixWorld.elements);
+                    if (b.col) putColour(b, 1, 1, 1, 1);
                     b.n++;
                 }
             }
             for (const c of o.children) walk(c);
         };
         walk(this.root);
+        // only what changed goes to the GPU, and gets its bounds worked out again (for culling)
         for (const b of this.buckets.values()) {
-            b.mesh.thinInstanceCount = b.n;
-            b.mesh.setEnabled(b.n > 0);
-            if (b.n) { b.mesh.thinInstanceBufferUpdated("matrix"); if (b.col) b.mesh.thinInstanceBufferUpdated("color"); }
+            if (b.n !== b.last) { b.dirty = true; b.last = b.n; b.mesh.thinInstanceCount = b.n; b.mesh.setEnabled(b.n > 0); }
+            if (!b.dirty) continue;
+            b.dirty = false;
+            if (b.n) {
+                b.mesh.thinInstanceBufferUpdated("matrix");
+                if (b.col) b.mesh.thinInstanceBufferUpdated("color");
+                this.bound(b);
+            }
         }
         for (const v of this.skins.values()) if (v.seen !== this.frame) v.mesh.setEnabled(false);
         for (const { m, p } of this.liveMats) { const k = m.emissiveIntensity; p.emissiveColor.set(m.emissive.r * k, m.emissive.g * k, m.emissive.b * k); p.albedoColor.set(m.color.r, m.color.g, m.color.b); if (m.transparent) p.alpha = m.opacity; }

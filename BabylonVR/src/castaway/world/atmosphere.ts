@@ -181,7 +181,7 @@ export class Atmosphere {
         fill.groundColor = Color3.Lerp(Color3.Lerp(new Color3(0.42, 0.33, 0.22), new Color3(0.12, 0.13, 0.2), nightK), new Color3(0.5, 0.38, 0.32), 0.6 * dusk);
         fill.intensity = 0.25 * day + 0.7 * dusk + 0.16 * dusk * this.sun.intensity + 0.32 * nightK * (0.55 + 0.45 * up);
         // eyes adapt: the dark is lifted a little (not so much that night looks like day)
-        this.scene.imageProcessingConfiguration.exposure = 1 + 0.45 * (1 - day) + 0.15 * dusk;
+        this.setExposure(1 + 0.45 * (1 - day) + 0.15 * dusk);
         const sm = this.sky.material as SkyMaterial;
         sm.sunPosition = this.sunDir.scale(100);
         if (this.sunDisc) {
@@ -202,8 +202,8 @@ export class Atmosphere {
             this.caveFill.intensity = 0.3;
             this.caveFill.diffuse.set(0.45, 0.55, 0.9);
             this.caveFill.groundColor.set(0.25, 0.22, 0.2);
-            this.scene.imageProcessingConfiguration.exposure = 1;
-            this.scene.fogMode = Scene.FOGMODE_EXP2;
+            this.setExposure(1);
+            if (this.scene.fogMode !== Scene.FOGMODE_EXP2) this.scene.fogMode = Scene.FOGMODE_EXP2;
             this.scene.fogDensity = 0.013;
             this.scene.fogColor = new Color3(0.012, 0.016, 0.03);
             return;
@@ -259,7 +259,7 @@ export class Atmosphere {
             this.deco.setHorizon(this.hzAway, this.hzSun, this.sunDir);
             if (this.ocean) this.ocean.horizon = { away: this.hzAway, toSun: this.hzSun, sunX: this.sunDir.x, sunZ: this.sunDir.z };
             // the fog is never switched off (that would rebuild every lit shader: a freeze, just as a storm blows up)
-            this.scene.fogMode = Scene.FOGMODE_EXP2;
+            if (this.scene.fogMode !== Scene.FOGMODE_EXP2) this.scene.fogMode = Scene.FOGMODE_EXP2;
             this.scene.fogDensity = 0.0008 + 0.0017 * ov;
             this.scene.fogColor = Color3.Lerp(this.hzAway, this.hzSun, 0.35);
         }
@@ -267,6 +267,15 @@ export class Atmosphere {
         // re-capture the sky lighting every ~20 game minutes (or straight away when time jumps)
         const step = Math.abs(this.hour - this.lastCapture);
         if ((force || step > (this.lean ? 1.5 : 0.33)) && !this.capturing) void this.capture();
+    }
+
+    /**
+     * The exposure, changed only when it has moved noticeably: every change tells every material in the scene to check
+     * itself again (about 7 ms on a desktop CPU, far more on a headset), and it drifts a little every frame at dusk.
+     */
+    private setExposure(e: number) {
+        const ip = this.scene.imageProcessingConfiguration;
+        if (Math.abs(ip.exposure - e) > 0.012) ip.exposure = e;
     }
 
     private async capture() {

@@ -237,6 +237,9 @@ async function main() {
         sunColor: new Color3(1, 0.86, 0.68).scale(5),
         env,
     });
+    // the sea is one huge see-through mesh centred on the camera: sorted by distance it came last and was drawn over
+    // everything see-through in front of it (torch flames, glass...). It goes right after the sky's layers instead.
+    ocean.mesh.alphaIndex = 4;
 
     progress(0.5, "Planting palms…");
     await nextFrame();
