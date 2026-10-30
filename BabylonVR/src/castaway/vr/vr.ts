@@ -134,6 +134,15 @@ export class CastawayVR {
             this.hands.set(side, h);
             this.dressHand(h);
             if (side === "left") src.onMotionControllerInitObservable.add(() => this.panel.attach(src));
+            // the controller models face backwards in a right-handed scene (Babylon only turns them round in a left-handed
+            // one): turn them to point the way your hand does
+            src.onMotionControllerInitObservable.add((mc) => {
+                mc.onModelLoadedObservable.addOnce(() => {
+                    const r = mc.rootMesh;
+                    if (!r) return;
+                    r.rotationQuaternion = (r.rotationQuaternion ?? Quaternion.Identity()).multiply(Quaternion.RotationAxis(Vector3.Up(), Math.PI));
+                });
+            });
         });
         xr.input.onControllerRemovedObservable.add((src) => {
             for (const [k, h] of this.hands) if (h.src === src) { this.handHolder.remove(h.rig); this.hands.delete(k); }
