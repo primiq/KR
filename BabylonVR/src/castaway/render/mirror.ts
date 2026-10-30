@@ -79,14 +79,14 @@ export class ThreeMirror {
         const map = anyM.map as THREE.CanvasTexture | null | undefined;
         if (m.name === "body" || m.name === "animal" || (!map && m.type === "MeshBasicMaterial" && anyM.vertexColors)) {
             b = this.fallback ?? (() => {
-                const p = new PBRMaterial(`mirror_${m.name}`, this.scene);
+                const p = new PBRMaterial(`mirror_${m.name}`, this.scene); p.maxSimultaneousLights = 8;
                 p.albedoColor = Color3.White();
                 p.roughness = 0.84;
                 p.metallic = 0;
                 return p;
             })();
         } else if (map && (map as THREE.CanvasTexture).image) {
-            const p = new PBRMaterial(`mirror_tex${this.id(m)}`, this.scene);
+            const p = new PBRMaterial(`mirror_tex${this.id(m)}`, this.scene); p.maxSimultaneousLights = 8;
             const img = map.image as HTMLCanvasElement | ImageBitmap | HTMLImageElement;
             const isCanvas = typeof HTMLCanvasElement !== "undefined" && img instanceof HTMLCanvasElement;
             // (a decoded image, e.g. from a .glb: copied onto a canvas once)
@@ -108,7 +108,7 @@ export class ThreeMirror {
             if (isCanvas) this.live.push({ map, tex: t, version: map.version });
             if (m.type === "MeshBasicMaterial") {
                 // unlit: the canvas as it is
-                const u = new StandardMaterial(`mirror_screen${this.id(m)}`, this.scene);
+                const u = new StandardMaterial(`mirror_screen${this.id(m)}`, this.scene); u.maxSimultaneousLights = 8;
                 u.disableLighting = true;
                 u.emissiveTexture = t;
                 u.backFaceCulling = m.side !== THREE.DoubleSide;
@@ -126,7 +126,7 @@ export class ThreeMirror {
             if (m.alphaTest > 0) { t.hasAlpha = true; p.useAlphaFromAlbedoTexture = true; p.transparencyMode = PBRMaterial.PBRMATERIAL_ALPHATEST; p.alphaCutOff = m.alphaTest; }
             b = p;
         } else if (m.type === "MeshStandardMaterial" || m.type === "MeshPhysicalMaterial") {
-            const p = new PBRMaterial(`mirror_std${this.id(m)}`, this.scene);
+            const p = new PBRMaterial(`mirror_std${this.id(m)}`, this.scene); p.maxSimultaneousLights = 8;
             const c = anyM.color, e = anyM.emissive;
             p.albedoColor = new Color3(c.r, c.g, c.b);
             p.emissiveColor = new Color3(e.r, e.g, e.b);
@@ -145,7 +145,7 @@ export class ThreeMirror {
             if (m.userData.liveEmissive) this.liveMats.push({ m: anyM, p });
             b = p;
         } else {
-            const s = new StandardMaterial(`mirror_basic${this.id(m)}`, this.scene);
+            const s = new StandardMaterial(`mirror_basic${this.id(m)}`, this.scene); s.maxSimultaneousLights = 8;
             s.disableLighting = true;
             const c = anyM.color ?? new THREE.Color(1, 1, 1);
             s.emissiveColor = new Color3(c.r, c.g, c.b).toGammaSpace();

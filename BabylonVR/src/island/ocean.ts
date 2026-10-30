@@ -139,6 +139,9 @@ uniform vec3 deepColor;
 uniform float daylight;
 uniform float bio;
 uniform float time;
+uniform vec3 hzAway;
+uniform vec3 hzSun;
+uniform vec3 hzSunXZ;
 varying vec3 vPos;
 varying vec3 vNormal;
 varying float vSeabed;
@@ -226,7 +229,9 @@ void main(void) {
 
     // Blend into the sky at the horizon.
     vec3 horizon = textureCube(envMap, normalize(vec3(-V.x, 0.02, -V.z))).rgb;
-    float haze = smoothstep(120.0, 640.0, dist);
+    // (given a horizon colour, the same one the sky's horizon haze and the fog use, so there is no seam where the sea ends)
+    if (hzSunXZ.z > 0.5) horizon = mix(hzAway, hzSun, pow(max(dot(normalize(-V.xz + vec2(1e-5)), hzSunXZ.xy), 0.0), 2.0));
+    float haze = smoothstep(150.0, 680.0, dist);
     col = mix(col, horizon, haze);
     alpha = mix(alpha, 1.0, haze);
 
@@ -254,6 +259,8 @@ export class Ocean {
     bio = 0;
     /** the planar reflection, when turned on (enableReflection) */
     private reflection: MirrorTexture | null = null;
+    /** the colour the far sea fades into (looking away from the sun, towards it, and where the sun is): null, the sky's own */
+    horizon: { away: Color3; toSun: Color3; sunX: number; sunZ: number } | null = null;
     /** the reflection can be paused (in a headset, underground...) without throwing it away */
     reflectOn = true;
 
@@ -318,7 +325,7 @@ export class Ocean {
             { vertex: "ocean", fragment: "ocean" },
             {
                 attributes: ["position"],
-                uniforms: ["world", "viewProjection", "time", "waveA", "waveB", "seabedRect", "rippleRect", "rippleTexel", "cameraPos", "sunDir", "sunColor", "shallowColor", "deepColor", "daylight", "bio", "useRefl", "screenSize"],
+                uniforms: ["world", "viewProjection", "time", "waveA", "waveB", "seabedRect", "rippleRect", "rippleTexel", "cameraPos", "sunDir", "sunColor", "shallowColor", "deepColor", "daylight", "bio", "useRefl", "screenSize", "hzAway", "hzSun", "hzSunXZ"],
                 samplers: ["seabed", "ripples", "envMap", "reflTex"],
                 defines: [`#define NUM_WAVES ${n}`],
                 needAlphaBlending: true,
@@ -337,6 +344,9 @@ export class Ocean {
             e.setFloat("time", this.time);
             e.setFloat("daylight", this.daylight);
             e.setFloat("bio", this.bio);
+            const hz = this.horizon;
+            if (hz) { e.setColor3("hzAway", hz.away); e.setColor3("hzSun", hz.toSun); }
+            e.setFloat3("hzSunXZ", hz?.sunX ?? 0, hz?.sunZ ?? 0, hz ? 1 : 0);
             e.setArray4("waveA", this.waveA as unknown as number[]);
             e.setArray4("waveB", this.waveB as unknown as number[]);
             e.setVector3("cameraPos", cam.globalPosition);

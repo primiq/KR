@@ -7,7 +7,7 @@ import {
     Effect,
     ImageProcessingConfiguration,
     type Material,
-    type Mesh,
+    Mesh,
     Quaternion,
     Scene,
     SSAO2RenderingPipeline,
@@ -114,8 +114,13 @@ async function main() {
     const scene = new Scene(engine);
     // every lit material has room for all the lights that can be on at once (sun, moon, lightning, cave fill, three fire
     // lights, the torch in your hand): the lights are never switched on or off, so no shader ever has to be rebuilt mid-game
-    const roomForLights = (m: Material) => { const x = m as Material & { maxSimultaneousLights?: number }; if (typeof x.maxSimultaneousLights === "number") x.maxSimultaneousLights = 8; };
-    scene.onNewMaterialAddedObservable.add(roomForLights);
+    // (set after the material is made: this fires inside its constructor, before its own default of 4 is in place, and a
+    // material first compiled for 4 lights is rebuilt later: a freeze mid-game, typically far out at sea)
+    const roomForLights = (m: Material) => { const x = m as Material & { maxSimultaneousLights?: number }; if (typeof x.maxSimultaneousLights === "number" && x.maxSimultaneousLights < 8) x.maxSimultaneousLights = 8; };
+    // (a material made mid-frame, as the three.js mirrors do, is drawn that same frame: catch it before the meshes are picked)
+    const newMats: Material[] = [];
+    scene.onNewMaterialAddedObservable.add((m) => { newMats.push(m); queueMicrotask(() => roomForLights(m)); });
+    scene.onBeforeActiveMeshesEvaluationObservable.add(() => { if (newMats.length) { newMats.forEach(roomForLights); newMats.length = 0; } });
     // Castaway's maths is right-handed (three.js); Babylon runs the same way here so every formula ports unchanged
     scene.useRightHandedSystem = true;
     scene.clearColor = new Color4(0.55, 0.75, 0.95, 1);
@@ -650,11 +655,20 @@ async function main() {
     //      behind the loading bar, while the render loop draws under it and the bar follows how many meshes are ready
     {
         const t0 = performance.now();
+        let bestOk = -1, tBest = t0;
+        scene.materials.forEach(roomForLights);
         for (;;) {
-            const ms = scene.meshes.filter((m) => m.isEnabled() && m.isVisible && m.subMeshes?.length && m.material);
+            // (the hidden ones too: the island's far-away versions, the rain, the lightning... else they compile, a freeze each,
+            // the first time they show; not thin-instanced meshes with no instances yet, which would compile a broken shader)
+            const ms = scene.meshes.filter((m) => m.subMeshes?.length && m.material && !(m instanceof Mesh && m.hasThinInstances && m.thinInstanceCount === 0));
             const ok = ms.filter((m) => m.isReady(true)).length;
             progress(0.92 + 0.08 * (ok / Math.max(1, ms.length)), `Preparing the island… ${Math.round((100 * ok) / Math.max(1, ms.length))}%`);
-            if (ok >= ms.length * 0.995 || performance.now() - t0 > 45000) break;
+            // (all of them: the last few are often the ones that would show first far out at sea; unless it stalls)
+            if (ok > bestOk) { bestOk = ok; tBest = performance.now(); }
+            if (ok >= ms.length || performance.now() - tBest > 6000 || performance.now() - t0 > 60000) {
+                if (ok < ms.length) console.warn("castaway: not ready after warm-up:", ms.filter((m) => !m.isReady(true)).map((m) => m.name).slice(0, 20).join(", "));
+                break;
+            }
             await new Promise((r) => setTimeout(r, 100));
         }
         progress(1, "Ready");

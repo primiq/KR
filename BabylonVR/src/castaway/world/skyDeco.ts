@@ -2,7 +2,7 @@
 // with the Milky Way, real constellations among a few thousand twinkling stars that wheel round the pole through the night,
 // and a glowing moon with maria and craters. All of it is drawn round the camera (infinite distance), in front of the
 // scattering sky and behind everything else, so the sea's reflection picks it up too.
-import { Constants, Effect, Matrix, Mesh, MeshBuilder, type Scene, ShaderMaterial, Vector3, VertexBuffer, VertexData } from "@babylonjs/core";
+import { type Color3, Constants, Effect, Matrix, Mesh, MeshBuilder, type Scene, ShaderMaterial, Vector2, Vector3, VertexBuffer, VertexData } from "@babylonjs/core";
 import { NOISE_GLSL } from "../render/materials";
 
 const R = 450;               // the sky shell: inside the 1000 m sky box (whose faces are 500 m away), so it is not hidden behind it
@@ -45,6 +45,28 @@ uniform mat4 world;
 uniform mat4 viewProjection;
 varying vec3 vDir;
 void main() { vDir = position; gl_Position = viewProjection * (world * vec4(position, 1.0)); }`;
+
+// the haze along the horizon: the colour the far sea and the fog fade into, rising a few degrees up the sky, so there is no
+// seam where the sea ends. Drawn at the far plane: it only shows where nothing nearer was drawn (never over the island)
+Effect.ShadersStore["skyHorizonVertexShader"] = `
+precision highp float;
+attribute vec3 position;
+uniform mat4 world;
+uniform mat4 viewProjection;
+varying vec3 vDir;
+void main() { vDir = position; gl_Position = viewProjection * (world * vec4(position, 1.0)); gl_Position.z = gl_Position.w; }`;
+Effect.ShadersStore["skyHorizonFragmentShader"] = `
+precision highp float;
+uniform vec3 hzAway;
+uniform vec3 hzSun;
+uniform vec2 sunXZ;
+varying vec3 vDir;
+void main() {
+    vec3 d = normalize(vDir);
+    float a = 1.0 - smoothstep(-0.01, 0.1, d.y);
+    float ts = pow(max(dot(normalize(d.xz + vec2(1e-5)), sunXZ), 0.0), 2.0);
+    gl_FragColor = vec4(mix(hzAway, hzSun, ts), a * a * (3.0 - 2.0 * a));
+}`;
 
 // the night: a deep navy gradient and the Milky Way (its band follows the galactic plane, turned with the stars)
 Effect.ShadersStore["skyNightFragmentShader"] = `
@@ -253,6 +275,8 @@ export class SkyDeco {
     private starMat: ShaderMaterial;
     private moon: Mesh;
     private moonMat: ShaderMaterial;
+    private horizon: Mesh;
+    private horizonMat: ShaderMaterial;
     private sun: Mesh;
     private sunMat: ShaderMaterial;
     private time = 0;
@@ -264,9 +288,9 @@ export class SkyDeco {
 
     /** `lite`: low quality and headsets: fewer noise octaves and no self-shadowing in the clouds (they fill the sky, per pixel) */
     constructor(private readonly scene: Scene, lite = false) {
-        const shell = (name: string, frag: string, uniforms: string[], alphaIndex: number) => {
+        const shell = (name: string, frag: string, uniforms: string[], alphaIndex: number, vert = "skyDome") => {
             const m = MeshBuilder.CreateSphere(name, { diameter: R * 2, segments: 32, sideOrientation: Mesh.BACKSIDE }, scene);
-            const mat = new ShaderMaterial(`${name}Mat`, scene, { vertex: "skyDome", fragment: frag }, { attributes: [VertexBuffer.PositionKind], uniforms: ["world", "viewProjection", ...uniforms], needAlphaBlending: true, defines: lite ? ["#define LITE", "#define OCTAVES 3"] : ["#define OCTAVES 5"] });
+            const mat = new ShaderMaterial(`${name}Mat`, scene, { vertex: vert, fragment: frag }, { attributes: [VertexBuffer.PositionKind], uniforms: ["world", "viewProjection", ...uniforms], needAlphaBlending: true, defines: lite ? ["#define LITE", "#define OCTAVES 3"] : ["#define OCTAVES 5"] });
             mat.backFaceCulling = false;
             mat.disableDepthWrite = true;
             m.material = mat; m.infiniteDistance = true; m.isPickable = false; m.applyFog = false; m.alphaIndex = alphaIndex;
@@ -274,6 +298,8 @@ export class SkyDeco {
             return { m, mat };
         };
         ({ m: this.night, mat: this.nightMat } = shell("skyNight", "skyNight", ["night", "skyRot"], 0));
+        // (after the night sky and the stars, before the sun and the moon: they still set into the haze, not behind it)
+        ({ m: this.horizon, mat: this.horizonMat } = shell("skyHorizon", "skyHorizon", ["hzAway", "hzSun", "sunXZ"], 1.5, "skyHorizon"));
         ({ m: this.clouds, mat: this.cloudMat } = shell("skyClouds", "skyClouds", ["time", "sunDir", "moonDir", "day", "low", "moonUp", "cover", "wind"], 3));
 
         // ---- stars: the constellations, then a few thousand fainter ones crowding towards the Milky Way
@@ -343,7 +369,7 @@ export class SkyDeco {
     }
 
     /** the meshes (for the sea's reflection) */
-    get meshes() { return [this.night, this.stars, this.moon, this.sun, this.clouds]; }
+    get meshes() { return [this.night, this.stars, this.moon, this.sun, this.clouds, this.horizon]; }
 
     private bindCamera() {
         const cam = this.scene.activeCamera; if (!cam) return;
@@ -359,6 +385,14 @@ export class SkyDeco {
      * Once a frame. `hour` turns the stars; `sunDir` points at the sun; `day` 0..1; `low` how close to the horizon the sun is
      * (sunset colours); `overcast` dims everything behind the storm dome.
      */
+    /** the horizon haze: its colour looking away from the sun and towards it */
+    setHorizon(away: Color3, toSun: Color3, sunDir: Vector3) {
+        this.horizonMat.setColor3("hzAway", away);
+        this.horizonMat.setColor3("hzSun", toSun);
+        const l = Math.hypot(sunDir.x, sunDir.z) || 1;
+        this.horizonMat.setVector2("sunXZ", new Vector2(sunDir.x / l, sunDir.z / l));
+    }
+
     update(dt: number, hour: number, sunDir: Vector3, day: number, low: number, overcast: number) {
         this.time += dt;
         const night = (1 - Math.min(1, Math.max(0, (sunDir.y + 0.2) / 0.25))) * (1 - overcast);

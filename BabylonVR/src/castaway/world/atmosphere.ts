@@ -42,13 +42,15 @@ export class Atmosphere {
     /** the clouds, the night sky with its stars and the Milky Way, and the moon */
     readonly deco: SkyDeco;
     private low = 0;
+    private hzAway = new Color3(0.7, 0.8, 0.92);
+    private hzSun = new Color3(0.86, 0.88, 0.9);
 
     constructor(
         private readonly scene: Scene,
         private readonly sun: DirectionalLight,
         private readonly sky: Mesh,
         private readonly env: RenderTargetTexture,
-        private readonly ocean: { mesh: Mesh; daylight: number } | null,
+        private readonly ocean: { mesh: Mesh; daylight: number; horizon: { away: Color3; toSun: Color3; sunX: number; sunZ: number } | null } | null,
         private readonly sunDisc: Mesh | null,
         lite = false,
     ) {
@@ -119,6 +121,8 @@ export class Atmosphere {
         this.stars.setEnabled(false);
         this.moonDisc.setEnabled(false);
         this.deco = new SkyDeco(scene, lite);
+        // (the sky box leaves the depth at the far plane, where the horizon haze is drawn: it shows over the sky, never the land)
+        if (sky.material) sky.material.disableDepthWrite = true;
         this.apply(true);
         this.deco.update(0, this.hour, this.sunDir, this.day, this.low, this.overcast);
     }
@@ -223,12 +227,21 @@ export class Atmosphere {
             this.scene.environmentIntensity += (0.6 - this.scene.environmentIntensity) * dw;
         }
         this.flashLight.intensity = this.flash * 1.6;
-        if (ov > 0.02) {
+        // ---- the horizon: one colour the far sea, the bottom of the sky and the haze over distant land all fade into (towards
+        //      the sun and away from it), so there is no seam where the sea ends; a storm greys it over
+        {
+            const g = 0.08 + 0.5 * day, grey = new Color3(g * 0.9, g * 0.93, g);
+            const away = Color3.Lerp(Color3.Lerp(new Color3(0.7, 0.8, 0.92), new Color3(0.07, 0.09, 0.17), nightK), new Color3(0.3, 0.27, 0.4), dusk);
+            const toSun = Color3.Lerp(Color3.Lerp(new Color3(0.86, 0.88, 0.9), new Color3(0.07, 0.09, 0.17), nightK), new Color3(1.0, 0.56, 0.3), dusk);
+            this.hzAway = Color3.Lerp(away, grey, ov);
+            this.hzSun = Color3.Lerp(toSun, grey, ov);
+            this.deco.setHorizon(this.hzAway, this.hzSun, this.sunDir);
+            if (this.ocean) this.ocean.horizon = { away: this.hzAway, toSun: this.hzSun, sunX: this.sunDir.x, sunZ: this.sunDir.z };
+            // the fog is never switched off (that would rebuild every lit shader: a freeze, just as a storm blows up)
             this.scene.fogMode = Scene.FOGMODE_EXP2;
-            this.scene.fogDensity = 0.004 * ov;
-            const g = 0.08 + 0.5 * day;
-            this.scene.fogColor = new Color3(g * 0.9, g * 0.93, g);
-        } else this.scene.fogMode = Scene.FOGMODE_NONE;
+            this.scene.fogDensity = 0.0008 + 0.004 * ov;
+            this.scene.fogColor = Color3.Lerp(this.hzAway, this.hzSun, 0.35);
+        }
         if (Math.abs(ov - this.lastOvercast) > 0.15) { this.lastOvercast = ov; force = true; }
         // re-capture the sky lighting every ~20 game minutes (or straight away when time jumps)
         const step = Math.abs(this.hour - this.lastCapture);
