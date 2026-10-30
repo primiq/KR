@@ -14,7 +14,7 @@ export interface Quality {
     /** draw distance for trees, rocks and bushes */
     treeCull: number;
     palmDetail: number;
-    /** frame-buffer scale (1 = native) */
+    /** frame-buffer scale (1 = native; more than 1 renders fewer pixels and stretches them: blurry) */
     scale: number;
 }
 
@@ -29,5 +29,5 @@ export function pickQuality(pref = "auto"): Quality {
     if (q === "low" || q === "medium" || q === "high") name = q;
     if (name === "high") return { name, tier: "high", shadows: true, terrainSegments: 384, bushes: 1400, grass: 9000, treeCull: 260, palmDetail: 1, scale: 1 };
     if (name === "medium") return { name, tier: "medium", shadows: true, terrainSegments: 256, bushes: 900, grass: 4500, treeCull: 170, palmDetail: 0.7, scale: 1 };
-    return { name, tier: "mobile", shadows: false, terrainSegments: 192, bushes: 500, grass: 1800, treeCull: 120, palmDetail: 0.5, scale: 1.5 };
+    return { name, tier: "mobile", shadows: false, terrainSegments: 192, bushes: 500, grass: 1800, treeCull: 120, palmDetail: 0.5, scale: 1 };
 }

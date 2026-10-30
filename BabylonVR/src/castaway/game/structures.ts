@@ -502,7 +502,37 @@ export class StructureManager {
   }
   onTable(t: Structure) { return this.list.filter((s) => s !== t && ON_TABLE.includes(s.kind) && Math.hypot(s.x - t.x, s.z - t.z) < TABLE_R && Math.abs(s.y - (t.y + TABLE_TOP)) < 0.06); }
 
+  /** the tops of railing end posts (a torch stands on one), and whether one is at a spot (set by the game) */
+  railPosts: (() => { x: number; y: number; z: number }[]) | null = null;
+  railPostAt: ((x: number, z: number, y: number) => boolean) | null = null;
+  /** how far down a torch on a railing post sinks into it */
+  static readonly POST_SINK = 0.5;
+  /** a torch standing on a railing post (its foot is sunk into the post) */
+  private onPost(kind: PlaceKind, a: { x: number; y: number; z: number }) {
+    return kind === "torch" && !!this.railPostAt?.(a.x, a.z, a.y + StructureManager.POST_SINK);
+  }
+
   updateGhost(kind: PlaceKind, eye: Vector3, dir: Vector3, yaw: number): PlaceAim {
+    // a torch aimed at the top of a railing's end post stands on it
+    if (kind === "torch" && this.railPosts) {
+      let best = 0.35, post: { x: number; y: number; z: number } | null = null;
+      for (const p of this.railPosts()) {
+        const vx = p.x - eye.x, vy = p.y - eye.y, vz = p.z - eye.z, t = vx * dir.x + vy * dir.y + vz * dir.z;
+        if (t < 0.3 || t > 6) continue;
+        const d = Math.hypot(vx - dir.x * t, vy - dir.y * t, vz - dir.z * t);
+        if (d < best) { best = d; post = p; }
+      }
+      if (post) {
+        const a: PlaceAim = { ok: true, reason: "", x: post.x, y: post.y - StructureManager.POST_SINK, z: post.z, yaw };
+        if (this.list.some((s) => Math.hypot(s.x - post!.x, s.z - post!.z) < 0.2 && Math.abs(s.y - a.y) < 0.6)) { a.ok = false; a.reason = "There’s a torch on this post already"; }
+        for (const [k, g] of this.ghosts) g.setEnabled(k === kind);
+        const g = this.ghosts.get(kind)!;
+        g.position.set(a.x, a.y, a.z);
+        g.rotation.y = yaw;
+        setGhostOk(this.ghostMat, a.ok);
+        return a;
+      }
+    }
     const small = ON_TABLE.includes(kind);
     const gnd = small ? (x: number, z: number, y?: number) => Math.max(this.ground(x, z, y), this.tableTop(x, z, y)) : this.ground;
     const r = rayGround(eye, dir, 6.5, gnd);
@@ -557,7 +587,8 @@ export class StructureManager {
     }
     const m = buildModel(kind, this.shadows, hook);
     // a packed-earth plinth under the footprint hides any gap where the ground falls away
-    const onTop = ON_TABLE.includes(kind) && Math.abs(this.tableTop(a.x, a.z, a.y + 0.1) - a.y) < 0.05;
+    const post = this.onPost(kind, a);
+    const onTop = post || (ON_TABLE.includes(kind) && Math.abs(this.tableTop(a.x, a.z, a.y + 0.1) - a.y) < 0.05);
     for (const [lx, lz, r] of onTop ? [] : FOOT[kind].cols) {
       const gx = a.x + lx * Math.cos(a.yaw) + lz * Math.sin(a.yaw), gz = a.z - lx * Math.sin(a.yaw) + lz * Math.cos(a.yaw);
       let low = a.y;

@@ -1,5 +1,6 @@
 import {
     Color3,
+    CascadedShadowGenerator,
     Color4,
     DefaultRenderingPipeline,
     Engine,
@@ -109,7 +110,8 @@ async function main() {
     const canvas = $<HTMLCanvasElement>("game");
     const engine = new Engine(canvas, true, { xrCompatible: true, stencil: true, antialias: true, powerPreference: "high-performance" }, true);
     engine.enableOfflineSupport = false;
-    engine.setHardwareScalingLevel(q.scale / Math.min(window.devicePixelRatio || 1, q.name === "high" ? 2 : 1.5));
+    // (how many pixels per CSS pixel on a high-density screen: high draws them all, up to 2; medium and low one per pixel, more or less)
+    engine.setHardwareScalingLevel(q.scale / Math.min(window.devicePixelRatio || 1, q.name === "high" ? 2 : q.name === "medium" ? 1.25 : 1));
     window.addEventListener("resize", () => engine.resize());
 
     const scene = new Scene(engine);
@@ -197,6 +199,8 @@ async function main() {
     const { sun, shadows, sunMesh } = createSun(scene, SUN.clone(), 6.5, q.tier, q.name === "high" ? 90 : 60);
     sun.diffuse = new Color3(1, 0.9, 0.76);
     if (!q.shadows) shadows.getShadowMap()!.refreshRate = 0;
+    // medium: lighter shadows than high (two cascades, softer filtering, over a shorter distance)
+    if (q.name === "medium") { shadows.numCascades = 2; shadows.filteringQuality = CascadedShadowGenerator.QUALITY_MEDIUM; shadows.shadowMaxZ = 45; }
     scene.environmentIntensity = 1;
 
     const ip = scene.imageProcessingConfiguration;
@@ -255,7 +259,7 @@ async function main() {
     });
     // (the shared environment's flat sun disc faced one way only and read as an ellipse: SkyDeco draws a round sun instead)
     sunMesh.setEnabled(false);
-    const clock = new Atmosphere(scene, sun, skybox, env, ocean, null, q.name === "low");
+    const clock = new Atmosphere(scene, sun, skybox, env, ocean, null, q.name !== "high");
     if (params.has("hour")) clock.hour = parseFloat(params.get("hour")!);
     progress(0.82, "Washing the castaway ashore…");
     await nextFrame();
@@ -464,7 +468,7 @@ async function main() {
     };
 
     // ---- the sea mirrors the island, the trees, the clouds, the moon and the stars (medium and high quality; off in a headset)
-    const seaRefl = q.name === "low" ? null : ocean.enableReflection(q.name === "high" ? 0.5 : 0.35, q.name === "high" ? 1 : 2, (m) => {
+    const seaRefl = q.name === "low" ? null : ocean.enableReflection(q.name === "high" ? 0.5 : 0.25, q.name === "high" ? 1 : 3, (m) => {
         const n = m.name;
         if (n === "grass" || n.startsWith("sea_") || n === "seaShafts" || n === "seaSnow" || n === "rain" || n === "fallsPool" || n === "falls") return false;
         // (you are in it too: the mirror-only copy of you, not the head-less one you see your legs with)
@@ -474,8 +478,9 @@ async function main() {
     let seaReflOn = !!seaRefl;
     // ---- post processing (flat screens; the headset gets a lighter chain)
     const pipeline = new DefaultRenderingPipeline("castawayPipeline", true, scene, [camera]);
-    pipeline.samples = q.name === "low" ? 1 : 4;
-    pipeline.fxaaEnabled = q.name === "low";
+    // (multisampling on high only: medium and low smooth the edges with FXAA, much cheaper)
+    pipeline.samples = q.name === "high" ? 4 : 1;
+    pipeline.fxaaEnabled = q.name !== "high";
     pipeline.bloomEnabled = q.name !== "low";
     pipeline.bloomThreshold = 0.9;
     pipeline.bloomWeight = 0.25;

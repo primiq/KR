@@ -6,7 +6,7 @@ import { heightAt } from "../world/island";
 import type { Player } from "../world/player";
 import type { Vegetation, Zone } from "../world/vegetation";
 import { Sfx } from "./audio";
-import { BuildingSystem, PIECE_INFO, PIECES, type Piece, STONE_COST } from "./building";
+import { BuildingSystem, CELL, PIECE_INFO, PIECES, type Piece, RAIL_H, STONE_COST } from "./building";
 import { Inventory } from "./inventory";
 import { ARMOR_SLOTS, type GatherKind, GATHER_ITEM, GATHER_LABEL, ITEMS, type ItemId, type PlaceKind } from "./items";
 import { BENCH_REACH, COAL_BURN, MAX_FUEL, type Recipe, craft } from "./recipes";
@@ -237,6 +237,8 @@ export class Game {
         };
         this.structures.ground = this.building.ground;
         this.structures.touchesBuilding = (x, z, r, y) => this.building.touches(x, z, r, y);
+        this.structures.railPosts = () => this.building.railPosts();
+        this.structures.railPostAt = (x, z, y) => this.building.railPostAt(x, z, y);
         this.building.blockedByStructures = this.structures.blockedBox;
         this.structures.onEmber = (x, y, z) => this.resources.burst(new Vector3(x, y, z), "ember", 1, 1.5);
         this.view.onHit = () => this.swingHit();
@@ -346,6 +348,16 @@ export class Game {
             // a doorway came down: its door drops out; pictures on a wall fall off
             const d = this.doors.wallGone(p.key);
             if (d && !silent) { const g = p.group.position; this.resources.pickups.spawn("door", 1, g.x + 0.6, this.building.ground(g.x + 0.6, g.z + 0.6, p.H + 0.5), g.z + 0.6); }
+            // a railing came down: a torch standing on a post that is now gone drops to the ground
+            if (p.kind === "railing") for (const s of [...this.structures.list]) {
+                if (s.kind !== "torch" || Math.abs(s.y + StructureManager.POST_SINK - (p.H + RAIL_H + 0.11)) > 0.06) continue;
+                if (this.building.railPostAt(s.x, s.z, s.y + StructureManager.POST_SINK, p)) continue;
+                const onIt = p.axis === "x" ? Math.abs(s.z - p.j * CELL) < 0.05 && s.x > p.i * CELL - 0.05 && s.x < (p.i + 1) * CELL + 0.05
+                    : Math.abs(s.x - p.i * CELL) < 0.05 && s.z > p.j * CELL - 0.05 && s.z < (p.j + 1) * CELL + 0.05;
+                if (!onIt) continue;
+                this.structures.remove(s, silent);
+                if (!silent) this.resources.pickups.spawn("torch", 1, s.x, this.building.ground(s.x, s.z, p.H + 0.5), s.z);
+            }
             for (const q of this.paintings.wallGone(p.key)) {
                 if (silent) continue;
                 const x = q.x + Math.sin(q.yaw) * 0.5, z = q.z + Math.cos(q.yaw) * 0.5;

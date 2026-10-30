@@ -9,10 +9,13 @@ import { addCut, baseHeightAt, cutBounds, heightAt, removeCut, type Cut } from "
 import type { ColliderGrid } from "../world/vegetation";
 
 /** Snap-together building on a world-aligned 3 m grid. Foundations sit on cells, walls on cell edges, roofs on top. */
-export type PieceKind = "foundation" | "wall" | "doorway" | "window" | "roof" | "floor" | "stairs" | "pool";
+export type PieceKind = "foundation" | "wall" | "doorway" | "window" | "railing" | "roof" | "floor" | "stairs" | "pool";
 export const CELL = 3;
 export const WALL_H = 3;
 const THICK = 0.2;
+/** a railing's height, and how far its end posts stand above the rail (a torch stands on one) */
+export const RAIL_H = 1.05;
+const RAIL_POST = 0.14;
 
 export const PIECES: { kind: PieceKind; name: string; cost: number; desc: string }[] = [
     { kind: "foundation", name: "Foundation", cost: 25, desc: "The base of every building. Works on slopes too (stilts reach the low side). Next to an existing foundation it may stick out over a drop or the water, up to 2 blocks from solid ground." },
@@ -20,6 +23,7 @@ export const PIECES: { kind: PieceKind; name: string; cost: number; desc: string
     { kind: "wall", name: "Wall", cost: 15, desc: "Goes on the edge of a foundation." },
     { kind: "doorway", name: "Doorway", cost: 12, desc: "A wall with an opening to walk through." },
     { kind: "window", name: "Window", cost: 14, desc: "A wall with a window opening." },
+    { kind: "railing", name: "Railing", cost: 8, desc: "A waist-high railing along the edge of a foundation or floor: posts, a handrail and balusters. Hold a torch and aim at one of its end posts to stand the torch on it." },
     { kind: "floor", name: "Floor / Roof", cost: 20, desc: "An upper floor that is also your roof: one storey up, walkable on top. Goes on top of a foundation or floor, or sticks out from one: at most 2 blocks away from a block that stands on something solid." },
     { kind: "stairs", name: "Staircase", cost: 30, desc: "Climbs one storey in the direction you face. Leave the floor above it open, and put a floor next to its top." },
 ];
@@ -29,7 +33,7 @@ export const MAX_LEVEL = 3;
 export const STAIR_DIRS: [number, number][] = [[0, -1], [1, 0], [0, 1], [-1, 0]];
 const STEPS = 12;
 /** what each piece costs to turn to stone (plus what it already cost in wood) */
-export const STONE_COST: Record<PieceKind, number> = { foundation: 20, wall: 12, doorway: 10, window: 10, floor: 15, roof: 15, stairs: 18, pool: 0 };
+export const STONE_COST: Record<PieceKind, number> = { foundation: 20, wall: 12, doorway: 10, window: 10, railing: 6, floor: 15, roof: 15, stairs: 18, pool: 0 };
 
 type V3 = { x: number; y: number; z: number };
 export interface Box { x0: number; x1: number; z0: number; z1: number; y0: number; y1: number; /** how far below the top a walker may still step onto it */ step?: number }
@@ -213,6 +217,19 @@ function fillKit(kit: Kit, kind: PieceKind, depth = 0.6, pile?: (lx: number, lz:
                 put("beam", new THREE.BoxGeometry(0.03, 0.06, 0.05).translate(-s * (Wd / 2 - 0.06), y0 + Hh / 2, 0.035));
                 kit.sashes.push({ side: s, geos });
             }
+            break;
+        }
+        case "railing": {
+            // an end post at each end (shared with the railing round the corner), a handrail, a bottom rail, balusters between
+            const P: MatKey = stone ? "swall" : "beam";
+            for (const s of [-1, 1]) {
+                box(RAIL_POST, RAIL_H + 0.06, RAIL_POST, s * CELL / 2, (RAIL_H + 0.06) / 2, 0, P);
+                box(RAIL_POST + 0.04, 0.05, RAIL_POST + 0.04, s * CELL / 2, RAIL_H + 0.085, 0, P);
+            }
+            box(CELL - RAIL_POST, 0.07, 0.12, 0, RAIL_H - 0.035, 0, "beam");
+            box(CELL - RAIL_POST, 0.06, 0.07, 0, 0.12, 0, "beam");
+            const n = 11;
+            for (let k = 1; k < n; k++) box(0.045, RAIL_H - 0.22, 0.045, -CELL / 2 + (k * CELL) / n, 0.12 + (RAIL_H - 0.22) / 2, 0, stone ? "swall" : "slab");
             break;
         }
         case "roof":
@@ -413,6 +430,23 @@ export class BuildingSystem {
     const [dx, dz] = STAIR_DIRS[p.dir], cx = p.i * CELL + CELL / 2, cz = p.j * CELL + CELL / 2;
     const u = Math.max(0, Math.min(1, ((x - cx) * dx + (z - cz) * dz) / CELL + 0.5));
     return p.H + u * WALL_H;
+  }
+
+  /** the tops of railings' end posts (where a torch can stand): each corner once */
+  railPosts(except?: Piece): V3[] {
+    const out: V3[] = [];
+    for (const p of this.edges.values()) {
+      if (p.kind !== 'railing' || p === except) continue;
+      const x0 = p.i * CELL, z0 = p.j * CELL;
+      const ends: [number, number][] = p.axis === 'x' ? [[x0, z0], [x0 + CELL, z0]] : [[x0, z0], [x0, z0 + CELL]];
+      const y = p.H + RAIL_H + 0.11;
+      for (const [x, z] of ends) if (!out.some((o) => Math.abs(o.x - x) < 0.01 && Math.abs(o.z - z) < 0.01 && Math.abs(o.y - y) < 0.05)) out.push({ x, y, z });
+    }
+    return out;
+  }
+  /** is there a railing post top at (x, z), height y (within a few cm)? (`except`: not counting that railing) */
+  railPostAt(x: number, z: number, y: number, except?: Piece): boolean {
+    return this.railPosts(except).some((o) => Math.abs(o.x - x) < 0.03 && Math.abs(o.z - z) < 0.03 && Math.abs(o.y - y) < 0.06);
   }
 
   /** Top of the foundation under (x, z), or -Infinity (ground level only). */
@@ -773,10 +807,12 @@ export class BuildingSystem {
       group = buildMesh(kind, this.shadows);
       group.position.set(a.x, H, a.z);
       if (axis === 'z') group.rotation.y = Math.PI / 2;
-      const h = THICK / 2;
+      // (a railing round a corner shares its end post with the next one: a hair bigger one way, so they never z-fight)
+      if (kind === 'railing' && axis === 'z') group.scaling.set(1.03, 1.006, 1.06);
+      const h = kind === 'railing' ? 0.08 : THICK / 2, top = kind === 'railing' ? RAIL_H + 0.1 : WALL_H;
       const mk = (u0: number, u1: number): Box => axis === 'x'
-        ? { x0: a.x + u0, x1: a.x + u1, z0: a.z - h, z1: a.z + h, y0: H, y1: H + WALL_H }
-        : { x0: a.x - h, x1: a.x + h, z0: a.z + u0, z1: a.z + u1, y0: H, y1: H + WALL_H };
+        ? { x0: a.x + u0, x1: a.x + u1, z0: a.z - h, z1: a.z + h, y0: H, y1: H + top }
+        : { x0: a.x - h, x1: a.x + h, z0: a.z + u0, z1: a.z + u1, y0: H, y1: H + top };
       if (kind === 'doorway') { const sw = (CELL - 1.2) / 2; solid = [mk(-CELL / 2, -CELL / 2 + sw), mk(CELL / 2 - sw, CELL / 2)]; }
       else solid = [mk(-CELL / 2, CELL / 2)];
       const hb = mk(-CELL / 2, CELL / 2);
