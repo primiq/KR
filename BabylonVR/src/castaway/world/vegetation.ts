@@ -7,7 +7,7 @@ import type { ResNode } from "../game/nodes";
 import { meshFromThree } from "../render/geometry";
 import { Inst } from "../render/inst";
 import { foliageMaterial, rockMaterial } from "../render/materials";
-import { GrassLodPlugin } from "../render/grassLod";
+import { GrassLodPlugin, GrassMode } from "../render/grassLod";
 import { hash3 } from "./geo";
 import { heightAt, inCut, riverDist, rockiness, slopeAt } from "./island";
 import { buildBush, buildDryFrond, buildGrassTuft, buildJungleTree, buildPalm, buildStump } from "./plants";
@@ -167,7 +167,7 @@ interface GrassMemo { idx: Map<number, number>; data: Float64Array; n: number }
 export class Vegetation {
     readonly colliders = new ColliderGrid();
     private grassNoise = new Noise2D(77);
-    private tiers: { mesh: Inst; cap: number; cell: number; r0: number; r1: number; seed: number; at: { x: number; z: number }; step: number; memo?: GrassMemo }[] = [];
+    private tiers: { mesh: Inst; keep: Inst | null; cap: number; cell: number; level: number; r0: number; r1: number; at: { x: number; z: number }; step: number; memo?: GrassMemo }[] = [];
     readonly nodes: ResNode[] = [];
     readonly palmPlacements: Placement[] = [];
     readonly perches: { x: number; y: number; z: number; node: ResNode; palm: boolean }[] = [];
@@ -531,25 +531,32 @@ export class Vegetation {
             }
         }
 
-        // ---- grass: three rings round the player, each thinning into the next
+        // ---- grass: three nested rings round the player, each thinning into the next (render/grassLod.ts)
         const R = q.name === "high" ? [16, 40, 70] : q.name === "medium" ? [12, 30, 50] : [10, 22, 36];
-        const C = q.name === "high" ? [0.55, 1.1, 2.0] : q.name === "medium" ? [0.7, 1.4, 2.4] : [0.85, 1.7, 2.8];
+        const c0 = q.name === "high" ? 0.55 : q.name === "medium" ? 0.7 : 0.85;
         const spec = [
-            { r0: 0, r1: R[0], cell: C[0], seed: 0, step: 3, far: false },
-            { r0: R[0], r1: R[1], cell: C[1], seed: 1, step: 6, far: true },
-            { r0: R[1], r1: R[2], cell: C[2], seed: 2, step: 10, far: true },
+            { r0: 0, r1: R[0], level: 0, step: 3, far: false },
+            { r0: R[0], r1: R[1], level: 1, step: 6, far: false },
+            { r0: R[1], r1: R[2], level: 2, step: 10, far: true },
         ];
         for (const t of spec) {
             // (the ring is rebuilt every `step` metres: it holds every tuft that can come into it before the next rebuild)
-            const inner = Math.max(0, t.r0 * 0.65 - t.step), outer = t.r1 + t.step;
-            const cap = Math.min(Math.ceil((Math.PI * (outer ** 2 - inner ** 2)) / t.cell ** 2), 40000);
-            // each ring its own material: its size and fade are worked out on the GPU from the real camera distance
-            const grassMat = foliageMaterial(scene, `grass${t.seed}`, 0.5, true, 0.35);
-            if (!grassMat.pluginManager?.getPlugin("GrassLod")) new GrassLodPlugin(grassMat, t.r0, t.r1, R[2]);
-            const mesh = new Inst("grass", buildGrassTuft(t.far), grassMat, cap, scene);
-            mesh.count = 0;
-            mesh.mesh.alwaysSelectAsActiveMesh = true;
-            this.tiers.push({ mesh, cap, cell: t.cell, r0: t.r0, r1: t.r1, seed: t.seed, at: { x: 1e9, z: 1e9 }, step: t.step });
+            const cell = c0 * 2 ** t.level, last = t.level === spec.length - 1;
+            const inner = Math.max(0, t.r0 - t.step), outer = t.r1 + t.step;
+            const cap = Math.min(Math.ceil((Math.PI * (outer ** 2 - inner ** 2)) / cell ** 2), 40000);
+            // each ring (and its keepers) its own material: sizes and fades are worked out on the GPU from the real camera distance
+            const mk = (mode: number, n: number) => {
+                const name = `grass${t.level}${mode === GrassMode.Keep ? "k" : ""}`;
+                const mat = foliageMaterial(scene, name, 0.5, true, 0.35);
+                if (!mat.pluginManager?.getPlugin("GrassLod")) new GrassLodPlugin(mat, t.r0, t.r1, R[2], mode);
+                const mesh = new Inst(name, buildGrassTuft(t.far), mat, n, scene);
+                mesh.count = 0;
+                mesh.mesh.alwaysSelectAsActiveMesh = true;
+                return mesh;
+            };
+            const mesh = mk(last ? GrassMode.Last : GrassMode.Thin, cap);
+            const keep = last ? null : mk(GrassMode.Keep, Math.ceil(cap * 0.35) + 64);
+            this.tiers.push({ mesh, keep, cap, cell, level: t.level, r0: t.r0, r1: t.r1, at: { x: 1e9, z: 1e9 }, step: t.step });
         }
 
         // ---- planted trees: a pool of instances (palms, jungle trees), hidden until a sapling is planted
@@ -597,7 +604,11 @@ export class Vegetation {
 
     /** frame-time governor (headset): 0 = everything, 1 = no far grass, 2 = near grass only, 3 = no grass */
     setGrassDetail(level: number) {
-        this.tiers.forEach((t, i) => { t.mesh.visible = level <= 0 || (level === 1 ? i < 2 : level === 2 ? i < 1 : false); });
+        this.tiers.forEach((t, i) => {
+            const on = level <= 0 || (level === 1 ? i < 2 : level === 2 ? i < 1 : false);
+            t.mesh.visible = on;
+            if (t.keep) t.keep.visible = on;
+        });
     }
 
     update(px: number, pz: number, force = false) {
@@ -610,25 +621,28 @@ export class Vegetation {
         if (!force && Math.hypot(px - t.at.x, pz - t.at.z) < t.step) return;
         t.at.x = px;
         t.at.z = pz;
-        const { cell, r0, r1, seed } = t;
-        const inner = Math.max(0, r0 * 0.65 - t.step), outer = r1 + t.step;
-        const arr = t.mesh.array;
-        let n = 0;
+        const { cell, r0, r1, level } = t;
+        const c0 = cell / 2 ** level;
+        const inner = Math.max(0, r0 - t.step), outer = r1 + t.step;
+        const outs = [t.mesh, t.keep];
+        const cnt = [0, 0];
         const i0 = Math.floor((px - outer) / cell), i1 = Math.floor((px + outer) / cell);
         const j0 = Math.floor((pz - outer) / cell), j1 = Math.floor((pz + outer) / cell);
-        const o1 = seed * 1.7;
         let memo = t.memo;
         if (!memo || memo.idx.size > 160000) memo = t.memo = { idx: new Map(), data: new Float64Array(5 * 4096), n: 0 };
         for (let j = j0; j <= j1; j++) {
             for (let i = i0; i <= i1; i++) {
-                if (n >= t.cap) break;
                 const key = (i + 32768) * 65536 + (j + 32768);
                 let at = memo.idx.get(key);
                 if (at === undefined) {
                     at = -1;
-                    const ra = (hash3(i, j, 1.3 + o1) + 1) * 0.5, rb = (hash3(i, j, 7.1 + o1) + 1) * 0.5;
-                    const r3 = (hash3(i, j, 3.9 + o1) + 1) * 0.5, r4 = (hash3(i, j, 11.7 + o1) + 1) * 0.5, r5 = (hash3(i, j, 5.3 + o1) + 1) * 0.5;
-                    const x = (i + ra) * cell, z = (j + rb) * cell;
+                    // the tuft of this cell is the near ring's tuft in one of its sub-cells (picked the same way every time),
+                    // so it is the very same tuft as the ring inside draws there
+                    let ii = i, jj = j;
+                    for (let l = level; l > 0; l--) { const p = subCell(ii, jj, l); ii = 2 * ii + (p & 1); jj = 2 * jj + (p >> 1); }
+                    const ra = Math.min(0.999, (hash3(ii, jj, 1.3) + 1) * 0.5), rb = Math.min(0.999, (hash3(ii, jj, 7.1) + 1) * 0.5);
+                    const r3 = (hash3(ii, jj, 3.9) + 1) * 0.5, r4 = (hash3(ii, jj, 11.7) + 1) * 0.5;
+                    const x = (ii + ra) * c0, z = (jj + rb) * c0;
                     const h = heightAt(x, z);
                     if (!(h < 2.2 || inCut(x, z, 0.6) || rockiness(x, z) > 0.35 || riverDist(x, z) < 1.6)) {
                         const patch = this.grassNoise.fbm(x * 0.05, z * 0.05, 2) * 0.5 + 0.5;
@@ -636,29 +650,42 @@ export class Vegetation {
                         if (!(r4 > mask) && !(slopeAt(x, z, 0.5) > 0.7)) {
                             if ((memo.n + 1) * 5 > memo.data.length) { const g = new Float64Array(memo.data.length * 2); g.set(memo.data); memo.data = g; }
                             at = memo.n++;
+                            // is it also the next ring's tuft? (then it is a keeper: it carries on out there instead of thinning out)
+                            const pi = Math.floor(i / 2), pj = Math.floor(j / 2), pp = subCell(pi, pj, level + 1);
+                            const keeper = t.keep !== null && i === 2 * pi + (pp & 1) && j === 2 * pj + (pp >> 1);
                             const D = memo.data, b = at * 5;
-                            D[b] = x; D[b + 1] = z; D[b + 2] = h; D[b + 3] = r3; D[b + 4] = r5;
+                            D[b] = x; D[b + 1] = z; D[b + 2] = h; D[b + 3] = r3; D[b + 4] = keeper ? 1 : 0;
                         }
                     }
                     memo.idx.set(key, at);
                 }
                 if (at < 0) continue;
-                const D = memo.data, b = at * 5, x = D[b], z = D[b + 1], h = D[b + 2], r3 = D[b + 3], r5 = D[b + 4];
+                const D = memo.data, b = at * 5, x = D[b], z = D[b + 1], h = D[b + 2], r3 = D[b + 3], w = D[b + 4];
                 const d = Math.hypot(x - px, z - pz);
                 if (d > outer || d < inner) continue;
-                // (how big it is with distance, and whether it shows in this ring yet: render/grassLod.ts, per frame)
-                void r5;
+                const out = outs[w]!;
+                const n = cnt[w]!;
+                if (n >= out.cap) continue;
                 const sc = 0.7 + 0.7 * r3;
                 const rot = r3 * Math.PI * 2, c = Math.cos(rot) * sc, s = Math.sin(rot) * sc;
-                const o = n * 16;
+                const arr = out.array, o = n * 16;
                 arr[o] = c; arr[o + 1] = 0; arr[o + 2] = -s; arr[o + 3] = 0;
                 arr[o + 4] = 0; arr[o + 5] = sc; arr[o + 6] = 0; arr[o + 7] = 0;
                 arr[o + 8] = s; arr[o + 9] = 0; arr[o + 10] = c; arr[o + 11] = 0;
                 arr[o + 12] = x; arr[o + 13] = h - 0.03; arr[o + 14] = z; arr[o + 15] = 1;
-                n++;
+                cnt[w] = n + 1;
             }
         }
-        t.mesh.count = n;
-        t.mesh.instanceMatrix.needsUpdate = true;
+        for (let k = 0; k < 2; k++) {
+            const out = outs[k];
+            if (!out) continue;
+            out.count = cnt[k]!;
+            out.instanceMatrix.needsUpdate = true;
+        }
     }
+}
+
+/** Which of its four sub-cells (0..3) a grass cell of ring `level` takes its tuft from. */
+function subCell(i: number, j: number, level: number): number {
+    return Math.min(3, Math.floor((hash3(i, j, 40.1 + level) + 1) * 2));
 }
