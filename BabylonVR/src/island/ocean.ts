@@ -190,6 +190,9 @@ void main(void) {
         vec2 edge = smoothstep(vec2(0.0), vec2(0.04), suv) * smoothstep(vec2(1.0), vec2(0.96), suv);
         vec3 pr = texture2D(reflTex, clamp(suv, 0.002, 0.998)).rgb;
         refl = mix(refl, pr, edge.x * edge.y);
+        // calm water a little more mirror-like than Fresnel alone, even looking straight down (where it is otherwise ~2%),
+        // so you can see yourself (and the palms) in it; not in the shallows, where you see the sand
+        fresnel = max(fresnel, 0.13 * smoothstep(0.05, 0.7, max(vPos.y - vSeabed, 0.0)) * edge.x * edge.y);
     }
 
     // Sun glitter: a sharp core plus a broad sheen.

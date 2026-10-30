@@ -621,6 +621,20 @@ class Avatar {
     this.vInit = true;
   }
 
+  /**
+   * Your own body seen from the inside: chest, legs and feet. No head (the camera is in it), no name, and nothing your
+   * first-person view already draws (the arms and the held tool on a screen; the hands in a headset, where the arms reach
+   * from your shoulders to the controllers).
+   */
+  firstPerson(vr: boolean) {
+    this.head.visible = false; this.tag.visible = false; this.bar.sprite.visible = false; this.held.visible = false;
+    if (this.bubble) this.bubble.visible = false;
+    if (!this.fpDone) { this.fpDone = true; this.group.traverse((o) => { if (o.name === 'nameplate') o.visible = false; }); }
+    if (!vr) this.arms.forEach((a) => { a.visible = false; });
+    if (this.vr) { this.vr.hand.forEach((m) => { m.visible = false; }); if (!vr) this.vr.seg.forEach((m) => { m.visible = false; }); }
+  }
+  private fpDone = false;
+
   /** no labels at all (hide & seek: nobody should know who is who) */
   hideLabels(off: boolean) { if (off) { this.tag.visible = false; this.bar.sprite.visible = false; } if (off !== this.labelsWereOff) { this.labelsWereOff = off; this.group.traverse((o) => { if (o.name === 'nameplate') o.visible = !off; }); } }
   private labelsWereOff = false;
@@ -761,6 +775,21 @@ export class ThreeAvatars {
     a.group.traverse((o) => { o.layers.set(5); if ((o as THREE.Sprite).isSprite) o.visible = false; });   // no name tag on your own reflection
   }
 
+  private fpAv: Avatar | null = null;
+  /** your own body, seen when you look down (set back a little: your eyes are in front of your chest, so you see your feet past it) */
+  fpSelf(on: boolean, st: PState | null, myId: number, dt: number, vr: boolean) {
+    if (!on || !st) { if (this.fpAv) this.fpAv.group.visible = false; return; }
+    const me = getOutfit();
+    if (this.fpAv && this.fpAv.key !== outfitKey(me) + '|') { this.group.remove(this.fpAv.group); this.fpAv.dispose(); this.fpAv = null; }
+    if (!this.fpAv) { this.fpAv = new Avatar(myId, '', false, me); this.group.add(this.fpAv.group); }
+    const a = this.fpAv, back = vr ? 0.15 : 0.2;
+    a.group.visible = true;
+    // (the body does not lean with your view: the head it would lean with is not drawn)
+    a.set({ ...st, x: st.x + Math.sin(st.yaw) * back, z: st.z + Math.cos(st.yaw) * back, pitch: vr ? st.pitch : 0 });
+    a.update(dt);
+    a.firstPerson(vr);
+  }
+
   get positions() { return [...this.map].map(([id, a]) => ({ id, name: a.name, x: a.group.position.x, y: a.group.position.y, z: a.group.position.z })); }
 
   clear() { for (const a of this.map.values()) { this.group.remove(a.group); a.dispose(this.scene); } this.map.clear(); while (this.beacons.length) this.removeBeacon(0); }
@@ -790,7 +819,23 @@ export class Avatars {
   }
   clear() { this.three.clear(); this.holder.updateMatrixWorld(); this.mirror.sync(); }
 
-  // ---- your own reflection in the secret room's mirror: a private copy of your avatar on a layer no camera draws (the
+  // ---- your own body when you look down (head-less, drawn by the main camera only: mirrors take the full copy below)
+  private fpHolder: THREE.Scene | null = null;
+  private fpThree: ThreeAvatars | null = null;
+  private fpMirror: ThreeMirror | null = null;
+  fpSelf(on: boolean, st: PState | null, myId: number, dt: number, vr: boolean) {
+    if (!on && !this.fpThree) return;
+    if (!this.fpThree) {
+      this.fpHolder = new THREE.Scene();
+      this.fpThree = new ThreeAvatars(this.fpHolder, false);
+      this.fpMirror = new ThreeMirror(this.scene, this.fpHolder, null, false, { tag: { keepUnderground: true, fpBody: true } });
+    }
+    this.fpThree.fpSelf(on, st, myId, dt, vr);
+    this.fpHolder!.updateMatrixWorld();
+    this.fpMirror!.sync();
+  }
+
+  // ---- your own reflection (the secret room's mirror, the sea): a private copy of your avatar on a layer no camera draws (the
   //      mirror's render list takes it anyway)
   private selfHolder: THREE.Scene | null = null;
   private selfThree: ThreeAvatars | null = null;

@@ -56,7 +56,7 @@ import { setupCustomise, setNameLocked } from "./ui/customise";
 import { setViewSkin } from "./game/viewmodel";
 import { Avatars, playerColor } from "./net/avatars";
 import { eraseSaves, guestKey, LAYOUT, loadChar, loadWorld, migrateWorld, newWorldId, saveChar, saveWorld } from "./net/save";
-import { Session } from "./net/session";
+import { type PState, Session } from "./net/session";
 import { WorldSync } from "./net/sync";
 import { cleanCode, setTurn, type TransportKind } from "./net/transport";
 import { applyChar, applyWorld, captureChar, captureWorld } from "./net/world";
@@ -459,8 +459,9 @@ async function main() {
     const seaRefl = q.name === "low" ? null : ocean.enableReflection(q.name === "high" ? 0.5 : 0.35, q.name === "high" ? 1 : 2, (m) => {
         const n = m.name;
         if (n === "grass" || n.startsWith("sea_") || n === "seaShafts" || n === "seaSnow" || n === "rain" || n === "fallsPool" || n === "falls") return false;
-        const md = m.metadata as { viewModel?: boolean; mirrorSelf?: boolean } | null;
-        return !md?.viewModel && !md?.mirrorSelf;
+        // (you are in it too: the mirror-only copy of you, not the head-less one you see your legs with)
+        const md = m.metadata as { viewModel?: boolean; fpBody?: boolean } | null;
+        return !md?.viewModel && !md?.fpBody;
     });
     let seaReflOn = !!seaRefl;
     // ---- post processing (flat screens; the headset gets a lighter chain)
@@ -575,11 +576,20 @@ async function main() {
             const sy = sync;
             if (sy) dive.updateRemote(sy.avatars.positions.map((a) => { const st = sy.session.states.get(a.id); return { id: a.id, x: a.x, y: a.y, z: a.z, yaw: st?.yaw ?? 0, flags: st?.flags ?? 0 }; }));
             sky.update(dt, player, (x, z) => heightAt(x, z));
-            // the secret room's mirror: you (a private copy only the mirror draws) and everybody else in it
-            if (sky.active || mirrorAv) {
-                mirrorAv ??= sync?.avatars ?? new Avatars(scene, false);
-                const held = game.equipped;
-                mirrorAv.mirrorSelf(sky.active, { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch, spd: Math.hypot(player.vel.x, player.vel.z), item: held ? held.id : "", swing: game.swings, flags: (player.sprinting ? 1 : 0) | (game.isSleeping ? 8 : 0), hp: game.stats.health, arm: game.armorCode }, sync?.session.myId ?? 0, dt, sync?.session.players.get(sync.session.myId)?.name);
+            // you, as everybody else sees you: a private copy only mirrors draw (the secret room's mirror, the sea), and a
+            // head-less one the camera draws, so you see your body and legs when you look down (in a headset, your arms too)
+            {
+                const held = game.equipped, pose = vrMode?.pose() ?? null;
+                const me: PState = { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch, spd: Math.hypot(player.vel.x, player.vel.z), item: held ? held.id : "", swing: game.swings, flags: (player.sprinting ? 1 : 0) | (player.mode === "swim" ? 2 : 0) | (game.stats.dead ? 4 : 0) | (game.isSleeping ? 8 : 0) | (game.drinking ? 32 : 0), hp: game.stats.health, arm: game.armorCode };
+                if (pose) { me.v = pose; me.yaw = pose.h[3]; me.pitch = pose.h[4]; }
+                const mirrorOn = sky.active || (seaReflOn && !game.under.active);
+                const fpOn = !game.stats.dead && !game.isSleeping && player.mode !== "swim" && !game.warp.inLevel && !game.invaders.seated && !game.under.cat?.active && !game.under.camp?.active && !game.under.air?.driving && !game.dive?.active && !game.slide.riding;
+                if (mirrorOn || fpOn || mirrorAv) {
+                    mirrorAv ??= sync?.avatars ?? new Avatars(scene, false);
+                    const myId = sync?.session.myId ?? 0;
+                    mirrorAv.mirrorSelf(mirrorOn, me, myId, dt, sync?.session.players.get(myId)?.name);
+                    mirrorAv.fpSelf(fpOn, me, myId, dt, !!pose);
+                }
             }
             {
                 // the cat house: the host keeps the mouse and the ball going; everybody in it simulates the same toys
