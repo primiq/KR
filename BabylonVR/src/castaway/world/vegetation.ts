@@ -1,4 +1,4 @@
-import type { Material, Mesh, Scene } from "@babylonjs/core";
+import { type Material, type Mesh, PBRMaterial, type Scene } from "@babylonjs/core";
 import * as THREE from "three";
 import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { Noise2D, mulberry32, smoothstep as sstep } from "../core/noise";
@@ -8,6 +8,7 @@ import { meshFromThree } from "../render/geometry";
 import { Inst } from "../render/inst";
 import { foliageMaterial, rockMaterial } from "../render/materials";
 import { GrassLodPlugin, GrassMode } from "../render/grassLod";
+import { leafTexture } from "../render/leaves";
 import { hash3 } from "./geo";
 import { heightAt, inCut, riverDist, rockiness, slopeAt } from "./island";
 import { buildBush, buildDryFrond, buildGrassTuft, buildJungleTree, buildPalm, buildStump } from "./plants";
@@ -254,6 +255,11 @@ export class Vegetation {
         const palmMat = foliageMaterial(scene, "palm", 0.55);
         const treeMat = foliageMaterial(scene, "jungle", 0.28, false, 1.6);
         const bushMat = foliageMaterial(scene, "bush", 0.35, true, 0.7);
+        // the bushes' crowns are leaf cards, cut out by the leaf texture's alpha (render/leaves.ts)
+        bushMat.albedoTexture = leafTexture(scene);
+        bushMat.useAlphaFromAlbedoTexture = true;
+        bushMat.transparencyMode = PBRMaterial.PBRMATERIAL_ALPHATEST;
+        bushMat.alphaCutOff = 0.4;
         const stumpMat = foliageMaterial(scene, "stump", 0);
 
         /** Instances a list of placements across geometry variants; returns one ref per placement. */

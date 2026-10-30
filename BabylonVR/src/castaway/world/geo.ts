@@ -1,7 +1,10 @@
 // Tiny procedural-geometry toolkit for foliage (non-indexed, per-vertex colour + wind weights).
 import * as THREE from 'three';
 
-export interface Vtx { p: THREE.Vector3; n?: THREE.Vector3; c: THREE.Color; s: number; f: number }
+/** `uv`: where on a texture (leaf cards); geometry with any of these gets a uv attribute, the rest at LEAF_SOLID */
+export interface Vtx { p: THREE.Vector3; n?: THREE.Vector3; c: THREE.Color; s: number; f: number; uv?: [number, number] }
+/** a solid, opaque spot on the leaf texture: for the parts of a textured plant that are not leaf cards */
+export const LEAF_SOLID: [number, number] = [0.985, 0.985];
 
 export class GeoBuilder {
   pos: number[] = [];
@@ -9,6 +12,8 @@ export class GeoBuilder {
   col: number[] = [];
   sway: number[] = [];
   flut: number[] = [];
+  uvs: number[] = [];
+  private hasUv = false;
   private a = new THREE.Vector3();
   private b = new THREE.Vector3();
   private fn = new THREE.Vector3();
@@ -26,6 +31,9 @@ export class GeoBuilder {
       this.col.push(v.c.r, v.c.g, v.c.b);
       this.sway.push(v.s);
       this.flut.push(v.f);
+      const uv = v.uv ?? LEAF_SOLID;
+      if (v.uv) this.hasUv = true;
+      this.uvs.push(uv[0], uv[1]);
     }
   }
 
@@ -41,6 +49,7 @@ export class GeoBuilder {
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
     g.setAttribute('sway', new THREE.Float32BufferAttribute(this.sway, 1));
     g.setAttribute('flutter', new THREE.Float32BufferAttribute(this.flut, 1));
+    if (this.hasUv) g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uvs, 2));
     g.computeBoundingSphere();
     g.computeBoundingBox();
     return g;

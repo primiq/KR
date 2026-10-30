@@ -52,47 +52,89 @@ async function rockTextures(scene: Scene) {
 }
 
 /**
- * Castaway's boulders: weathered rock with warm/cool strata, hairline cracks, pale lichen, moss on the tops and a dark
- * wet band at the waterline, here over a real photographed rock texture sampled tri-planar in world space.
- * `ore`: copper-orange veins that catch the light like metal.
+ * The island's rocks, two quite different stones. Boulders (stone): pale grey granite, flecked dark and white with a few
+ * glinting quartz grains, weathered darker in patches, moss on the tops and a dark wet band at the waterline, over a real
+ * photographed rock texture (for its detail only) sampled tri-planar in world space.
+ * `ore`: a near-black iron-rich rock threaded with veins of polished metal (brassy, silvery, with a tarnished rainbow sheen)
+ * that mirror the sky, and tiny crystals in them that glint as you move.
  */
 export function rockMaterial(scene: Scene, ore = false): PBRCustomMaterial {
     return once(`rock:${ore}`, () => {
         const m = new PBRCustomMaterial(ore ? "oreRock" : "rock", scene);
         m.metallic = 0;
-        m.roughness = 0.94;
+        m.roughness = ore ? 0.6 : 0.82;
         m.AddUniform("rockTex", "sampler2D", null as never);
         m.AddUniform("rockReady", "float", 0);
-        m.Fragment_Definitions(NOISE_GLSL);
+        m.Fragment_Definitions(NOISE_GLSL + `
+float rockVein(vec3 wp) {
+    // seams running through the rock, and nuggets where they swell
+    float v = abs(cNoise(wp * 1.7 + 7.0) + cNoise(wp * 5.0) * 0.18);
+    float seam = 1.0 - smoothstep(0.05, 0.16, v);
+    float nug = smoothstep(0.66, 0.8, cNoise(wp * 2.2 + 13.0) * 0.5 + 0.5);
+    return max(seam, nug);
+}
+`);
         m.Fragment_Custom_Albedo(`
             vec3 wp = vPositionW;
             vec3 nW = normalize(vNormalW);
             float n1 = cNoise(wp * 0.7), n2 = cNoise(wp * 4.0), n3 = cNoise(wp * 14.0), n4 = cNoise(wp * 1.9 + 5.0);
-            float layer = sin(wp.y * 7.5 + n1 * 2.6 + wp.x * 0.6 + wp.z * 0.4) * 0.5 + 0.5;
-            vec3 col = mix(vec3(0.36, 0.29, 0.21), vec3(0.16, 0.12, 0.09), n1 * 0.5 + 0.5) * (0.86 + n2 * 0.22);
+            // the photographed rock, for its grain and pits only (its colour is the stone's own)
+            float det = 1.0;
             if (rockReady > 0.5) {
                 vec3 bw = pow(abs(nW), vec3(4.0)); bw /= (bw.x + bw.y + bw.z);
                 vec3 t = toLinearSpace(texture2D(rockTex, wp.zy * 0.35).rgb) * bw.x + toLinearSpace(texture2D(rockTex, wp.xz * 0.35).rgb) * bw.y + toLinearSpace(texture2D(rockTex, wp.xy * 0.35).rgb) * bw.z;
-                col = mix(col, t * vec3(1.05, 0.96, 0.86), 0.7);
+                det = 0.55 + 1.6 * dot(t, vec3(0.3, 0.5, 0.2));
             }
-            col = mix(col, mix(vec3(0.49, 0.4, 0.29), vec3(0.2, 0.16, 0.11), layer), 0.3);
-            float crack = smoothstep(0.9, 0.975, 1.0 - abs(n4));
-            col = mix(col, vec3(0.024, 0.018, 0.013), crack * 0.75);
-            float lichen = smoothstep(0.5, 0.75, n3 + n2 * 0.5) * smoothstep(0.2, 0.8, nW.y);
-            col = mix(col, vec3(0.46, 0.46, 0.15) * (0.8 + n2 * 0.3), lichen * 0.35);
-            float moss = smoothstep(0.7, 0.96, nW.y) * smoothstep(-0.2, 0.5, n1 + wp.y * 0.05);
-            col = mix(col, vec3(0.11, 0.2, 0.024) * (0.8 + n2 * 0.3), moss * 0.8);
-            col *= 0.55 + smoothstep(0.0, 1.0, wp.y) * 0.45;
             ${ore ? `
-            float vein = smoothstep(0.12, 0.3, cNoise(wp * 3.2 + 7.0) + n1 * 0.35);
-            vec3 oreC = mix(vec3(0.58, 0.16, 0.03), vec3(0.83, 0.4, 0.12), n2 * 0.5 + 0.5);
-            col = mix(mix(vec3(0.1, 0.085, 0.07), vec3(0.04, 0.035, 0.03), n1 * 0.5 + 0.5) * 1.6, oreC, vein);` : ""}
+            // dark host rock, blue-black with rusty stains
+            vec3 col = mix(vec3(0.055, 0.058, 0.066), vec3(0.11, 0.1, 0.1), n1 * 0.5 + 0.5) * det;
+            col = mix(col, vec3(0.26, 0.11, 0.04), smoothstep(0.35, 0.8, n4) * 0.5);
+            // the veins: brass to silver, with a thin-film rainbow where the metal has tarnished
+            float vein = rockVein(wp);
+            float hue = n2 * 0.5 + 0.5;
+            vec3 metal = mix(vec3(0.95, 0.74, 0.38), vec3(0.86, 0.87, 0.9), smoothstep(0.3, 0.8, n1 * 0.5 + 0.5));
+            vec3 film = 0.5 + 0.5 * cos(6.2832 * (vec3(0.0, 0.33, 0.67) + hue * 1.7 + dot(nW, vec3(0.3, 0.6, 0.2))));
+            metal = mix(metal, metal * film * 1.3, smoothstep(0.55, 0.9, cNoise(wp * 6.0 + 3.0) * 0.5 + 0.5) * 0.6);
+            col = mix(col, metal, vein);` : `
+            // granite: pale grey, flecked
+            vec3 col = mix(vec3(0.34, 0.335, 0.325), vec3(0.22, 0.215, 0.21), n1 * 0.5 + 0.5) * det;
+            float fleck = cNoise(wp * 38.0), fleck2 = cNoise(wp * 31.0 + 11.0);
+            col = mix(col, vec3(0.06, 0.06, 0.065), smoothstep(0.45, 0.65, fleck) * 0.85);
+            col = mix(col, vec3(0.7, 0.68, 0.66), smoothstep(0.5, 0.7, fleck2) * 0.5);
+            col = mix(col, vec3(0.62, 0.48, 0.44), smoothstep(0.55, 0.75, cNoise(wp * 23.0 + 4.0)) * 0.35);
+            // weathering: darker, browner patches and streaks running down from the top
+            col *= 0.8 + 0.25 * smoothstep(-0.5, 0.6, n4);
+            col = mix(col, col * vec3(0.78, 0.72, 0.62), smoothstep(0.2, 0.8, cNoise(vec3(wp.x * 3.0, wp.y * 0.4, wp.z * 3.0))) * 0.45);
+            float crack = smoothstep(0.9, 0.975, 1.0 - abs(n4));
+            col = mix(col, vec3(0.03, 0.03, 0.03), crack * 0.7);
+            float lichen = smoothstep(0.55, 0.8, n3 + n2 * 0.5) * smoothstep(0.2, 0.8, nW.y);
+            col = mix(col, vec3(0.62, 0.64, 0.42) * (0.8 + n2 * 0.3), lichen * 0.4);`}
+            float moss = smoothstep(0.7, 0.96, nW.y) * smoothstep(-0.2, 0.5, n1 + wp.y * 0.05);
+            col = mix(col, vec3(0.11, 0.2, 0.024) * (0.8 + n2 * 0.3), moss * ${ore ? "0.4" : "0.75"});
+            // dark and wet where the sea reaches
+            col *= 0.55 + smoothstep(0.0, 1.0, wp.y) * 0.45;
             surfaceAlbedo = col;
         `);
+        m.Fragment_Custom_MetallicRoughness(ore ? `
+            float veinM = rockVein(vPositionW);
+            metallicRoughness.r = veinM * 0.85;
+            metallicRoughness.g = mix(0.78, 0.2 + 0.12 * (cNoise(vPositionW * 9.0) * 0.5 + 0.5), veinM);
+        ` : `
+            // quartz grains glint, the wet foot of the rock shines; the rest is matt
+            float q = smoothstep(0.55, 0.72, cNoise(vPositionW * 31.0 + 11.0));
+            float wetR = 1.0 - smoothstep(0.0, 1.0, vPositionW.y);
+            metallicRoughness.g = mix(mix(0.82, 0.32, q), 0.3, wetR);
+        `);
         if (ore) {
-            m.Fragment_Custom_MetallicRoughness(`
-                float veinM = smoothstep(0.12, 0.3, cNoise(vPositionW * 3.2 + 7.0) + cNoise(vPositionW * 0.7) * 0.35);
-                metallicRoughness.r = veinM * 0.65; metallicRoughness.g = mix(0.92, 0.35, veinM);
+            // tiny crystals in the veins: a pin-prick of light that comes and goes as you move
+            m.Fragment_Before_FragColor(`
+                {
+                    vec3 cp = floor(vPositionW * 22.0);
+                    float h = fract(sin(dot(cp, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+                    vec3 vd = normalize(vEyePosition.xyz - vPositionW);
+                    float tw = pow(max(0.0, sin(dot(vd, vec3(17.0, 23.0, 19.0)) + h * 40.0)), 24.0);
+                    finalColor.rgb += vec3(1.0, 0.92, 0.75) * tw * step(0.93, h) * rockVein(vPositionW) * 1.4;
+                }
             `);
         }
         m.onBindObservable.add(() => {
@@ -104,7 +146,7 @@ export function rockMaterial(scene: Scene, ore = false): PBRCustomMaterial {
         void rockTextures(scene).then((t) => {
             m.bumpTexture = t.normal;
             t.normal.uScale = t.normal.vScale = 1;
-            m.bumpTexture.level = 0.6;
+            m.bumpTexture.level = ore ? 0.45 : 0.75;
         });
         return m;
     });

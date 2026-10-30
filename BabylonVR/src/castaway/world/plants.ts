@@ -140,59 +140,67 @@ export function buildJungleTree(seed: number, coarse = false): THREE.BufferGeome
 /** `far`: the far-away version of the same bush (same random draws, so the same shape and colours): no stems or sprigs, every
  *  other leaf cluster grown to fill the gap, one berry per bunch, about a third of the triangles */
 export function buildBush(seed: number, mode: 'plain' | 'berry' | 'bare' = 'plain', far = false): THREE.BufferGeometry {
-  // A leafy shrub: a few woody stems, a dark core, and many small leaf clusters over the outside of the crown (each a little
-  // different in colour) with sprigs poking out of the edge, so the silhouette is ragged like real foliage, not a smooth blob.
-  // The clusters are coarse (20 triangles each), so a bush costs about as much as the old three or four smooth blobs.
+  // A leafy shrub: a few woody stems, a dark core, and a crown of leaf cards (crossed quads cut out with a texture of a
+  // sprig of leaves: render/leaves.ts), each turned outwards and lit as part of the round crown, so its outline is ragged
+  // with real leaves. Berries (or flowers) sit on the outside, where you can see them.
   const rnd = mulberry32(seed);
   const b = new GeoBuilder();
   const W = 0.7 + rnd() * 0.25, Hc = 0.55 + rnd() * 0.15, cy = 0.62 + rnd() * 0.1;   // crown half-width, half-height, centre height
-  const greens: [THREE.Color, THREE.Color][] = [[hex('#24501a'), hex('#6fa83a')], [hex('#2c5a16'), hex('#86b234')], [hex('#1f4a22'), hex('#5f9a3e')], [hex('#33601c'), hex('#94b844')]];
+  const greens: [THREE.Color, THREE.Color][] = [[hex('#2a5a1c'), hex('#79b040')], [hex('#30621a'), hex('#8cba3a')], [hex('#245226'), hex('#68a444')], [hex('#386a1e'), hex('#9cc04a')]];
   const bark0 = hex('#4a3420'), bark1 = hex('#6a4a2c');
-  // stems from the ground into the crown (three-sided: they're thin and mostly hidden)
   for (let i = 0; i < 4; i++) {
     const a = rnd() * Math.PI * 2, lean = 0.25 + rnd() * 0.2;
     if (!far) addTrunk(b, { H: cy + 0.1, r0: 0.035, r1: 0.015, lean, leanAng: a, rings: 2, radial: 3, c0: bark0, c1: bark1, bulge: 0, swayAmp: 0.2, band: 0.3 });
   }
-  // the dark heart of the bush, so you never see through it (the clusters cover it, so it can be coarse)
-  addBlob(b, new THREE.Vector3(0, cy, 0), Math.min(W, Hc) * 0.85, hex('#16300f'), hex('#2c5a16'), { lump: 0.2, upBias: 0.2, sway: 0.35, flutter: 0.2, squash: Hc / W, seed, coarse: true });
-  // leaf clusters over the crown, more on top and the sunny side
-  const clusters: { c: THREE.Vector3; r: number; sway: number }[] = [];
-  const N = 16 + Math.floor(rnd() * 6);
+  // the dark heart of the bush, so you never see through the gaps between the cards
+  addBlob(b, new THREE.Vector3(0, cy, 0), Math.min(W, Hc) * 0.78, hex('#14300e'), hex('#25501a'), { lump: 0.2, upBias: 0.2, sway: 0.35, flutter: 0.2, squash: Hc / W, seed, coarse: true });
+  const centre = new THREE.Vector3(0, cy, 0);
+  // a leaf card: two crossed quads at c, facing out from the crown (normals point out from it, so the crown shades as a whole)
+  const card = (c: THREE.Vector3, size: number, g: [THREE.Color, THREE.Color], sway: number) => {
+    const out = c.clone().sub(centre); out.y *= W / Hc; out.normalize();
+    const n = out.clone().lerp(new THREE.Vector3(0, 1, 0), 0.25).normalize();
+    const tilt = new THREE.Vector3(0, 1, 0).addScaledVector(out, 0.6).normalize();
+    for (let k = 0; k < 2; k++) {
+      const ang = rnd() * Math.PI + k * Math.PI / 2;
+      const side = new THREE.Vector3().crossVectors(out, tilt).normalize().applyAxisAngle(out, ang);
+      const up = new THREE.Vector3().crossVectors(side, out).normalize();
+      const hs = side.multiplyScalar(size / 2), hu = up.multiplyScalar(size / 2);
+      const base = c.clone().addScaledVector(out, -size * 0.15);
+      const dark = g[0].clone().lerp(g[1], 0.25 + rnd() * 0.2), light = g[1].clone().lerp(g[0], rnd() * 0.25);
+      const v = (sx: number, sy: number, col: THREE.Color, u: number, vv: number): Vtx =>
+        ({ p: base.clone().addScaledVector(hs, sx).addScaledVector(hu, sy), n, c: col, s: sway, f: 0.55 + 0.4 * (sy * 0.5 + 0.5), uv: [u, vv] });
+      // (the sprite's stem is at the bottom middle of its square: v = 0)
+      b.quad(v(-1, -1, dark, 0, 0), v(1, -1, dark, 0.94, 0), v(1, 1, light, 0.94, 0.94), v(-1, 1, light, 0, 0.94));
+    }
+  };
+  const N = far ? 12 : 26 + Math.floor(rnd() * 6);
   for (let i = 0; i < N; i++) {
-    const u = rnd() * 2 - 0.6, th = rnd() * Math.PI * 2, rr = Math.sqrt(1 - Math.min(1, u * u));
-    const c = new THREE.Vector3(Math.cos(th) * rr * W * 0.82, cy + u * Hc * 0.85, Math.sin(th) * rr * W * 0.82);
-    const r = 0.2 + rnd() * 0.14, g = greens[Math.floor(rnd() * greens.length)];
+    const u = rnd() * 1.8 - 0.65, th = rnd() * Math.PI * 2, rr = Math.sqrt(1 - Math.min(1, u * u));
+    const c = new THREE.Vector3(Math.cos(th) * rr * W * 0.8, cy + u * Hc * 0.9, Math.sin(th) * rr * W * 0.8);
     const sway = 0.35 + 0.25 * (u + 0.6);
-    if (!far || i % 2 === 0) addBlob(b, c, far ? r * 1.3 : r, g[0], g[1], { lump: 0.38, upBias: 0.55, sway, flutter: 0.55, squash: 0.8, seed: seed * 7 + i, coarse: true });
-    clusters.push({ c, r, sway });
+    card(c, (far ? 0.75 : 0.5) + rnd() * 0.18, greens[Math.floor(rnd() * greens.length)], sway);
   }
-  // sprigs sticking out of the edge
-  for (let i = 0; i < 9; i++) {
-    const th = rnd() * Math.PI * 2, y = cy + (rnd() - 0.3) * Hc;
-    const c = new THREE.Vector3(Math.cos(th) * W * 1.02, y, Math.sin(th) * W * 1.02), g = greens[Math.floor(rnd() * greens.length)];
-    if (!far && i < 6) addBlob(b, c, 0.13 + rnd() * 0.06, g[0], g[1], { lump: 0.45, upBias: 0.5, sway: 0.6, flutter: 0.8, squash: 0.55, seed: seed * 13 + i, coarse: true });
-  }
-  // berries / flowers sit ON the leaf clusters: a point on a cluster's outward, upper half, a little sunk into it
-  const onSurface = (k: number) => {
-    const cl = clusters[k], out = new THREE.Vector3(cl.c.x, (cl.c.y - cy) * 0.6, cl.c.z).normalize();
-    const d = new THREE.Vector3(out.x + (rnd() - 0.5) * 0.9, Math.abs(out.y) + 0.25 + rnd() * 0.5, out.z + (rnd() - 0.5) * 0.9).normalize();
-    return { p: cl.c.clone().addScaledVector(d, cl.r * 0.92), sway: cl.sway };
+  // berries / flowers on the outside of the crown, in the upper two thirds, where you see them
+  const onSurface = () => {
+    const th = rnd() * Math.PI * 2, u = rnd() * 0.9 - 0.15, rr = Math.sqrt(1 - u * u);
+    const p = new THREE.Vector3(Math.cos(th) * rr * W * 0.98, cy + u * Hc * 0.98, Math.sin(th) * rr * W * 0.98);
+    return { p, sway: 0.35 + 0.25 * (u + 0.6) };
   };
   if (mode === 'berry') {
-    const reds = [hex('#e0302e'), hex('#ee4a30'), hex('#cf2230')];
-    for (let i = 0; i < 9; i++) {
-      // bunches of two or three
-      const s = onSurface(Math.floor(rnd() * clusters.length));
-      for (let j = 0; j < 2 + Math.floor(rnd() * 2); j++) {
-        const c = reds[(i + j) % 3], o = new THREE.Vector3((rnd() - 0.5) * 0.09, (rnd() - 0.5) * 0.05, (rnd() - 0.5) * 0.09);
-        if (!far || j === 0) addBlob(b, s.p.clone().add(o), far ? 0.06 : 0.048, c, c, { lump: 0, upBias: 0.2, sway: s.sway, flutter: 0.55, coarse: true });
+    const reds = [hex('#e8202a'), hex('#ff3a2e'), hex('#d0102a')];
+    for (let i = 0; i < (far ? 8 : 15); i++) {
+      // bunches of two to four, glossy (a bright side and a deep side)
+      const s = onSurface();
+      for (let j = 0; j < 2 + Math.floor(rnd() * 3); j++) {
+        const c = reds[(i + j) % 3], o = new THREE.Vector3((rnd() - 0.5) * 0.11, (rnd() - 0.5) * 0.07, (rnd() - 0.5) * 0.11);
+        if (!far || j === 0) addBlob(b, s.p.clone().add(o), far ? 0.085 : 0.06, c.clone().multiplyScalar(0.55), c.clone().lerp(hex('#ffd0c8'), 0.3), { lump: 0, upBias: 0.7, sway: s.sway, flutter: 0.55, coarse: true });
       }
     }
   } else if (mode === 'plain' && rnd() < 0.55) {
     const fc = [hex('#ff5a6e'), hex('#ffd84a'), hex('#ff8a3c'), hex('#f06be0')][Math.floor(rnd() * 4)];
-    for (let i = 0; i < 6; i++) {
-      const s = onSurface(Math.floor(rnd() * clusters.length));
-      if (!far || i % 2 === 0) addBlob(b, s.p, 0.075, fc, fc.clone().lerp(hex('#ffffff'), 0.3), { lump: 0.1, upBias: 0.3, sway: s.sway, flutter: 0.55, squash: 0.6, coarse: true });
+    for (let i = 0; i < 8; i++) {
+      const s = onSurface();
+      if (!far || i % 2 === 0) addBlob(b, s.p, 0.08, fc, fc.clone().lerp(hex('#ffffff'), 0.3), { lump: 0.1, upBias: 0.3, sway: s.sway, flutter: 0.55, squash: 0.6, coarse: true });
     }
   }
   return b.build();
