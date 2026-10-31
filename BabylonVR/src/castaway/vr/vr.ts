@@ -11,6 +11,7 @@ import {
 import type { Input } from "../core/input";
 import type { Game } from "../game/game";
 import { ITEMS, type ItemId } from "../game/items";
+import { VRHand } from "../game/hands";
 import * as THREE from "three";
 import { heldModel, ITEM_COLOR } from "../game/viewmodel";
 import { bakeGroup, disposeBaked } from "../render/bake";
@@ -40,6 +41,8 @@ interface Hand {
     mvel: THREE.Vector3; mprev: THREE.Vector3 | null;
     /** Banana or Salmon: holding something; left trigger last frame */
     cheld: boolean; ctrig: boolean;
+    /** your hand on it (null as a gorilla or a cat) */
+    hand?: VRHand | null;
     /** cat house: holding the mouse; claws dug in, and where the paw was last frame (play-space) */
     mouse: boolean; cgrip: boolean; cprev: Vector3 | null;
 }
@@ -133,16 +136,8 @@ export class CastawayVR {
             const h: Hand = { src, side, prev: null, speed: 0, trig: false, sq: false, a: false, b: false, x: false, y: false, stick: false, rig, mvel: new THREE.Vector3(), mprev: null, cheld: false, ctrig: false, mouse: false, cgrip: false, cprev: null };
             this.hands.set(side, h);
             this.dressHand(h);
-            if (side === "left") src.onMotionControllerInitObservable.add(() => this.panel.attach(src));
-            // the controller models face backwards in a right-handed scene (Babylon only turns them round in a left-handed
-            // one): turn them to point the way your hand does
-            src.onMotionControllerInitObservable.add((mc) => {
-                mc.onModelLoadedObservable.addOnce(() => {
-                    const r = mc.rootMesh;
-                    if (!r) return;
-                    r.rotationQuaternion = (r.rotationQuaternion ?? Quaternion.Identity()).multiply(Quaternion.RotationAxis(Vector3.Up(), Math.PI));
-                });
-            });
+            // (the wrist menu goes on the left hand straight away: no controller model is loaded to wait for)
+            if (side === "left") this.panel.attach(src);
         });
         xr.input.onControllerRemovedObservable.add((src) => {
             for (const [k, h] of this.hands) if (h.src === src) { this.handHolder.remove(h.rig); this.hands.delete(k); }
@@ -199,6 +194,9 @@ export class CastawayVR {
         h.rig.clear();
         if (this.gorOn) { const g = buildGorillaHand(h.side === "left"); g.scale.setScalar(1.5); h.rig.add(g); }
         if (this.catOn && this.catCoat) { const p = buildPaw(this.catCoat, false); p.scale.setScalar(PAW_SCALE); if (h.side === "left") p.scale.x *= -1; h.rig.add(p); }
+        // your own hand (not the controller): the controller models are not loaded at all
+        h.hand = null;
+        if (!this.gorOn && !this.catOn) { h.hand = new VRHand(h.side === "left"); h.rig.add(h.hand.group); }
         h.cgrip = false; h.cprev = null;
         this.heldId = "__redress" as ItemId;      // the item in the hand is hidden for a gorilla or a cat: rebuild it
     }
@@ -297,11 +295,14 @@ export class CastawayVR {
         // in deep water the left trigger takes you down (B brings you up); look where you want to swim
         input.diveVR = !game.under.camp?.active && !this.catOn && lTrig;
 
-        // right stick: snap turn (x) and hotbar (y)
-        this.snapTurn(R);
+        // right stick: snap turn (x) and hotbar (y); with the board up it scrolls the crafting list instead
         const ry = axis(R, 3) || axis(R, 1);
-        if (Math.abs(ry) < 0.35) this.slotArmed = true;
-        else if (this.slotArmed && Math.abs(ry) > 0.75) { this.slotArmed = false; input.hotbarDelta += ry > 0 ? 1 : -1; }
+        if (this.panel.pointerBusy) { if (Math.abs(ry) > 0.15) this.panel.scroll(ry, dt); this.slotArmed = false; }
+        else {
+            this.snapTurn(R);
+            if (Math.abs(ry) < 0.35) this.slotArmed = true;
+            else if (this.slotArmed && Math.abs(ry) > 0.75) { this.slotArmed = false; input.hotbarDelta += ry > 0 ? 1 : -1; }
+        }
 
         // buttons
         const camp = game.under.camp?.active ? game.under.camp : null;
@@ -319,8 +320,9 @@ export class CastawayVR {
             R.stick = rs;
             if (used && !(R.a || R.sq)) input.interactQueued = true;
             input.interactHeld = used;
-            if (b && !R.b) input.jumpQueued = true;
-            input.jumpHeld = b;
+            // B jumps; with the board up it closes it
+            if (b && !R.b) { if (this.panel.pointerBusy) this.panel.close(); else input.jumpQueued = true; }
+            input.jumpHeld = b && !this.panel.pointerBusy;
             R.trig = trig; R.sq = sq; R.a = a; R.b = b;
         }
         if (L && game.equipped?.id === "guitar") {
@@ -463,7 +465,16 @@ export class CastawayVR {
         game.vr.head = cam.position;
         game.vr.headDir = cam.getDirection(Vector3.Forward(true));
         // the hand extras follow the grips
-        for (const hd of this.hands.values()) { hd.rig.matrix.fromArray((hd.src.grip ?? hd.src.pointer).getWorldMatrix().m as unknown as number[]); hd.rig.matrixWorldNeedsUpdate = true; }
+        for (const hd of this.hands.values()) {
+            hd.rig.matrix.fromArray((hd.src.grip ?? hd.src.pointer).getWorldMatrix().m as unknown as number[]); hd.rig.matrixWorldNeedsUpdate = true;
+            // the fingers follow the trigger and the grip; a fist round a tool in the right hand
+            if (hd.hand) {
+                const mc = hd.src.motionController;
+                const tr = mc?.getComponent("xr-standard-trigger")?.value ?? 0, sq = mc?.getComponent("xr-standard-squeeze")?.value ?? 0;
+                const holding = hd.side === "right" && !!this.held;
+                hd.hand.update(holding ? 0.95 : Math.min(1, 0.3 + 0.45 * sq + 0.35 * tr));
+            }
+        }
         this.handHolder.updateMatrixWorld();
         this.handMirror.sync();
 
@@ -561,5 +572,7 @@ export class CastawayVR {
         // held like a hatchet: the handle in the fist, the head forward and up
         this.held.position.set(0, -0.02, 0.06);
         this.held.rotationQuaternion = Quaternion.RotationAxis(Vector3.Right(), -Math.PI / 2 + 0.35);
+        // a hatchet's blade leads the swing (turned about its handle: modelled with the blade out the other way)
+        if (ITEMS[id]?.tool?.model === "hatchet") this.held.rotationQuaternion = this.held.rotationQuaternion.multiply(Quaternion.RotationAxis(Vector3.Up(), Math.PI));
     }
 }

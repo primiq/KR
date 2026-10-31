@@ -741,9 +741,11 @@ export class Resources {
             }
             _fq.setFromAxisAngle(f.axis, ang).multiply(f.base);
             f.mesh.rotationQuaternion!.set(_fq.x, _fq.y, _fq.z, _fq.w);
+            // a while after it lands it fades away where it lies (at its own size: shrinking looked wrong)
             if (f.t > f.fall + 6) {
-                const s = Math.max(0, 1 - (f.t - f.fall - 6) / 0.9);
-                f.mesh.scaling.set(f.scale.x * s, f.scale.y * s, f.scale.z * s);
+                const s = Math.max(0, 1 - (f.t - f.fall - 6) / 1.5);
+                f.mesh.visibility = s;
+                if (s < 0.98) shadowCasters.delete(f.mesh);
                 if (s <= 0) {
                     shadowCasters.delete(f.mesh);
                     f.mesh.dispose();

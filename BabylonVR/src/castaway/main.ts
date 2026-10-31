@@ -526,7 +526,8 @@ async function main() {
     if (navigator.xr && (await navigator.xr.isSessionSupported("immersive-vr").catch(() => false))) {
         try {
             // (a headset draws a little under its recommended resolution: about a third fewer pixels, hardly softer)
-            xr = await scene.createDefaultXRExperienceAsync({ disableDefaultUI: true, disableTeleportation: true, optionalFeatures: true, outputCanvasOptions: { canvasOptions: { framebufferScaleFactor: headset ? 0.8 : 1 } } });
+            // (no controller models: you see your own hands, vr/vr.ts)
+            xr = await scene.createDefaultXRExperienceAsync({ disableDefaultUI: true, disableTeleportation: true, optionalFeatures: true, inputOptions: { doNotLoadControllerMeshes: true }, outputCanvasOptions: { canvasOptions: { framebufferScaleFactor: headset ? 0.8 : 1 } } });
             const { CastawayVR } = await import("./vr/vr");
             vrMode = new CastawayVR(scene, xr, game, player, input, pipeline);
             $("play-vr").classList.remove("hidden");

@@ -458,7 +458,8 @@ export class VRPanel {
         const grip = src.grip ?? src.pointer;
         this.wrist.parent = grip;
         this.wrist.position.set(0, 0.06, 0.07);
-        this.wrist.rotation.set(Math.PI / 2 - 0.6, 0, 0);
+        // (a plane's readable side is its +z here, right-handed: tilted up and back towards you, the top of the text away)
+        this.wrist.rotation.set(-(Math.PI / 2 - 0.6), 0, 0);
         this.wrist.setEnabled(true);
     }
 
@@ -485,6 +486,13 @@ export class VRPanel {
         else this.open(tab);
     }
     close() { this.game.setInventory(false); }
+
+    /** the right stick scrolls the crafting list while the board is up (`dy` -1 up .. 1 down) */
+    scroll(dy: number, dt: number) {
+        if (!this.craftPane.isVisible) return;
+        const bar = this.craftPane.verticalBar;
+        bar.value = Math.max(0, Math.min(1, bar.value + dy * dt * 0.9));
+    }
 
     /** put the board in front of the head, at chest height */
     private placeBoard() {

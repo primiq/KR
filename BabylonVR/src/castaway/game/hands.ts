@@ -964,3 +964,32 @@ export class ViewModel {
 }
 const ZERO: Pose = newPose();
 
+
+/**
+ * Your own hand in a headset: the same hand as on a screen (skin, fingers, thumb), without the arm, held round the
+ * controller: the fingers wrap its handle, the thumb on top, and close as you squeeze the trigger and the grip.
+ * `group` goes on the controller's grip (its -z runs along the handle, +x to your right).
+ */
+export class VRHand {
+  readonly group = new THREE.Group();
+  private h: HandRig;
+  constructor(left: boolean) {
+    this.h = new HandRig(left ? -1 : 1);
+    // the hand's frame: y along the fingers, z out of the palm, x to the thumb. Fingers forward along the handle, the
+    // palm against it (facing in, towards the other hand), the thumb on top; the wrist a little behind the grip
+    const hx = new THREE.Vector3(0, left ? -1 : 1, 0), hy = new THREE.Vector3(0, 0, -1), hz = new THREE.Vector3(left ? 1 : -1, 0, 0);
+    const m = new THREE.Matrix4().makeBasis(hx, hy, hz);
+    const holder = new THREE.Group();
+    holder.quaternion.setFromRotationMatrix(m);
+    holder.position.set(left ? -0.025 : 0.025, -0.01, 0.075);
+    holder.add(this.h.g);
+    this.group.add(holder);
+    this.update(0.35);
+  }
+  /** how closed the hand is: 0 open .. 1 a fist */
+  update(curl: number) {
+    const P = this.h.pose;
+    P.curl = curl; P.th = Math.min(1, curl * 1.1); P.mul = 1; P.spread = 0.15 * (1 - curl);
+    curlHand(this.h, 0);
+  }
+}

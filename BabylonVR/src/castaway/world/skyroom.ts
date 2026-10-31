@@ -257,9 +257,9 @@ export class SkyRoom {
   }
 
   private ended = false;
-  /** the song plays once, at 80% of its old volume; coming back from another door carries on where it was and never restarts a finished song */
+  /** the song plays once, at 40% of its old volume; coming back from another door carries on where it was and never restarts a finished song */
   private play(on: boolean, fresh = false) {
-    this.want = on ? 0.64 : 0;
+    this.want = on ? 0.32 : 0;
     if (!on) return;
     try {
       if (!this.audio) { this.audio = new Audio(songUrl); this.audio.loop = false; this.audio.preload = 'auto'; this.audio.onended = () => { this.ended = true; this.want = 0; }; fresh = true; }
