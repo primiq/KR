@@ -271,6 +271,14 @@ class Avatar {
     if (id) this.held.add(buildHeld(id, true));
   }
 
+  /** exactly where `s` says, now (your own body: no smoothing, which is for other players' laggy updates) */
+  snap(s: PState) {
+    this.cur.set(s.x, s.y, s.z);
+    this.yaw = s.yaw;
+    this.group.position.copy(this.cur);
+    this.group.rotation.set(0, this.yaw, 0);
+  }
+
   set(s: PState) {
     this.target = s;
     if (this.first) { this.cur.set(s.x, s.y, s.z); this.prev.copy(this.cur); this.yaw = s.yaw; this.first = false; this.lastSwing = s.swing; }
@@ -800,8 +808,11 @@ export class ThreeAvatars {
     const a = this.fpAv, back = (st.flags & F_LOUNGE) ? 0 : vr ? 0.15 : 0.2;
     a.group.visible = true;
     // (the body does not lean with your view: the head it would lean with is not drawn)
-    a.set({ ...st, x: st.x + Math.sin(st.yaw) * back, z: st.z + Math.cos(st.yaw) * back, pitch: vr ? st.pitch : 0 });
+    const want = { ...st, x: st.x + Math.sin(st.yaw) * back, z: st.z + Math.cos(st.yaw) * back, pitch: vr ? st.pitch : 0 };
+    a.set(want);
     a.update(dt);
+    // (glued to you: smoothed like another player's it trailed behind your eyes when you moved, a neck stump in view)
+    a.snap(want);
     a.firstPerson(vr);
   }
 

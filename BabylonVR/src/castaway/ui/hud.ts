@@ -153,7 +153,9 @@ export class Hud {
       if (i < this.inv.hotbar) {
         this.fillSlot(this.hotSlots[i], i);
         this.hotSlots[i].classList.toggle('sel', i === this.selected);
+        this.hotSlots[i].classList.toggle('flash', this.flashing(this.inv.slots[i]?.id));
       }
+      this.gridSlots[i].classList.toggle('flash', this.flashing(this.inv.slots[i]?.id));
       this.fillSlot(this.gridSlots[i], i);
       this.gridSlots[i].classList.toggle('sel', i === this.selected);
       this.gridSlots[i].classList.toggle('pick', !!this.pick && this.pick.c === 0 && this.pick.i === i);
@@ -283,11 +285,13 @@ export class Hud {
       const canMake = afford && (!r.bench || this.benchNear);
       const row = document.createElement('div');
       row.className = 'craft-row';
+      const fresh = this.flashing(r.out);
+      if (fresh) row.classList.add('fresh');
       const costs = r.cost.map(([id, n]) => {
         const have = costHave(this.inv, r, id);
         return `<span class="${have >= n ? 'ok' : 'lack'}">${n} ${costLabel(r, id, ITEMS[id].name)} <small>(${have})</small></span>`;
       }).join('');
-      row.innerHTML = `${def.icon}<div><div class="nm">${def.name}</div><div class="ds">${def.desc}</div><div class="cost">${costs}</div>${r.bench && !this.benchNear ? '<div class="need">Needs a workbench nearby</div>' : ''}</div><button type="button"${canMake ? '' : ' disabled'}>Craft</button>`;
+      row.innerHTML = `${def.icon}<div><div class="nm">${def.name}</div><div class="ds">${def.desc}</div><div class="cost">${costs}</div>${r.bench && !this.benchNear ? '<div class="need">Needs a workbench nearby</div>' : ''}</div><button type="button"${canMake ? '' : ' disabled'}>${fresh ? '✓ Crafted!' : 'Craft'}</button>`;
       row.querySelector('button')!.addEventListener('click', () => this.onCraft?.(r));
       list.appendChild(row);
     }
@@ -417,6 +421,15 @@ export class Hud {
   }
 
   /** "+6 Wood" that grows while you keep hitting the same thing. */
+  /** what was just crafted (its recipe row and the slots holding it glow for a moment) */
+  justCrafted: { id: ItemId; until: number } | null = null;
+  crafted(id: ItemId) {
+    this.justCrafted = { id, until: performance.now() + 1600 };
+    this.render();
+    setTimeout(() => { if (this.justCrafted && performance.now() >= this.justCrafted.until) { this.justCrafted = null; this.render(); } }, 1650);
+  }
+  private flashing(id: ItemId | undefined) { const j = this.justCrafted; return !!j && !!id && j.id === id && performance.now() < j.until; }
+
   gain(id: ItemId, n: number) {
     this.onNote?.(`+${n} ${ITEMS[id].name}`);
     const now = performance.now();

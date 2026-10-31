@@ -9,6 +9,8 @@ import {
     ImageProcessingConfiguration,
     type Material,
     Mesh,
+    MeshBuilder,
+    StandardMaterial,
     Quaternion,
     Scene,
     SSAO2RenderingPipeline,
@@ -281,6 +283,27 @@ async function main() {
     const curves = new ColorCurves();
     curves.globalSaturation = 32;
     ip.colorCurves = curves;
+    /** under the sea: the picture goes blue-green and a little less saturated (eased in and out with `uwK`) */
+    let uwK = 0;
+    // (a shell of water round the eyes: nothing past ~34 m shows, not the sky, not the far empty sea floor; the fog fades
+    //  everything nearer into the same colour, so there is no edge to see)
+    const uwShell = MeshBuilder.CreateSphere("uwShell", { diameter: 68, segments: 12, sideOrientation: Mesh.BACKSIDE }, scene);
+    const uwMat = new StandardMaterial("uwShellMat", scene);
+    uwMat.disableLighting = true; uwMat.fogEnabled = false; uwMat.backFaceCulling = false;
+    uwShell.material = uwMat; uwShell.isPickable = false; uwShell.infiniteDistance = false; uwShell.alwaysSelectAsActiveMesh = true;
+    uwShell.metadata = { keepUnderground: true };
+    uwShell.setEnabled(false);
+    const underwaterLook = (dt: number, under: boolean) => {
+        const was = uwK;
+        uwK += ((under ? 1 : 0) - uwK) * Math.min(1, dt * (under ? 6 : 3));
+        uwShell.setEnabled(uwK > 0.5);
+        if (uwShell.isEnabled()) { uwShell.position.copyFrom(scene.activeCamera!.globalPosition); uwMat.emissiveColor.copyFrom(scene.fogColor); }
+        if (Math.abs(uwK - was) < 1e-4 && (uwK < 1e-3 || uwK > 0.999)) return;
+        curves.globalHue = 192;
+        curves.globalDensity = 55 * uwK;
+        curves.globalSaturation = 32 - 30 * uwK;
+        clock.underwater = uwK;
+    };
 
     progress(0.2, "Raising the island…");
     await nextFrame();
@@ -735,6 +758,7 @@ async function main() {
             waterfall?.update(dt, player.pos.x, player.pos.z, game.under.active);
             {
                 const onIsland = !game.under.active && Math.abs(player.pos.x) < 600 && Math.abs(player.pos.z) < 600 && player.pos.y < 120;
+                underwaterLook(dt, player.underwater);
                 seabed.update(dt, player.pos.x, player.pos.z, camera.position, player.underwater, onIsland && (player.underwater || heightAt(player.pos.x, player.pos.z) < 8));
             }
             dolphins.update(dt, player.pos.x, player.pos.z, player.yaw, game.under.active);

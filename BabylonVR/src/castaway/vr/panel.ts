@@ -115,6 +115,7 @@ export class VRPanel {
         players?(): string | null;
     } | null = null;
     private craftKey = "";
+    private jcWas = false;
 
     constructor(private readonly scene: Scene, private readonly game: Game) {
         // ---- wrist
@@ -618,6 +619,9 @@ export class VRPanel {
             const t = who ?? "Playing solo: host a room from the Menu tab (or join a friend's) to chat.";
             if (this.chatPlayers.text !== t) this.chatPlayers.text = t;
         }
+        // (a craft's highlight coming on and going off redraws the board)
+        const jcNow = !!hud.justCrafted && performance.now() < hud.justCrafted.until;
+        if (jcNow !== this.jcWas) { this.jcWas = jcNow; this.dirty = true; }
         if (!open || !this.dirty) return;
         this.dirty = false;
         const ex = this.extra, other = this.menuOpen || this.gfxOpen || !!ex;
@@ -684,7 +688,8 @@ export class VRPanel {
 
     private renderCraft() {
         const g = this.game, inv = g.inv, bench = g.hud.bench;
-        const key = `${bench}|${inv.slots.map((s) => (s ? `${s.id}${s.count}` : "")).join(",")}`;
+        const jc = g.hud.justCrafted && performance.now() < g.hud.justCrafted.until ? g.hud.justCrafted.id : "";
+        const key = `${bench}|${jc}|${inv.slots.map((s) => (s ? `${s.id}${s.count}` : "")).join(",")}`;
         if (key === this.craftKey) return;
         this.craftKey = key;
         this.craftList.clearControls();
@@ -718,14 +723,17 @@ export class VRPanel {
             tb.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
             tb.textWrapping = true;
             row.addControl(tb, 0, 1);
-            const btn = Button.CreateSimpleButton(`cb${r.out}`, "Craft");
+            // (just crafted: the row glows gold for a moment)
+            const fresh = jc === r.out;
+            if (fresh) row.background = "#ffd16633";
+            const btn = Button.CreateSimpleButton(`cb${r.out}`, fresh ? "✓ Crafted!" : "Craft");
             btn.height = "90px";
             btn.width = "220px";
             btn.color = TXT;
             btn.fontSize = 36;
             btn.cornerRadius = 20;
             btn.thickness = 0;
-            btn.background = ok ? "#2d6a5a" : "#ffffff14";
+            btn.background = fresh ? "#c9a227" : ok ? "#2d6a5a" : "#ffffff14";
             btn.isEnabled = ok;
             btn.onPointerUpObservable.add(() => { g.hud.onCraft?.(r); this.craftKey = ""; this.dirty = true; });
             row.addControl(btn, 0, 2);

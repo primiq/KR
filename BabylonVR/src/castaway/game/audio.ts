@@ -291,7 +291,17 @@ export class Sfx {
     const v = Math.max(0, Math.min(1, vol));
     if (v < 0.03) return;
     switch (kind) {
-      case 'click': this.tone(2400, 0.03, 'square', 0.05 * v); setTimeout(() => this.tone(2100, 0.03, 'square', 0.04 * v), 55); break;
+      case 'click': {
+        // a crab scuttling off: a quick, uneven patter of tiny dry ticks (legs on sand and shell), soft, not a beep
+        const n = 7 + Math.floor(Math.random() * 6);
+        let t = 0;
+        for (let i = 0; i < n; i++) {
+          t += 22 + Math.random() * 38;
+          const k = 1 - i / (n + 2);
+          setTimeout(() => this.burst(0.012 + Math.random() * 0.01, 3200 + Math.random() * 2600, 2.2, (0.035 + 0.025 * Math.random()) * v * k, 'bandpass'), t);
+        }
+        break;
+      }
       case 'snort': this.burst(0.18, 700, 1.2, 0.3 * v, 'lowpass'); this.tone(120, 0.16, 'sawtooth', 0.12 * v, 0.7); break;
       case 'grunt': this.tone(95, 0.22, 'sawtooth', 0.4 * v, 0.6); this.burst(0.15, 500, 1, 0.3 * v, 'lowpass'); break;
       case 'squeal': this.tone(780, 0.4, 'sawtooth', 0.22 * v, 1.6); this.tone(540, 0.4, 'square', 0.1 * v, 1.9); break;

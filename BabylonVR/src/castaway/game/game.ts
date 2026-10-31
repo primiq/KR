@@ -579,7 +579,7 @@ export class Game {
             this.sfx.denied();
             return;
         }
-        if (craft(this.inv, r)) { this.sfx.craft(); this.hud.gain(r.out, r.count); }
+        if (craft(this.inv, r)) { this.sfx.craft(); this.hud.gain(r.out, r.count); this.hud.crafted(r.out); }
         else { this.hud.message(this.inv.canFit(r.out, r.count) < r.count ? "Inventory full" : "Missing materials"); this.sfx.denied(); }
     }
     private addFuel(n: number) {
@@ -907,6 +907,16 @@ export class Game {
                 }
             }
             if (!isTorch || ug.active) this.torchPlace = false;
+            // a right click with a torch in hand plants it where you aim, straight away (no placing mode needed)
+            if (input.altQueued) {
+                input.altQueued = false;
+                if (isTorch && !ug.active && !this.torchPlace && !stats.dead) {
+                    const aim = this.structures.updateGhost("torch", eye, dir, this.placeYaw);
+                    this.structures.hideGhost();
+                    if (aim.ok) { this.placeStructure("torch", aim); input.interactQueued = false; input.interactHeld = false; }
+                    else if (aim.reason !== "Too far away") { hud.message(aim.reason); this.sfx.denied(); input.interactQueued = false; }
+                }
+            }
             if (def?.instrument) {
                 if (input.rotateQueued) { this.guitar.chord = (this.guitar.chord + input.rotateQueued + CHORDS.length * 4) % CHORDS.length; input.rotateQueued = 0; hud.message(`Chord: ${this.guitar.chordName}`); }
                 if (!this.guitarHinted) {

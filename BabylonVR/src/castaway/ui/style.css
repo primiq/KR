@@ -358,3 +358,9 @@ body.inwarp #bottom, body.inwarp #compass, body.inwarp #prompt, body.inwarp #cro
 #menu #mp-panel { width: auto; max-width: none; margin-left: 0; margin-right: 0; }
 #menu .menu-foot .backend { display: inline; margin: 0; }
 #menu #settings .mp-opt { display: flex; justify-content: flex-start; gap: 8px; }
+
+/* something just crafted: its recipe row glows and the slots holding it pulse gold */
+@keyframes craftedGlow { 0% { box-shadow: 0 0 0 0 rgba(255,209,102,.95), inset 0 0 0 2px #ffd166; } 70% { box-shadow: 0 0 18px 6px rgba(255,209,102,.35), inset 0 0 0 2px #ffd166; } 100% { box-shadow: 0 0 0 0 rgba(255,209,102,0), inset 0 0 0 2px rgba(255,209,102,0); } }
+.slot.flash { animation: craftedGlow .8s ease-out 2; background: rgba(255,209,102,.22) !important; }
+.craft-row.fresh { animation: craftedGlow .8s ease-out 2; background: rgba(255,209,102,.16); border-radius: 12px; }
+.craft-row.fresh button { background: #ffd166 !important; }

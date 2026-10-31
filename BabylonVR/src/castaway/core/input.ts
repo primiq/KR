@@ -26,6 +26,8 @@ export class Input {
   interactHeld = false;
   hotbarSelect: number | null = null;
   hotbarDelta = 0;
+  /** a right click (mouse): with a torch in hand it plants the torch where you aim */
+  altQueued = false;
   modeQueued = false; // toggle the held item's alternate mode (a torch: carry <-> place it)
   rotateQueued = 0;   // number of rotate steps pending (R)
   cycleDelta = 0;     // building piece cycling (Q / shift+Q)
@@ -82,7 +84,7 @@ export class Input {
       document.addEventListener('mousedown', (e) => {
         if (!this.locked || this.uiOpen) return;
         if (e.button === 0) { this.attackQueued = true; this.attackHeld = true; }
-        if (e.button === 2) { this.interactQueued = true; this.interactHeld = true; }
+        if (e.button === 2) { this.interactQueued = true; this.interactHeld = true; this.altQueued = true; }
       });
       document.addEventListener('mouseup', (e) => {
         if (e.button === 0) this.attackHeld = false;
@@ -200,7 +202,7 @@ export class Input {
     if (this.uiOpen) {
       this.move.x = 0; this.move.y = 0; this.sprint = false; this.sprintToggle = false;
       this.jumpQueued = this.jumpHeld = this.attackQueued = this.attackHeld = this.interactQueued = this.interactHeld = false;
-      this.lookDX = this.lookDY = 0; this.rotateQueued = 0; this.cycleDelta = 0; this.modeQueued = false;
+      this.lookDX = this.lookDY = 0; this.rotateQueued = 0; this.cycleDelta = 0; this.modeQueued = false; this.altQueued = false;
       return;
     }
     if (!this.touch) {

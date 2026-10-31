@@ -42,6 +42,8 @@ export class Atmosphere {
     /** the clouds, the night sky with its stars and the Milky Way, and the moon */
     readonly deco: SkyDeco;
     private low = 0;
+    /** 0..1 how far the eyes are under the sea (eased; set by main) */
+    underwater = 0;
     /**
      * A headset: two lights fewer for every lit pixel. The moon's light is the sun light turned round at night, the lightning
      * is the sky fill light flaring; and the sky lighting is re-captured less often (a stall each time on a headset).
@@ -267,6 +269,14 @@ export class Atmosphere {
             if (this.scene.fogMode !== Scene.FOGMODE_EXP2) this.scene.fogMode = Scene.FOGMODE_EXP2;
             this.scene.fogDensity = 0.0008 + 0.0017 * ov;
             this.scene.fogColor = Color3.Lerp(this.hzAway, this.hzSun, 0.35);
+            // under the sea: thick blue-green water that swallows everything past 20-odd metres (the open sea's empty
+            // depths with it), lit from above by the day
+            if (this.underwater > 0.001) {
+                const k = this.underwater, lit = 0.12 + 0.88 * day;
+                const water = new Color3(0.02 + 0.03 * lit, 0.13 + 0.17 * lit, 0.17 + 0.2 * lit);
+                this.scene.fogDensity += (0.062 - this.scene.fogDensity) * k;
+                this.scene.fogColor = Color3.Lerp(this.scene.fogColor, water, k);
+            }
         }
         if (Math.abs(ov - this.lastOvercast) > 0.15) { this.lastOvercast = ov; force = true; }
         // re-capture the sky lighting every ~20 game minutes (or straight away when time jumps)
