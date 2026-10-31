@@ -209,6 +209,10 @@ async function main() {
     $("menu").classList.remove("hidden");
     /** which start button was pressed (its action runs once the island is built) */
     let startWith = params.has("go") || params.has("auto") ? "auto" : "";
+    // a start button pressed before the game's code had arrived (index.html remembers it)
+    const w = window as unknown as { __castawayStart?: string; __castawayReady?: boolean };
+    w.__castawayReady = true;
+    if (!startWith && w.__castawayStart) startWith = w.__castawayStart;
     if (!startWith) {
         await new Promise<void>((res) => {
             const ids = ["continue", "play", "play-vr", "mp-host", "mp-join"];

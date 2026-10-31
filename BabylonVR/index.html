@@ -233,6 +233,32 @@
     </div>
   </div>
 
+  <script>
+    // The menu shows before the game's code (about 10 MB: the engine, the sounds) has arrived. A saved island's Continue
+    // button is shown straight away from here, and a press on it (or on New game with no save) is remembered and carried
+    // out as soon as the game is running.
+    (function () {
+      var raw = null;
+      try { raw = localStorage.getItem("castaway.bjs.world"); } catch (e) {}
+      var m = raw && /"savedAt":(\d+)/.exec(raw), v = raw && /^\{"v":1[,}]/.test(raw);
+      var cb = document.getElementById("continue"), pb = document.getElementById("play");
+      if (raw && v) {
+        cb.classList.remove("hidden");
+        cb.textContent = m ? "Continue · " + new Date(+m[1]).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "Continue";
+        pb.textContent = "New island";
+      }
+      var early = function (e) {
+        if (window.__castawayReady) return;
+        var id = e.currentTarget.id;
+        if (id === "play" && raw && v) return;   // erasing a save needs the game's own confirmation
+        e.stopImmediatePropagation(); e.preventDefault();
+        window.__castawayStart = id;
+        e.currentTarget.textContent = "Loading…";
+      };
+      cb.addEventListener("click", early, true);
+      pb.addEventListener("click", early, true);
+    })();
+  </script>
   <script type="module" src="./src/castaway/main.ts"></script>
 </body>
 </html>
