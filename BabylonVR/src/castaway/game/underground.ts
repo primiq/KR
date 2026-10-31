@@ -3,6 +3,9 @@
 // Babylon port: Castaway's logic. The cave and the surface marks are three.js scene graphs drawn by render/mirror.ts;
 // switching between the island and the underworld is the host's `present` hook. The sky room and the places behind
 // its doors are not ported yet, so their targets are left out for now.
+import type { Desert } from "../world/desert";
+import { DESERT_SPAWN } from "../world/desert";
+import { desertHeight } from "../world/desertField";
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { CaveWorld, CAVE_Y, type Ore, type Chest } from '../world/cave';
@@ -62,6 +65,8 @@ export type UgTarget =
   | { kind: 'camp'; t: CampTarget; dist: number }
   | { kind: 'hide'; t: HideTarget; dist: number }
   | { kind: 'trialdoor'; dist: number }
+  | { kind: 'desertdoor'; dist: number }
+  | { kind: 'desertexit'; dist: number }
   | { kind: 'trial'; t: TrialTarget; dist: number };
 
 const DIG_HITS = 6;
@@ -93,6 +98,8 @@ export class Underground {
   /** the Locations room was entered (the narrator says hello) */
   onLocs: (() => void) | null = null;
   trial: TileTrial | null = null;
+  /** The Desert (the sand door): an open level far off, no room of its own (set by main) */
+  desert: Desert | null = null;
   /** cat house entered / left (main swaps the body, the paws and the multiplayer flag) */
   onCat: ((on: boolean) => void) | null = null;
   private surf = new THREE.Group();
@@ -249,6 +256,10 @@ export class Underground {
     if (ht2 != null && (!best || ht2 < (best as UgTarget).dist)) best = { kind: 'hidedoor', dist: ht2 };
     const tt2 = this.sky?.pickTrial(eye, dir, Math.max(reach, 3.2), assist);
     if (tt2 != null && (!best || tt2 < (best as UgTarget).dist)) best = { kind: 'trialdoor', dist: tt2 };
+    const ds = this.sky?.pickDesert(eye, dir, Math.max(reach, 3.2), assist);
+    if (ds != null && (!best || ds < (best as UgTarget).dist)) best = { kind: 'desertdoor', dist: ds };
+    const dx2 = this.desert?.pickArch(eye, dir, Math.max(reach, 3.2));
+    if (dx2 != null && (!best || dx2 < (best as UgTarget).dist)) best = { kind: 'desertexit', dist: dx2 };
     const cd3 = this.sky?.pickCamp(eye, dir, Math.max(reach, 3.2), assist);
     if (cd3 != null && (!best || cd3 < (best as UgTarget).dist)) best = { kind: 'campdoor', dist: cd3 };
     const ld = this.sky?.pickLoc(eye, dir, Math.max(reach, 3.2), assist);
@@ -291,6 +302,8 @@ export class Underground {
       case 'camp': return this.camp!.prompt(t.t);
       case 'hidedoor': return { name: 'Green door', hint: '<b>E</b> open · hide & seek island', ok: true };
       case 'hide': return this.hide!.prompt(t.t);
+      case 'desertdoor': return { name: 'The Desert', hint: '<b>E</b> open · an oasis in the dunes', ok: true };
+      case 'desertexit': return { name: 'Shimmering arch', hint: '<b>E</b> back to the secret room', ok: true };
       case 'trialdoor': return { name: 'Copper door', hint: '<b>E</b> open · the Chamber of Tiles', ok: true };
       case 'trial': return this.trial!.prompt(t.t);
       case 'catdoor': return { name: 'Door with a paw print', hint: '<b>E</b> open · become a cat', ok: true };
@@ -324,6 +337,8 @@ export class Underground {
       case 'campdoor': if (this.sky && this.camp) { this.sky.depart(); this.camp.enter(); this.h.sfx.creak(); } break;
       case 'camp': { if (this.camp?.interact(t.t) === 'exit' && this.sky) { this.camp.leave(); this.sky.enter(this.h.player, 'camp'); this.h.message('Back in the secret room.'); this.h.sfx.creak(); } break; }
       case 'hidedoor': if (this.sky && this.hide) { this.sky.depart(); this.hide.enter(this.h.player); this.h.sfx.creak(); } break;
+      case 'desertdoor': if (this.sky) { this.sky.leave(this.h.player, { x: DESERT_SPAWN.x, y: desertHeight(DESERT_SPAWN.x, DESERT_SPAWN.z), z: DESERT_SPAWN.z, yaw: DESERT_SPAWN.yaw }); this.h.message('The door opens onto hot sand... an oasis among the dunes.'); this.h.sfx.creak(); } break;
+      case 'desertexit': if (this.sky) { this.sky.enter(this.h.player, 'desert'); this.h.message('Back in the secret room.'); this.h.sfx.creak(); } break;
       case 'trialdoor': if (this.sky && this.trial) { this.sky.depart(); this.trial.enter(this.h.player); this.h.sfx.creak(); } break;
       case 'trial': { if (this.trial?.interact(t.t) === 'exit' && this.sky) { this.trial.leave(this.h.player); this.sky.enter(this.h.player, 'trial'); this.h.message('Back in the secret room.'); this.h.sfx.creak(); } break; }
       case 'hide': { if (this.hide?.interact(t.t, this.h.player) === 'exit' && this.sky) { this.hide.leave(this.h.player); this.sky.enter(this.h.player, 'hide'); this.h.message('Back in the secret room.'); this.h.sfx.creak(); } break; }

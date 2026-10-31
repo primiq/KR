@@ -2,6 +2,7 @@ import { Vector3 } from "@babylonjs/core";
 import { clamp, smoothstep } from "../core/noise";
 import type { Input } from "../core/input";
 import { heightAt, WORLD_RADIUS } from "./island";
+import { DESERT_LIMIT, DESERT_X, DESERT_Z, inDesert } from "./desertField";
 import type { ColliderGrid } from "./vegetation";
 
 export type Mode = "walk" | "swim" | "fly";
@@ -207,8 +208,9 @@ export class Player {
         this.groundGrace = this.onGround ? 0.12 : Math.max(0, this.groundGrace - dt);
 
         const ground = this.gnd(this.pos.x, this.pos.z);
-        this.waterDepth = this.cave ? 0 : -ground;
         const surface = this.surfaceAt(this.pos.x, this.pos.z);
+        // (the sea is at 0; in the desert the only water is the oasis pond, higher up)
+        this.waterDepth = this.cave ? 0 : inDesert(this.pos.x, this.pos.z) ? surface - ground : -ground;
         const look = this.look;
 
         if (this.mode === "fly") {
@@ -335,8 +337,14 @@ export class Player {
                 nz = this.tmp.z;
             }
             // soft world boundary (somebody who swam further out may come back in, never further out)
-            const r = Math.hypot(nx, nz), lim = Math.max(WORLD_RADIUS, Math.hypot(this.pos.x, this.pos.z));
-            if (!this.cave && r > lim) { nx *= lim / r; nz *= lim / r; }
+            if (inDesert(nx, nz)) {
+                // the desert has an edge of its own: a long way out from the oasis
+                const dx = nx - DESERT_X, dz = nz - DESERT_Z, rd = Math.hypot(dx, dz);
+                if (!this.cave && rd > DESERT_LIMIT) { nx = DESERT_X + dx * DESERT_LIMIT / rd; nz = DESERT_Z + dz * DESERT_LIMIT / rd; }
+            } else {
+                const r = Math.hypot(nx, nz), lim = Math.max(WORLD_RADIUS, Math.hypot(this.pos.x, this.pos.z));
+                if (!this.cave && r > lim) { nx *= lim / r; nz *= lim / r; }
+            }
             this.pos.x = nx;
             this.pos.z = nz;
             this.pos.y += this.vel.y * dt;

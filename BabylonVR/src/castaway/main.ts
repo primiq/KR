@@ -76,6 +76,8 @@ import { shadowCasters } from "./render/inst";
 import { CLASSIC, cutBounds, findSpawn, heightAt, SPAWN_THETA, TERRAIN_SIZE } from "./world/island";
 import { Waterfall } from "./world/waterfall";
 import { Seabed } from "./world/seabed";
+import { Desert } from "./world/desert";
+import { inDesert } from "./world/desertField";
 import { Player } from "./world/player";
 import { Terrain } from "./world/terrain";
 import { Atmosphere } from "./world/atmosphere";
@@ -333,8 +335,10 @@ async function main() {
 
     progress(0.8, "Waking the wind…");
     await nextFrame();
+    let desertSurface: ((x: number, z: number) => number | null) | null = null;
     const player = new Player(spawn.x, spawn.z, spawn.yaw, vegetation.colliders);
-    player.surfaceAt = (x, z) => ocean.surfaceAt(x, z);
+    // (in the desert, the oasis pond is the only water)
+    player.surfaceAt = (x, z) => (inDesert(x, z) ? (desertSurface?.(x, z) ?? -1e3) : ocean.surfaceAt(x, z));
     ocean.bindPlayer(player);
 
     const camera = new UniversalCamera("cam", player.eye.clone(), scene);
@@ -505,6 +509,10 @@ async function main() {
     };
     const trial = new TileTrial(game.natureRoot as unknown as THREE.Scene);
     game.under.trial = trial;
+    // The Desert (the sand door in the secret room): dunes that keep your footprints round an oasis, far off at z ~ 20 km
+    desertSurface = (x, z) => desert.surface(x, z);
+    const desert = new Desert(scene, headset || q.name === "low", vegetation.colliders, () => sun.direction);
+    game.under.desert = desert;
     trial.say = (t) => game.hud.message(t);
     trial.myId = () => sync?.session.myId ?? 0;
     trial.myName = () => sync?.session.name || "You";
@@ -719,6 +727,16 @@ async function main() {
             const sy = sync;
             if (sy) dive.updateRemote(sy.avatars.positions.map((a) => { const st = sy.session.states.get(a.id); return { id: a.id, x: a.x, y: a.y, z: a.z, yaw: st?.yaw ?? 0, flags: st?.flags ?? 0 }; }));
             sky.update(dt, player, (x, z) => heightAt(x, z));
+            {
+                // the desert: shown while you are in it (no sea, no island grass there; its own pond to swim in, its own haze)
+                const was = desert.active, walkers: { id: number | string; x: number; y: number; z: number; run: boolean }[] = [];
+                if (!player.cave) walkers.push({ id: "me", x: player.pos.x, y: player.pos.y, z: player.pos.z, run: player.sprinting });
+                if (sync) for (const a of sync.avatars.positions) { const st = sync.session.states.get(a.id); walkers.push({ id: a.id, x: a.x, y: a.y, z: a.z, run: !!st && (st.flags & 1) !== 0 }); }
+                desert.update(dt, player.pos, walkers, camera.globalPosition);
+                if (desert.active !== was) { ocean.mesh.setEnabled(!desert.active); vegetation.setGrassDetail(desert.active ? 3 : 0); }
+                clock.desert += ((desert.active ? 1 : 0) - clock.desert) * Math.min(1, dt * 2);
+                if (!desert.active && clock.desert < 1e-3) clock.desert = 0;
+            }
             bigWave.update(dt, game.boats.wave, clock.day, clock.flash);
             // you, as everybody else sees you: a private copy only mirrors draw (the secret room's mirror, the sea), and a
             // head-less one the camera draws, so you see your body and legs when you look down (in a headset, your arms too)
@@ -1190,7 +1208,7 @@ async function main() {
     // a hidden tab stops rendering: keep the room in step anyway (a host who alt-tabs must not freeze everyone else)
     setInterval(() => { if (document.hidden) sync?.update(0.1); }, 100);
 
-    Object.assign(window as unknown as Record<string, unknown>, { Wind, scene, engine, game, player, sites, caves, heightAt, weather, cats, sky, dive, air, cat, vegetation, terrain, ocean, input, clock, camera, getSync: () => sync, doSave, camp, narrator, mozzie, locs, towns, waterfall, seabed });
+    Object.assign(window as unknown as Record<string, unknown>, { Wind, scene, engine, game, player, sites, caves, heightAt, weather, cats, sky, dive, air, cat, vegetation, terrain, ocean, input, clock, camera, getSync: () => sync, doSave, camp, narrator, mozzie, locs, towns, waterfall, seabed, desert });
 }
 
 main().catch((e) => {

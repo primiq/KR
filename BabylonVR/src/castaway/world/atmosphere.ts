@@ -144,6 +144,9 @@ export class Atmosphere {
 
     addHours(h: number) { this.hour = (this.hour + h + 24) % 24; this.apply(true); }
 
+    /** 0..1: how much the desert's haze replaces the sea's (main sets it while you are in the desert) */
+    desert = 0;
+
     update(dt: number) {
         const night = this.hour >= 19.5 || this.hour < 5.5;
         this.hour = (this.hour + (dt * 24 * (night ? 1.7 : 0.93)) / this.dayLength) % 24;
@@ -261,13 +264,19 @@ export class Atmosphere {
             const toSun = Color3.Lerp(Color3.Lerp(new Color3(0.86, 0.88, 0.9), new Color3(0.07, 0.09, 0.17), hzNight), new Color3(0.95, 0.52, 0.28).scale(0.35 + 0.65 * glow), dg);
             // (dimmed with the daylight: the night's exposure lift would otherwise make the band glow over a dark sky)
             const dim = 0.45 + 0.55 * day;
+            // (in the desert: a warm dusty haze by day, the dunes melting into it a kilometre off)
+            if (this.desert > 0) {
+                const k = this.desert * (1 - hzNight);
+                away.copyFrom(Color3.Lerp(away, new Color3(0.86, 0.74, 0.58), k * 0.75));
+                toSun.copyFrom(Color3.Lerp(toSun, new Color3(0.97, 0.84, 0.64), k * 0.75));
+            }
             this.hzAway = Color3.Lerp(away, grey, ov).scale(dim);
             this.hzSun = Color3.Lerp(toSun, grey, ov).scale(dim);
             this.deco.setHorizon(this.hzAway, this.hzSun, this.sunDir);
             if (this.ocean) this.ocean.horizon = { away: this.hzAway, toSun: this.hzSun, sunX: this.sunDir.x, sunZ: this.sunDir.z };
             // the fog is never switched off (that would rebuild every lit shader: a freeze, just as a storm blows up)
             if (this.scene.fogMode !== Scene.FOGMODE_EXP2) this.scene.fogMode = Scene.FOGMODE_EXP2;
-            this.scene.fogDensity = 0.0008 + 0.0017 * ov;
+            this.scene.fogDensity = 0.0008 + 0.0017 * ov + 0.0008 * this.desert;
             this.scene.fogColor = Color3.Lerp(this.hzAway, this.hzSun, 0.35);
             // under the sea: thick blue-green water that swallows everything past 20-odd metres (the open sea's empty
             // depths with it), lit from above by the day

@@ -12,6 +12,8 @@ interface V3 { x: number; y: number; z: number }
 
 export const SKY_Y = 300;
 const SONG_Z = -4 + 0.75;
+/** the Desert door: east wall, beside the mirror */
+const DUNE_Z = 2.9;
 const HALF = 4, H = 3.6, EDGE = 0.32, CAT_X = -3.1, HIDE_X = 2.6, TRIAL_X = -2.6, CLOUD_X = 3.1, CAMP_Z = -2.5, LOC_Z = 2.5;
 
 export class SkyRoom {
@@ -157,6 +159,18 @@ export class SkyRoom {
       this.group.add(this.cloudDoor);
       box(1.5, 0.12, 0.1, CLOUD_X, 2.38, -HALF + 0.08, trim); for (const sd of [-1, 1]) box(0.1, 2.4, 0.1, CLOUD_X + sd * 0.7, 1.2, -HALF + 0.08, trim);
     }
+    // a ninth door, east wall beside the mirror: sand-coloured, a sun and a dune painted on it - The Desert
+    {
+      const ex = HALF - 0.08;
+      box(0.06, 2.3, 1.3, ex, 1.15, DUNE_Z, basic('#d9a35f'));
+      box(0.1, 0.12, 1.5, ex, 2.38, DUNE_Z, trim); for (const s of [-1, 1]) box(0.1, 2.4, 0.1, ex, 1.2, DUNE_Z + s * 0.7, trim);
+      box(0.1, 0.1, 0.1, ex - 0.08, 1.3, DUNE_Z + 0.5, gold);
+      const sunD = new THREE.Mesh(new THREE.CircleGeometry(0.2, 20), basic('#ffd34d')); sunD.rotation.y = -Math.PI / 2; sunD.position.set(ex - 0.035, SKY_Y + 1.8, DUNE_Z + 0.2); sunD.frustumCulled = false; this.group.add(sunD);
+      const dune = new THREE.Mesh(new THREE.CircleGeometry(0.62, 24, 0, Math.PI), basic('#b5702e')); dune.rotation.y = -Math.PI / 2; dune.scale.set(1, 0.55, 1); dune.position.set(ex - 0.036, SKY_Y + 0.9, DUNE_Z - 0.05); dune.frustumCulled = false; this.group.add(dune);
+      const palm = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.5, 0.05), basic('#6b4a2a')); palm.position.set(ex - 0.04, SKY_Y + 1.4, DUNE_Z - 0.3); palm.rotation.x = 0.15; palm.frustumCulled = false; this.group.add(palm);
+      for (const a of [-1.1, -0.4, 0.4, 1.1]) { const f = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.05, 0.26), basic('#2f8f3a')); f.position.set(ex - 0.045, SKY_Y + 1.64 - Math.abs(a) * 0.04, DUNE_Z - 0.33 + Math.sin(a) * 0.12); f.rotation.x = a; f.frustumCulled = false; this.group.add(f); }
+      plate('The Desert', '#d9a35f', HALF - 0.16, DUNE_Z, -Math.PI / 2);
+    }
     {
       // the mirror: a plane in the east wall in a gold frame
       const W = 3.4, Hh = 2.3, CY = 1.55, wx = HALF - 0.06;
@@ -244,6 +258,15 @@ export class SkyRoom {
     const px = dx - dir.x * t, py = dy - dir.y * t, pz = dz - dir.z * t, r = 1.0 * assist;
     return px * px + py * py + pz * pz <= r * r ? t : null;
   }
+  /** looking at the Desert door? */
+  pickDesert(eye: V3, dir: V3, reach: number, assist = 1): number | null {
+    if (!this.active) return null;
+    const dx = HALF - eye.x, dy = SKY_Y + 1.1 - eye.y, dz = DUNE_Z - eye.z;
+    const t = dx * dir.x + dy * dir.y + dz * dir.z;
+    if (t < 0 || t > reach + 1) return null;
+    const px = dx - dir.x * t, py = dy - dir.y * t, pz = dz - dir.z * t, r = 1.0 * assist;
+    return px * px + py * py + pz * pz <= r * r ? t : null;
+  }
   /** looking at the cloud door? */
   pickCloud(eye: V3, dir: V3, reach: number, assist = 1): number | null {
     if (!this.active || this.cloudT >= 0) return null;
@@ -272,10 +295,10 @@ export class SkyRoom {
   }
   private closeCloud() { this.cloudT = -1; this.cloudDoor.rotation.y = 0; }
   /** (back) from the airstrip or the cat house: arrive in front of the door you left by */
-  enter(p: { teleport(x: number, y: number, z: number, yaw: number): void; cave: any }, from: 'hut' | 'air' | 'cat' | 'hide' | 'trial' | 'camp' | 'loc' = 'hut') {
+  enter(p: { teleport(x: number, y: number, z: number, yaw: number): void; cave: any }, from: 'hut' | 'air' | 'cat' | 'hide' | 'trial' | 'camp' | 'loc' | 'desert' = 'hut') {
     this.active = true; this.group.visible = true; this.closeCloud();
     p.cave = this;
-    if (from === 'air') p.teleport(-HALF + 1.6, SKY_Y, 0, -Math.PI / 2); else if (from === 'camp') p.teleport(-HALF + 1.6, SKY_Y, CAMP_Z, -Math.PI / 2); else if (from === 'loc') p.teleport(-HALF + 1.6, SKY_Y, LOC_Z, -Math.PI / 2); else if (from === 'cat') p.teleport(CAT_X, SKY_Y, -HALF + 1.6, Math.PI); else if (from === 'hide') p.teleport(HIDE_X, SKY_Y, HALF - 1.6, 0); else if (from === 'trial') p.teleport(TRIAL_X, SKY_Y, HALF - 1.6, 0); else p.teleport(0, SKY_Y, HALF - 1.5, 0);
+    if (from === 'desert') p.teleport(HALF - 1.6, SKY_Y, DUNE_Z, Math.PI / 2); else if (from === 'air') p.teleport(-HALF + 1.6, SKY_Y, 0, -Math.PI / 2); else if (from === 'camp') p.teleport(-HALF + 1.6, SKY_Y, CAMP_Z, -Math.PI / 2); else if (from === 'loc') p.teleport(-HALF + 1.6, SKY_Y, LOC_Z, -Math.PI / 2); else if (from === 'cat') p.teleport(CAT_X, SKY_Y, -HALF + 1.6, Math.PI); else if (from === 'hide') p.teleport(HIDE_X, SKY_Y, HALF - 1.6, 0); else if (from === 'trial') p.teleport(TRIAL_X, SKY_Y, HALF - 1.6, 0); else p.teleport(0, SKY_Y, HALF - 1.5, 0);
     void from;
   }
   /** the player goes elsewhere (the airstrip sets its own ground): just hide the room and stop the song */
