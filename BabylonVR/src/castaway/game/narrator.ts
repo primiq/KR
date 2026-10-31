@@ -22,6 +22,15 @@ export interface SayOpts {
 }
 interface Item { id: string; pri: number }
 
+/** lines that are not spoken (nor subtitled) any more: the narration is kept to the bare minimum */
+const QUIET = new Set([
+  'mozzie_hello', 'choose_welcome', 'choose_wait', 'choose_countdown', 'hub_next', 'hub_ready', 'hub_go', 'hub_leave', 'beat', 'toss',
+  'mission_go', 'medal_gold', 'medal_silver', 'medal_bronze',
+  'm1_hello', 'm1_scan', 'm1_scan_last', 'm1_coin', 'm1_outro',
+  'm2_beams_off', 'm2_ladder', 'm2_statues_done', 'm2_code_wrong', 'm2_vault', 'm2_outro',
+  'g_hmm', 'g_nothing', 'g_yawn',
+]);
+
 export class Narrator {
   /** the game's audio context (created on the first click) */
   ctx: () => AudioContext | null = () => null;
@@ -64,6 +73,8 @@ export class Narrator {
   /** queue a line (a line already playing or waiting is not queued twice) */
   say(id: string, o: SayOpts = {}) {
     if (!LINES.has(id)) { console.warn('no narration line', id); return; }
+    // (kept to what you need to know: the chatter, the running commentary and the jokes are left out)
+    if (QUIET.has(id)) return;
     const pri = o.priority ?? 0;
     if (id.includes('_hint_')) this.lastHint = id;
     if (o.interrupt) {

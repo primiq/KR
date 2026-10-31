@@ -15,6 +15,8 @@ export interface PState {
   arm?: number;
   /** VR players: head and hands, in metres relative to the feet (world axes); hands are 0 when not tracked */
   v?: VRPoseData | null;
+  /** (this client only) placed exactly on a moving boat's deck: shown there as is, not smoothed */
+  deck?: boolean;
 }
 
 /** h = [x, y, z, yaw, pitch, roll]; r / l = [x, y, z, qx, qy, qz, qw] */

@@ -78,8 +78,11 @@ export class Input {
       });
       document.addEventListener('mousemove', (e) => {
         if (!this.locked) return;
-        this.lookDX += e.movementX;
-        this.lookDY += e.movementY;
+        // (browsers now and then report one huge bogus jump while the pointer is locked, which flung the view sideways)
+        const dx = e.movementX, dy = e.movementY;
+        if (Math.abs(dx) > 250 || Math.abs(dy) > 250) return;
+        this.lookDX += dx;
+        this.lookDY += dy;
       });
       document.addEventListener('mousedown', (e) => {
         if (!this.locked || this.uiOpen) return;
@@ -102,7 +105,12 @@ export class Input {
 
   requestLock() {
     if (this.touch) { this.onLockChange(true); return; }
-    try { const r: any = this.canvas.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch { /* optional */ }
+    // raw mouse movement where the browser has it (no pointer acceleration, no jumps), else the ordinary lock
+    try {
+      const c = this.canvas as HTMLCanvasElement & { requestPointerLock(o?: { unadjustedMovement?: boolean }): Promise<void> | void };
+      const r = c.requestPointerLock({ unadjustedMovement: true });
+      if (r && (r as Promise<void>).catch) (r as Promise<void>).catch(() => { try { const r2: any = this.canvas.requestPointerLock(); if (r2 && r2.catch) r2.catch(() => {}); } catch { /* optional */ } });
+    } catch { /* optional */ }
   }
 
   private hold(id: string, down: () => void, up: () => void) {
@@ -184,8 +192,13 @@ export class Input {
       if (!this.lookTouch) return;
       for (const t of Array.from(e.changedTouches)) {
         if (t.identifier !== this.lookTouch.id) continue;
-        this.lookDX += (t.clientX - this.lookTouch.x) * 1.8;
-        this.lookDY += (t.clientY - this.lookTouch.y) * 1.8;
+        // (a thumb never drags in a straight line: the smaller part of a mostly sideways or mostly up-down drag is damped,
+        //  so turning does not tip the view up and down, nor looking up swing it sideways)
+        let dx = t.clientX - this.lookTouch.x, dy = t.clientY - this.lookTouch.y;
+        const ax = Math.abs(dx), ay = Math.abs(dy);
+        if (ax > ay * 2) dy *= 0.35; else if (ay > ax * 2) dx *= 0.35;
+        this.lookDX += dx * 1.4;
+        this.lookDY += dy * 1.4;
         this.lookTouch.x = t.clientX; this.lookTouch.y = t.clientY;
       }
       e.preventDefault();

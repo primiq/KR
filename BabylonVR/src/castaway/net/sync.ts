@@ -515,7 +515,7 @@ export class WorldSync {
         const air = g.under.air;
         if (air) for (const [pid, ps] of s.states) if (pid !== s.myId && (ps.flags & 64) && air.seatOf(pid, this.seatTmp)) { ps.x = this.seatTmp.x; ps.y = this.seatTmp.y; ps.z = this.seatTmp.z; ps.yaw = this.seatTmp.yaw; ps.pitch = 0; }
         // a player on a boat's deck rides along with it
-        for (const [pid, ps] of s.states) if (pid !== s.myId && g.boats.deckOf(pid, this.seatTmp)) { ps.x = this.seatTmp.x; ps.y = this.seatTmp.y; ps.z = this.seatTmp.z; if (!ps.v) ps.yaw = this.seatTmp.yaw; }
+        for (const [pid, ps] of s.states) { ps.deck = false; if (pid !== s.myId && g.boats.deckOf(pid, this.seatTmp)) { ps.x = this.seatTmp.x; ps.y = this.seatTmp.y; ps.z = this.seatTmp.z; ps.deck = true; if (!ps.v) ps.yaw = this.seatTmp.yaw; } }
         this.avatars.sync(s.players, s.states, s.myId, dt, p.pos);
         this.shareOpenStation(dt);
     }

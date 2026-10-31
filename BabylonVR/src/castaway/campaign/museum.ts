@@ -23,7 +23,7 @@ const UP = 4.5;                                  // rooms C, D, the vault and th
 const SYM = ['●', '▲', '■', '◆', '★', '✚'], SYM_COL = ['#ff6b4a', '#ffd23f', '#3fd6ff', '#7dff6b', '#e86bff', '#ffffff'];
 const WAYPOINTS: [number, number][] = [[-5, -15], [5, -15], [5, -21], [-1, -21], [-1, -27], [5, -27], [-5, -27], [-5, -21]];
 const GUARD_SPEED = 1.25, VIEW = 7.5, FOV = Math.cos(THREE.MathUtils.degToRad(33));
-const ALARM_T = 90, HINT_EVERY = 75;
+const ALARM_T = 90, HINT_EVERY = 180;
 const STATUES: [number, number][] = [[-3, -34], [3, -34], [-3, -40], [3, -40]];
 const KEYPAD = { x: 2.6, y: UP + 1.4, z: -43.88 };
 const GATES = [14, 24];
@@ -138,13 +138,21 @@ export class Museum implements Mission {
     const ds = sign(['THE GREAT DRUM', 'please do not bang'], 1.4, 0.4, '#2a2632', '#e8d9b0', trim); ds.position.set(7.92, UP + 1.6, -21); ds.rotation.y = -Math.PI / 2; this.group.add(ds);
     M.box(0.8, 0.8, 0.8, '#6a5a4a', -7.5, UP + 0.4, -13); sp.add(-7.9, -7.1, UP, UP + 0.8, -13.4, -12.6);
     M.box(0.8, 1.6, 0.8, '#5a4a3a', -7.5, UP + 0.8, -14.2); sp.add(-7.9, -7.1, UP, UP + 1.6, -14.6, -13.8);
-    // the air duct: along the west wall at 2.4 m, from above the steps (z -14.6) into room D (z -32)
-    const DY = UP + 2.4, DX0 = -8, DX1 = -7.2;
-    M.box(0.9, 0.1, 17.6, '#8a949d', -7.6, DY - 0.05, -23.4); M.box(0.9, 0.1, 17.6, '#8a949d', -7.6, DY + 0.55, -23.4); M.box(0.06, 0.6, 17.6, '#7a848d', DX1 + 0.03, DY + 0.25, -23.4);
-    sp.add(DX0, DX1 + 0.06, DY - 0.1, DY, -32.2, -14.6); sp.add(DX0, DX1 + 0.06, DY + 0.5, DY + 0.6, -32.2, -14.6); sp.add(DX1, DX1 + 0.06, DY, DY + 0.5, -32.2, -14.6);
-    const vs = sign(['AIR VENT'], 0.8, 0.22, '#8a949d', '#222'); vs.position.set(-7.6, DY + 0.75, -14.55); vs.rotation.y = Math.PI; this.group.add(vs);
+    // the air duct: along the west wall from just above the steps (z -14.6), open from 2.1 m up to the ceiling (roomy for a
+    // cat, a hop up from the top step; too low for a gorilla to stand in), through the wall into the D zone, where it turns
+    // east and opens high in D's west wall: the cat drops down into the antechamber
+    const DY = UP + 2.1, DX0 = -8, DX1 = -6.9, DT = UP + 4, ZE = -30.4, ZB = -32.2;
+    const duct = '#8a949d', ductD = '#7a848d';
+    M.box(DX1 - DX0, 0.1, ZE - ZB + (-14.6 - ZE), duct, (DX0 + DX1) / 2, DY - 0.05, (ZB - 14.6) / 2); sp.add(DX0, DX1, DY - 0.1, DY, ZB, -14.6);
+    M.box(0.06, DT - DY, -14.6 - ZE, ductD, DX1 + 0.03, (DY + DT) / 2, (ZE - 14.6) / 2); sp.add(DX1, DX1 + 0.06, DY, DT, ZE, -14.6);
+    // the turn into D: its floor, a roof, the back and outer walls, and the short side wall back to the dividing wall
+    M.box(-6 - DX1, 0.1, ZE - ZB, duct, (DX1 - 6) / 2, DY - 0.05, (ZB + ZE) / 2); sp.add(DX1, -6, DY - 0.1, DY, ZB, ZE);
+    M.box(2.3, 0.1, 2.0, '#2a2632', -7.15, DT + 0.05, -31.2); sp.add(-8.3, -6, DT, DT + 1, -32.3, -30);
+    wall(-8.3, -6, DY, DT, ZB - 0.1, ZB, ductD); wall(-8.3, -8, DY, DT, ZB, -30, ductD);
+    wall(DX1, -6.3, DY, DT, ZE, -30.15, ductD);
+    const vs = sign(['AIR VENT'], 0.8, 0.22, '#8a949d', '#222'); vs.position.set(-7.45, DY + 0.25, -14.55); vs.rotation.y = Math.PI; this.group.add(vs);
     // the door into D (locked: the lever is on the far side)
-    wall(-8, -1, UP, UP + 4, -30.15, -29.85, wallC2); wall(1, 8, UP, UP + 4, -30.15, -29.85, wallC2); wall(-1, 1, UP + 2.5, UP + 4, -30.15, -29.85, wallC2);
+    wall(-8, -6.9, UP, UP + 2.1, -30.15, -29.85, wallC2); wall(-6.9, -1, UP, UP + 4, -30.15, -29.85, wallC2); wall(1, 8, UP, UP + 4, -30.15, -29.85, wallC2); wall(-1, 1, UP + 2.5, UP + 4, -30.15, -29.85, wallC2);
     this.doorBox = sp.add(-1, 1, UP, UP + 2.5, -30.1, -29.9, 'door');
     this.doorM = new THREE.Group();
     const dm = new Mesher(); for (let k = -4; k <= 4; k++) dm.box(0.06, 2.5, 0.06, '#9a9aa2', k * 0.24, 1.25, 0); dm.box(2.0, 0.1, 0.08, '#9a9aa2', 0, 0.1, 0); dm.box(2.0, 0.1, 0.08, '#9a9aa2', 0, 2.4, 0);
@@ -153,7 +161,7 @@ export class Museum implements Mission {
     // ---- D: the vault antechamber (x -6..6, z -44..-30), four statues, the painting with the crawlspace, the keypad
     floor(-6, 6, -44, -30, UP); ceil(-6, 6, -44, -30, UP + 4);
     wall(6, 6.3, UP, UP + 4, -44, -38); wall(6, 6.3, UP + 2.6, UP + 4, -38, -36); wall(6, 6.3, UP, UP + 4, -36, -30);
-    wall(-6.3, -6, UP, UP + 4, -44, -37.4); wall(-6.3, -6, UP, UP + 4, -36.6, -30); wall(-6.3, -6, UP + 0.36, UP + 4, -37.4, -36.6);
+    wall(-6.3, -6, UP, UP + 4, -44, -37.4); wall(-6.3, -6, UP, UP + 4, -36.6, -32.2); wall(-6.3, -6, UP, UP + 2.1, -32.2, -30.4); wall(-6.3, -6, UP, UP + 4, -30.4, -30); wall(-6.3, -6, UP + 0.36, UP + 4, -37.4, -36.6);
     // the crawlspace behind the painting (cat height), its back wall has the code on it
     floor(-7.6, -6.3, -38, -36, UP); M.box(1.4, 0.1, 2.2, '#2a2632', -6.95, UP + 0.65, -37); sp.add(-7.7, -6.2, UP + 0.6, UP + 0.7, -38, -36);
     wall(-7.7, -7.6, UP, UP + 0.7, -38, -36, '#2a2632'); wall(-7.6, -6.3, UP, UP + 0.7, -38.1, -38, '#2a2632'); wall(-7.6, -6.3, UP, UP + 0.7, -36, -35.9, '#2a2632');

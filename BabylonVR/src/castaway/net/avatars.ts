@@ -290,7 +290,9 @@ class Avatar {
     dt = Math.min(dt, 0.1);
     this.t += dt;
     if (this.bubble && (this.bubbleT -= dt) <= 0) { this.group.remove(this.bubble); (this.bubble.material as THREE.Material).dispose(); this.bubble = null; }
-    const k = (s.flags & 64) ? 1 : 1 - Math.exp(-dt * 12);       // a driver rides the already smoothed car
+    // (a driver rides the already smoothed car; a player on a deck is placed exactly on the moving boat: smoothing them
+    //  as well left them trailing behind it, more the faster it sailed)
+    const k = (s.flags & 64) || s.deck ? 1 : 1 - Math.exp(-dt * 12);
     this.prev.copy(this.cur);
     // swimming: ride MY water. A VR swimmer's head sits just above it (their real head height says where the feet go); a
     // desktop swimmer's hips are put on it below. The height follows more gently, so the waves don't make them judder.

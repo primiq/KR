@@ -32,7 +32,7 @@ const TRAY = { x0: -6.25, x1: -5.15, z0: 6.45, z1: 7.55, y0: 0.85, y1: 1.9 };
  *  floor right in front of it. Only an E-drop snaps onto the tray; a throw or a VR hand letting go can stop just beside it. */
 const PAYABLE = { x0: -10.2, x1: -4.3, z0: 5.5, z1: 8.0, y0: -0.2, y1: 1.9 };
 const FRIDGE = { x0: -12, x1: -10.8, z0: -6, z1: -2 };
-const HINT_EVERY = 70;
+const HINT_EVERY = 180;
 
 type Prop = 'fridge' | 'tape' | 'grille' | 'stack' | 'vend';
 

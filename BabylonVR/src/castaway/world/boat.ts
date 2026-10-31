@@ -622,7 +622,7 @@ export class Boats {
   /** multiplayer: where a remote player on a deck is (their avatar rides the boat, not their own laggy position packets) */
   deckOf(id: number, out: { x: number; y: number; z: number; yaw: number }): boolean {
     const r = this.riders.get(id);
-    if (!r || this.clock - r.t > 1.5 || !this.list.includes(r.b)) return false;
+    if (!r || this.clock - r.t > 4 || !this.list.includes(r.b)) return false;
     const w = toWorld(pose(r.b), r.x, r.y, r.z, L2);
     out.x = w.x; out.y = w.y; out.z = w.z; out.yaw = r.b.yaw + r.r;
     return true;
