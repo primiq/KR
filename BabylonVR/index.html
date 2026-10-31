@@ -29,31 +29,22 @@
     <div class="menu-inner">
       <h1><span class="owner">Petr's</span>CASTAWAY</h1>
       <p class="sub">A tropical island survival game</p>
-      <button id="continue" class="hidden">Continue</button>
-      <button id="play">Play</button>
-      <button id="play-vr" class="hidden">Play in VR</button>
-      <button id="customise" class="ghost-btn">Customise character</button>
-      <button id="quit-menu" class="hidden ghost-btn">Save &amp; back to main menu</button>
-      <div class="help" id="help-desktop">
-        <b>WASD</b> move &nbsp; <b>Shift</b> sprint &nbsp; <b>Space</b> jump &nbsp; <b>Mouse</b> look<br />
-        <b>Click</b> use tool / place &nbsp; <b>E</b> use (hold: pick up) &nbsp; <b>1-6</b> hotbar &nbsp; <b>Tab</b> bag &nbsp; <b>C</b> craft<br /><b>Q</b> next piece &nbsp; <b>R</b> rotate &nbsp;<b>T</b> / <b>Y</b> time of day &nbsp; <b>M</b> map &nbsp; <b>N</b> mute &nbsp; <b>F</b> fly (debug) &nbsp; <b>Esc</b> menu
+
+      <div id="menu-main" class="menu-main">
+        <button id="continue" class="mbtn primary hidden">Continue</button>
+        <button id="play" class="mbtn">New game</button>
+        <button id="mp-open" type="button" class="mbtn">Multiplayer</button>
+        <button id="play-vr" class="mbtn vr hidden">Play in VR</button>
+        <div class="menu-small">
+          <button id="customise" type="button" class="ghost-btn">Character</button>
+          <button id="settings-open" type="button" class="ghost-btn">Settings</button>
+        </div>
+        <button id="quit-menu" class="hidden ghost-btn">Save &amp; back to main menu</button>
       </div>
-      <div class="help" id="help-touch">Left stick: move &nbsp; Drag right side: look<br />HIT swings your tool or eats &nbsp; USE picks up and drinks</div>
-      <div class="row">
-        <label>Quality
-          <select id="quality">
-            <option value="auto">Auto</option>
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-          </select>
-        </label>
-        <label class="mp-opt"><input type="checkbox" id="narration-on" checked /> Narrator voice</label>
-      </div>
-      <div class="mp">
-        <button id="mp-open" type="button" class="ghost">Multiplayer</button>
-        <div id="mp-panel" class="hidden">
-          <input id="mp-name" maxlength="14" placeholder="Your name" autocomplete="off" />
+
+      <div id="mp-panel" class="menu-sub hidden">
+        <div class="sub-head"><button type="button" class="back" data-back>‹ Back</button><h2>Multiplayer</h2></div>
+        <input id="mp-name" maxlength="14" placeholder="Your name" autocomplete="off" />
           <div class="mp-tabs" role="tablist">
             <button id="mp-tab-host" type="button" role="tab" class="on">Host a game</button>
             <button id="mp-tab-join" type="button" role="tab">Join a game</button>
@@ -79,10 +70,38 @@
             <input id="mp-turn-pass" placeholder="password" type="password" autocomplete="off" />
           </details>
           <div id="mp-status" class="mp-status" aria-live="polite"></div>
-        </div>
       </div>
-      <div id="backend" class="backend"></div>
-      <a class="backend" href="./playground.html">← Babylon VR playground</a>
+
+      <div id="settings" class="menu-sub hidden">
+        <div class="sub-head"><button type="button" class="back" data-back>‹ Back</button><h2>Settings</h2></div>
+        <h3>Graphics</h3>
+        <div class="seg" id="q-seg">
+          <button type="button" data-q="auto">Auto</button><button type="button" data-q="low">Low</button><button type="button" data-q="medium">Medium</button><button type="button" data-q="high">High</button>
+        </div>
+        <select id="quality" class="hidden"><option value="auto">Auto</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select>
+        <div class="gfx-grid">
+          <label>Shadows <input type="checkbox" id="g-shadows" /></label>
+          <label>Sea reflections <input type="checkbox" id="g-reflect" /></label>
+          <label>Bloom glow <input type="checkbox" id="g-bloom" /></label>
+          <label>Ambient occlusion <input type="checkbox" id="g-ao" /></label>
+          <label>Resolution <select id="g-res"><option value="1">100%</option><option value="0.85">85%</option><option value="0.7">70%</option></select></label>
+          <label>Grass <select id="g-grass"><option value="low">Short range</option><option value="medium">Medium</option><option value="high">Far and thick</option></select></label>
+        </div>
+        <p class="gfx-note" id="gfx-note">The presets set everything above; change any of it for your own mix.</p>
+        <div class="gfx-actions"><button type="button" id="gfx-reset" class="ghost-btn">Back to the preset</button><button type="button" id="gfx-apply" class="mbtn primary">Apply</button></div>
+        <h3>Sound</h3>
+        <label class="mp-opt"><input type="checkbox" id="narration-on" checked /> Narrator voice</label>
+        <details class="controls">
+          <summary>Controls</summary>
+          <div class="help" id="help-desktop">
+            <b>WASD</b> move &nbsp; <b>Shift</b> sprint &nbsp; <b>Space</b> jump &nbsp; <b>Mouse</b> look<br />
+            <b>Click</b> use tool / place &nbsp; <b>E</b> use (hold: pick up) &nbsp; <b>1-6</b> hotbar &nbsp; <b>Tab</b> bag &nbsp; <b>C</b> craft<br /><b>Q</b> next piece &nbsp; <b>R</b> rotate &nbsp;<b>T</b> / <b>Y</b> time of day &nbsp; <b>M</b> map &nbsp; <b>N</b> mute &nbsp; <b>Esc</b> menu
+          </div>
+          <div class="help" id="help-touch">Left stick: move &nbsp; Drag right side: look<br />HIT swings your tool or eats &nbsp; USE picks up and drinks</div>
+        </details>
+      </div>
+
+      <div class="menu-foot"><span id="version" class="version"></span><span id="backend" class="backend"></span><a class="backend" href="./playground.html">VR playground</a></div>
     </div>
   </div>
 

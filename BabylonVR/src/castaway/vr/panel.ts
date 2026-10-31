@@ -1,4 +1,5 @@
 import { Mesh, MeshBuilder, type Scene, Vector3, type WebXRInputSource } from "@babylonjs/core";
+import type { GfxCustom, Quality } from "../core/quality";
 import { AdvancedDynamicTexture, Button, Control, Grid, Image, Rectangle, ScrollViewer, StackPanel, TextBlock } from "@babylonjs/gui";
 import type { Game } from "../game/game";
 import { ITEMS, type ItemId } from "../game/items";
@@ -75,6 +76,12 @@ export class VRPanel {
     private dirty = true;
     private tabMenu: Button;
     private menuOpen = false;
+    /** the Graphics tab: the preset and your own mix, as chosen here (applied with a restart) */
+    private gfxOpen = false;
+    private gfx: { pref: string; custom: GfxCustom } | null = null;
+    private gfxPane!: StackPanel;
+    private gfxLabels: { b: Button; text: () => string; on?: () => boolean }[] = [];
+    private tabGfx!: Button;
     /** the map and quick-chat tabs (null: bag / craft / menu) */
     private extra: "map" | "chat" | null = null;
     private tabMap!: Button;
@@ -98,6 +105,10 @@ export class VRPanel {
         leave(): void;
         save(): void;
         exitVR(): void;
+        /** the graphics settings: as saved, what a choice would come to, and apply (restarts) */
+        gfx(): { pref: string; custom: GfxCustom };
+        gfxPreview(pref: string, custom: GfxCustom): Quality;
+        applyGfx(pref: string, custom: GfxCustom): void;
         /** multiplayer: quick chat, a ping on the map, who is here (null when solo) */
         chat?(text: string): void;
         pingAt?(x: number, z: number): void;
@@ -201,7 +212,7 @@ export class VRPanel {
         top.paddingTop = "20px";
         const tab = (name: string, label: string, fn: () => void) => {
             const t = Button.CreateSimpleButton(name, label);
-            t.width = "250px";
+            t.width = "220px";
             t.height = "80px";
             t.color = TXT;
             t.fontSize = 40;
@@ -213,11 +224,12 @@ export class VRPanel {
             top.addControl(t);
             return t;
         };
-        this.tabBag = tab("tbag", "Bag", () => { this.menuOpen = false; this.extra = null; game.hud.setTab("bag"); this.dirty = true; });
-        this.tabCraft = tab("tcraft", "Craft", () => { this.menuOpen = false; this.extra = null; game.hud.setTab("craft"); this.dirty = true; });
+        this.tabBag = tab("tbag", "Bag", () => { this.menuOpen = false; this.gfxOpen = false; this.extra = null; game.hud.setTab("bag"); this.dirty = true; });
+        this.tabCraft = tab("tcraft", "Craft", () => { this.menuOpen = false; this.gfxOpen = false; this.extra = null; game.hud.setTab("craft"); this.dirty = true; });
         this.tabMap = tab("tmap", "Map", () => this.setExtra("map"));
         this.tabChat = tab("tchat", "Chat", () => this.setExtra("chat"));
-        this.tabMenu = tab("tmenu", "Menu", () => { this.menuOpen = true; this.extra = null; this.dirty = true; });
+        this.tabMenu = tab("tmenu", "Menu", () => { this.menuOpen = true; this.gfxOpen = false; this.extra = null; this.dirty = true; });
+        this.tabGfx = tab("tgfx", "Graphics", () => { this.gfxOpen = true; this.menuOpen = false; this.extra = null; this.gfx = this.menuActions?.gfx() ?? null; this.dirty = true; });
         tab("tclose", "Close  ✕", () => this.close());
         b.addControl(top);
 
@@ -369,6 +381,48 @@ export class VRPanel {
         button(r3, "⌫ Delete", 300, () => { this.code = this.code.slice(0, -1); }, "#ffffff22");
         button(r3, "Join room", 360, () => { if (this.code.length === 5) void this.menuActions?.join(this.code).then(say); else say("Type the 5-letter room code"); });
         pane.isVisible = false;
+        this.buildGfx(b);
+    }
+
+    /** the Graphics tab */
+    private buildGfx(parent: Rectangle) {
+        const pane = new StackPanel("gfx");
+        pane.top = "130px";
+        pane.width = "1560px";
+        pane.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+        parent.addControl(pane);
+        this.gfxPane = pane;
+        const text = (t: string, h = 70, size = 36) => { const x = new TextBlock("gtext", t); x.height = `${h}px`; x.color = TXT; x.fontSize = size; x.textWrapping = true; pane.addControl(x); return x; };
+        const row = () => { const r = new StackPanel("grow"); r.isVertical = false; r.height = "112px"; pane.addControl(r); return r; };
+        const btn = (r: StackPanel, w: number, label: () => string, fn: () => void, on?: () => boolean) => {
+            const x = Button.CreateSimpleButton("gb", "");
+            x.width = `${w}px`; x.height = "92px"; x.color = TXT; x.fontSize = 36; x.cornerRadius = 20; x.thickness = 0; x.background = "#ffffff22";
+            x.paddingLeft = "8px"; x.paddingRight = "8px";
+            x.onPointerUpObservable.add(() => { if (this.gfx) fn(); this.dirty = true; });
+            r.addControl(x);
+            this.gfxLabels.push({ b: x, text: label, on });
+            return x;
+        };
+        const g = () => this.gfx!;
+        const eff = () => this.menuActions!.gfxPreview(g().pref, g().custom);
+        text("Graphics preset", 70, 40);
+        const r0 = row();
+        for (const [k, l] of [["auto", "Auto"], ["low", "Low"], ["medium", "Medium"], ["high", "High"]]) btn(r0, 340, () => l, () => { g().pref = k; g().custom = {}; }, () => g().pref === k);
+        text("Your own mix (over the preset)", 70, 34);
+        const onOff = (r: StackPanel, name: string, key: "shadows" | "reflect" | "bloom" | "ao") =>
+            btn(r, 690, () => `${name}: ${eff()[key] ? "on" : "off"}`, () => { g().custom[key] = !eff()[key]; }, () => eff()[key]);
+        const r1 = row(); onOff(r1, "Shadows", "shadows"); onOff(r1, "Sea reflections", "reflect");
+        const r2 = row(); onOff(r2, "Bloom glow", "bloom"); onOff(r2, "Ambient occlusion", "ao");
+        const r3 = row();
+        const RES = [1, 0.85, 0.7], GRASS = ["low", "medium", "high"] as const, GN = { low: "short range", medium: "medium", high: "far and thick" };
+        btn(r3, 690, () => `Resolution: ${Math.round((1 / eff().scale) * 100)}%`, () => { const cur = Math.round((1 / eff().scale) * 100) / 100; g().custom.res = RES[(RES.findIndex((v) => Math.abs(v - cur) < 0.02) + 1) % RES.length]; });
+        btn(r3, 690, () => `Grass: ${GN[eff().grassTier]}`, () => { g().custom.grass = GRASS[(GRASS.indexOf(eff().grassTier) + 1) % 3]; });
+        const r4 = row();
+        btn(r4, 500, () => "Back to the preset", () => { g().custom = {}; });
+        const ap = btn(r4, 600, () => "Apply & restart", () => this.menuActions?.applyGfx(g().pref, g().custom));
+        ap.background = "#7a3a3a";
+        text("Applying restarts the game (it is saved first): put the headset back on and press Continue.", 110, 30);
+        pane.isVisible = false;
     }
 
     private setExtra(t: "map" | "chat" | null) {
@@ -473,6 +527,7 @@ export class VRPanel {
     open(tab: "bag" | "craft" | "menu" | "map" | "chat") {
         const g = this.game;
         this.menuOpen = tab === "menu";
+        this.gfxOpen = false;
         this.setExtra(tab === "map" || tab === "chat" ? tab : null);
         this.menuOpen = tab === "menu";
         if (tab === "menu" || tab === "map" || tab === "chat") tab = "bag";
@@ -548,11 +603,13 @@ export class VRPanel {
         }
         if (!open || !this.dirty) return;
         this.dirty = false;
-        const ex = this.extra, other = this.menuOpen || !!ex;
+        const ex = this.extra, other = this.menuOpen || this.gfxOpen || !!ex;
         const craft = hud.tab === "craft" && !other;
         this.bagPane.isVisible = !craft && !other;
         this.craftPane.isVisible = craft;
         this.menuPane.isVisible = this.menuOpen;
+        this.gfxPane.isVisible = this.gfxOpen;
+        this.tabGfx.background = this.gfxOpen ? "#2d6a5a" : "#ffffff18";
         this.mapPane.isVisible = ex === "map";
         this.chatPane.isVisible = ex === "chat";
         this.tabBag.background = !craft && !other ? "#2d6a5a" : "#ffffff18";
@@ -561,6 +618,10 @@ export class VRPanel {
         this.tabMap.background = ex === "map" ? "#2d6a5a" : "#ffffff18";
         this.tabChat.background = ex === "chat" ? "#2d6a5a" : "#ffffff18";
         if (ex) return;
+        if (this.gfxOpen && this.gfx) {
+            for (const l of this.gfxLabels) { if (l.b.textBlock) l.b.textBlock.text = l.text(); if (l.on) l.b.background = l.on() ? "#2d6a5a" : "#ffffff22"; }
+            return;
+        }
         if (this.menuOpen) { this.menuStatus.text = this.menuActions?.status() ?? ""; this.codeText.text = `Room code: ${this.code.padEnd(5, "_")}`; return; }
         if (craft) { this.renderCraft(); return; }
         const pick = hud.picked;

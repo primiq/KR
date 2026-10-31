@@ -320,3 +320,41 @@ h1:has(.owner) { display: inline-block; }
 #warp.on { display: flex; }
 #warp canvas { width: min(100vw, calc(100vh * 16 / 9)); height: auto; image-rendering: pixelated; }
 body.inwarp #bottom, body.inwarp #compass, body.inwarp #prompt, body.inwarp #crosshair { display: none !important; }
+
+/* ---- the main menu: one column of equal buttons (Continue first), small ones underneath, sub-pages for multiplayer and
+        settings, the version at the foot */
+#menu .menu-inner { width: min(420px, 92vw); padding: 28px 0 18px; }
+#menu .menu-main { display: flex; flex-direction: column; align-items: stretch; gap: 12px; margin-top: 26px; }
+#menu .mbtn { width: 100%; margin: 0; padding: 16px 20px; border-radius: 16px; border: 1px solid rgba(255,255,255,.22); background: rgba(255,255,255,.1); color: #fff; font: 700 19px system-ui, sans-serif; letter-spacing: .02em; cursor: pointer; box-shadow: none; transition: transform .12s, background .12s; }
+#menu .mbtn:hover { background: rgba(255,255,255,.18); transform: translateY(-1px); }
+#menu .mbtn.primary { background: var(--accent); color: #032; border-color: transparent; box-shadow: 0 10px 30px rgba(47,213,196,.32); }
+#menu .mbtn.primary:hover { background: #4fe6d6; }
+#menu .mbtn.vr { background: rgba(242,184,79,.18); border-color: rgba(242,184,79,.6); }
+#menu .mbtn.hidden, #menu .menu-sub.hidden, #menu .menu-main.hidden { display: none; }
+#menu .menu-small { display: flex; gap: 10px; margin-top: 6px; }
+#menu .menu-small .ghost-btn { flex: 1; margin: 0; }
+#menu #quit-menu { margin-top: 4px; }
+#menu .menu-sub { margin-top: 22px; text-align: left; background: rgba(0,0,0,.22); border: 1px solid rgba(255,255,255,.12); border-radius: 18px; padding: 16px 18px 18px; }
+#menu .sub-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+#menu .sub-head h2 { margin: 0; font-size: 20px; }
+#menu .back { background: rgba(255,255,255,.1); color: #fff; border: 0; border-radius: 10px; padding: 7px 12px; font-weight: 700; cursor: pointer; }
+#menu .menu-sub h3 { margin: 16px 0 8px; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; opacity: .7; }
+#menu .seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+#menu .seg button { padding: 10px 0; border-radius: 10px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.06); color: #fff; font-weight: 700; cursor: pointer; }
+#menu .seg button.on { background: var(--accent); color: #032; border-color: transparent; }
+#menu .gfx-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; margin-top: 12px; }
+#menu .gfx-grid label { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 14px; background: rgba(255,255,255,.05); border-radius: 10px; padding: 8px 10px; }
+#menu .gfx-grid select { background: #0b3440; color: #fff; border: 1px solid rgba(255,255,255,.25); border-radius: 8px; padding: 4px; }
+#menu .gfx-grid input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
+#menu .gfx-note { font-size: 12px; opacity: .7; margin: 10px 0; }
+#menu .gfx-actions { display: flex; gap: 10px; }
+#menu .gfx-actions .ghost-btn { flex: 1; margin: 0; }
+#menu .gfx-actions .mbtn { flex: 1; padding: 10px; font-size: 16px; }
+#menu details.controls { margin-top: 14px; }
+#menu details.controls summary { cursor: pointer; font-weight: 700; opacity: .85; }
+#menu .menu-foot { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; margin-top: 26px; font-size: 12px; opacity: .6; }
+#menu .version { font-variant-numeric: tabular-nums; }
+@media (max-width: 420px) { #menu .gfx-grid { grid-template-columns: 1fr; } }
+#menu #mp-panel { width: auto; max-width: none; margin-left: 0; margin-right: 0; }
+#menu .menu-foot .backend { display: inline; margin: 0; }
+#menu #settings .mp-opt { display: flex; justify-content: flex-start; gap: 8px; }

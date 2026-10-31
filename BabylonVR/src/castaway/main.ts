@@ -66,7 +66,7 @@ import { WorldSync } from "./net/sync";
 import { cleanCode, setTurn, type TransportKind } from "./net/transport";
 import { applyChar, applyWorld, captureChar, captureWorld } from "./net/world";
 import { getPref, setPref } from "./core/prefs";
-import { pickQuality } from "./core/quality";
+import { type GfxCustom, pickQuality } from "./core/quality";
 import { Game } from "./game/game";
 import { planSprings } from "./game/resources";
 import { driveWind, Wind } from "./render/foliage";
@@ -105,7 +105,8 @@ function sunDirection(): Vector3 {
 }
 
 async function main() {
-    const q = pickQuality(getPref("castaway.quality") ?? "auto");
+    const gfx: GfxCustom = (() => { try { return JSON.parse(getPref("castaway.gfx") ?? "{}") as GfxCustom; } catch { return {}; } })();
+    const q = pickQuality(getPref("castaway.quality") ?? "auto", gfx);
     // a standalone headset (a Quest): every pixel is drawn twice on a phone-class GPU, so the game is built leaner there from
     // the start (nothing here can be switched later without rebuilding every shader): no post-processing, room for 5 lights
     // not 8 (the moon and the lightning ride on the sun and the sky fill light), two fire lights not three
@@ -113,7 +114,46 @@ async function main() {
     if (headset) { lightRoom.n = 5; StructureManager.POOL = 2; toneMapOwnShaders(); }
     const qSel = $<HTMLSelectElement>("quality");
     qSel.value = getPref("castaway.quality") ?? "auto";
-    qSel.addEventListener("change", () => { setPref("castaway.quality", qSel.value); location.reload(); });
+    $("version").textContent = __CASTAWAY_VERSION__;
+    /** saves the game first when one is running (set once it is) */
+    let saveBeforeReload = () => {};
+
+    // ---- settings: a graphics preset, and your own mix over it (both take effect on a restart: they decide how the island
+    //      is built and which shaders it compiles)
+    {
+        let pending = qSel.value, custom: GfxCustom = { ...gfx };
+        const box = (id: string) => $<HTMLInputElement>(id), sel = (id: string) => $<HTMLSelectElement>(id);
+        const show = () => {
+            const eff = pickQuality(pending, custom);
+            for (const b of document.querySelectorAll<HTMLButtonElement>("#q-seg button")) b.classList.toggle("on", b.dataset.q === pending);
+            box("g-shadows").checked = eff.shadows; box("g-reflect").checked = eff.reflect; box("g-bloom").checked = eff.bloom; box("g-ao").checked = eff.ao;
+            sel("g-res").value = String(Math.round((1 / eff.scale) * 100) / 100 >= 1 ? 1 : Math.round((1 / eff.scale) * 100) / 100);
+            sel("g-grass").value = eff.grassTier;
+            $("gfx-note").textContent = Object.keys(custom).length ? "Your own mix over the preset. Apply restarts the game (it is saved first)." : "The preset sets everything above; change any of it for your own mix.";
+        };
+        for (const b of document.querySelectorAll<HTMLButtonElement>("#q-seg button")) b.addEventListener("click", () => { pending = b.dataset.q!; custom = {}; show(); });
+        box("g-shadows").addEventListener("change", () => { custom.shadows = box("g-shadows").checked; show(); });
+        box("g-reflect").addEventListener("change", () => { custom.reflect = box("g-reflect").checked; show(); });
+        box("g-bloom").addEventListener("change", () => { custom.bloom = box("g-bloom").checked; show(); });
+        box("g-ao").addEventListener("change", () => { custom.ao = box("g-ao").checked; show(); });
+        sel("g-res").addEventListener("change", () => { custom.res = Number(sel("g-res").value); show(); });
+        sel("g-grass").addEventListener("change", () => { custom.grass = sel("g-grass").value as GfxCustom["grass"]; show(); });
+        $("gfx-reset").addEventListener("click", () => { custom = {}; show(); });
+        $("gfx-apply").addEventListener("click", () => {
+            setPref("castaway.quality", pending);
+            setPref("castaway.gfx", JSON.stringify(custom));
+            saveBeforeReload();
+            location.reload();
+        });
+        show();
+    }
+    // the menu's pages: the main column, multiplayer, settings
+    const page = (id: string | null) => {
+        $("menu-main").classList.toggle("hidden", !!id);
+        for (const p of ["mp-panel", "settings"]) $(p).classList.toggle("hidden", p !== id);
+    };
+    for (const b of document.querySelectorAll<HTMLButtonElement>("#menu [data-back]")) b.addEventListener("click", () => page(null));
+    $("settings-open").addEventListener("click", () => page("settings"));
 
     const canvas = $<HTMLCanvasElement>("game");
     const engine = new Engine(canvas, true, { xrCompatible: true, stencil: true, antialias: true, powerPreference: "high-performance" }, true);
@@ -141,7 +181,7 @@ async function main() {
 
     // ---- the menu comes first: nothing of the island is built until you start a game (single player or a room)
     setupCustomise();
-    $("mp-open").addEventListener("click", () => $("mp-panel").classList.toggle("hidden"));
+    $("mp-open").addEventListener("click", () => page("mp-panel"));
     const tab = (host: boolean) => {
         $("mp-tab-host").classList.toggle("on", host);
         $("mp-tab-join").classList.toggle("on", !host);
@@ -152,7 +192,7 @@ async function main() {
     $("mp-tab-join").addEventListener("click", () => tab(false));
     $<HTMLInputElement>("mp-name").value = getPref("name") ?? "";
     // an invite link: ?join=CODE opens the join tab with the code filled in
-    if (params.get("join")) { $("mp-panel").classList.remove("hidden"); tab(false); $<HTMLInputElement>("mp-code").value = cleanCode(params.get("join")!); }
+    if (params.get("join")) { page("mp-panel"); tab(false); $<HTMLInputElement>("mp-code").value = cleanCode(params.get("join")!); }
     const saved = loadWorld();
     {
         const cb = $("continue"), pb = $("play");
@@ -162,7 +202,8 @@ async function main() {
             pb.textContent = "New island";
         }
         // (the headset check is cheap; the XR session itself is set up with the island)
-        void navigator.xr?.isSessionSupported("immersive-vr").then((ok) => { if (ok) { $("play-vr").classList.remove("hidden"); $("mp-vr-opt").classList.remove("hidden"); } }).catch(() => {});
+        // (in a headset Continue and New game go straight into VR, so there is no separate VR button there)
+        void navigator.xr?.isSessionSupported("immersive-vr").then((ok) => { if (ok) { if (!headset) $("play-vr").classList.remove("hidden"); $("mp-vr-opt").classList.remove("hidden"); } }).catch(() => {});
     }
     $("loading").classList.add("hidden");
     $("menu").classList.remove("hidden");
@@ -480,7 +521,7 @@ async function main() {
     };
 
     // ---- the sea mirrors the island, the trees, the clouds, the moon and the stars (medium and high quality; off in a headset)
-    const seaRefl = q.name === "low" ? null : ocean.enableReflection(q.name === "high" ? 0.5 : 0.25, q.name === "high" ? 1 : 3, (m) => {
+    const seaRefl = !q.reflect ? null : ocean.enableReflection(q.name === "high" ? 0.5 : 0.25, q.name === "high" ? 1 : 3, (m) => {
         const n = m.name;
         if (n === "grass" || n.startsWith("sea_") || n === "seaShafts" || n === "seaSnow" || n === "rain" || n === "fallsPool" || n === "falls") return false;
         // (you are in it too: the mirror-only copy of you, not the head-less one you see your legs with)
@@ -496,7 +537,7 @@ async function main() {
         // (multisampling on high only: medium and low smooth the edges with FXAA, much cheaper)
         pipeline.samples = q.name === "high" ? 4 : 1;
         pipeline.fxaaEnabled = q.name !== "high";
-        pipeline.bloomEnabled = q.name !== "low";
+        pipeline.bloomEnabled = q.bloom;
         pipeline.bloomThreshold = 0.9;
         pipeline.bloomWeight = 0.25;
         pipeline.bloomKernel = 64;
@@ -509,7 +550,7 @@ async function main() {
         scene.imageProcessingConfiguration.vignetteEnabled = true;
         scene.imageProcessingConfiguration.vignetteWeight = 0;
     }
-    if (q.name === "high" && !params.has("nossao")) {
+    if (q.ao && !params.has("nossao")) {
         const ssao = new SSAO2RenderingPipeline("ssao", scene, { ssaoRatio: 0.5, blurRatio: 1 }, [camera]);
         ssao.radius = 1.6;
         ssao.totalStrength = 1.0;
@@ -730,6 +771,7 @@ async function main() {
         if (!sync || sync.session.isHost) saveWorld({ v: 1, layout: LAYOUT, wid, hour: clock.hour, world: captureWorld(game), savedAt: Date.now() });
         saveChar(charId(), captureChar(game));
     };
+    saveBeforeReload = doSave;
     setInterval(doSave, 30000);
     window.addEventListener("pagehide", doSave);
     document.addEventListener("visibilitychange", () => { if (document.hidden) doSave(); });
@@ -1011,6 +1053,9 @@ async function main() {
             leave: () => leave(),
             save: () => doSave(),
             exitVR: () => void vm.exit(),
+            gfx: () => ({ pref: getPref("castaway.quality") ?? "auto", custom: { ...gfx } }),
+            gfxPreview: (pref, custom) => pickQuality(pref, custom),
+            applyGfx: (pref, custom) => { setPref("castaway.quality", pref); setPref("castaway.gfx", JSON.stringify(custom)); doSave(); location.reload(); },
             chat: (t) => { if (sync) { sync.sendChat(t); chat.add("You", "#ffffff", t); } else game.hud.message("Host or join a room to chat"); },
             pingAt: (x, z) => { if (sync) sync.pingAt(x, z); else game.hud.message("Pings are for rooms with friends"); },
             players: () => {
@@ -1037,8 +1082,9 @@ async function main() {
     // the start button that was pressed in the menu: the island is built now, carry it out
     const vrBox = () => $<HTMLInputElement>("mp-vr").checked;
     switch (startWith) {
-        case "continue": if (loadSaved()) ready(false, "Your island is ready."); break;
-        case "play": if (saved) eraseSaves(); ready(false); break;
+        // (in a headset, straight into VR)
+        case "continue": if (loadSaved()) ready(headset, "Your island is ready."); break;
+        case "play": if (saved) eraseSaves(); ready(headset); break;
         case "play-vr": if (saved) loadSaved(); ready(true); break;
         case "mp-host": void doHost(vrBox()); break;
         case "mp-join": void doJoin(codeEl.value, vrBox()); break;

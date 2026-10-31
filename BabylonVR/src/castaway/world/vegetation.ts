@@ -538,8 +538,8 @@ export class Vegetation {
         }
 
         // ---- grass: three nested rings round the player, each thinning into the next (render/grassLod.ts)
-        const R = q.name === "high" ? [16, 40, 70] : q.name === "medium" ? [12, 30, 50] : [10, 22, 36];
-        const c0 = q.name === "high" ? 0.55 : q.name === "medium" ? 0.7 : 0.85;
+        const R = q.grassTier === "high" ? [16, 40, 70] : q.grassTier === "medium" ? [12, 30, 50] : [10, 22, 36];
+        const c0 = q.grassTier === "high" ? 0.55 : q.grassTier === "medium" ? 0.7 : 0.85;
         const spec = [
             { r0: 0, r1: R[0], level: 0, step: 3, far: false },
             { r0: R[0], r1: R[1], level: 1, step: 6, far: false },
