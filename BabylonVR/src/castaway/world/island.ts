@@ -16,7 +16,7 @@ export const SEA_LEVEL = 0;
 export const TERRAIN_SIZE = 760; // metres, centred on the origin
 export const WORLD_RADIUS = 340; // soft limit for the player
 
-import { DESERT_FROM_Z, desertHeight, inDesert } from "./desertField";
+import { DESERT_FROM_Z, groundAt, inDesert } from "./desertField";
 const N = new Noise2D(1337);
 const N2 = new Noise2D(9001);
 
@@ -195,7 +195,7 @@ export function riverDist(x: number, z: number): number {
 }
 
 export function baseHeightAt(x: number, z: number): number {
-  if (z > DESERT_FROM_Z && inDesert(x, z)) return desertHeight(x, z);
+  if (z > DESERT_FROM_Z && inDesert(x, z)) return groundAt(x, z);
   let h = terrainH(x, z);
   const rd = riverDist(x, z);
   if (rd < 5) h -= 1.35 * Math.exp(-((rd / 1.9) ** 2));

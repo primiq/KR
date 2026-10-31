@@ -10,7 +10,7 @@ export type ItemId =
   | 'building_plan' | 'torch' | 'sapling' | 'picture_frame' | 'flower_pot' | 'rug' | 'lantern' | 'door'
   | 'leather' | 'leather_cap' | 'leather_vest' | 'leather_pants' | 'metal_helmet' | 'metal_chestplate' | 'metal_greaves'
   | 'diamond_helmet' | 'diamond_chestplate' | 'diamond_greaves' | 'boat' | 'table' | 'cat_bed' | 'lounger' | 'drum' | 'drumsticks'
-  | 'meat_stick' | 'roast_stick' | 'guitar';
+  | 'meat_stick' | 'roast_stick' | 'guitar' | 'sand';
 export type ArmorSlot = 'head' | 'chest' | 'legs';
 export const ARMOR_SLOTS: ArmorSlot[] = ['head', 'chest', 'legs'];
 export const ARMOR_SLOT_LABEL: Record<ArmorSlot, string> = { head: 'Head', chest: 'Chest', legs: 'Legs' };
@@ -120,6 +120,11 @@ export const ITEMS = {
     id: 'diamond', name: 'Diamond', stack: 100, kind: 'resource',
     desc: 'A flawless gem from deep underground. Craft a diamond pickaxe at a workbench.',
     icon: svg('<path d="M8 12 12 6h8l4 6-8 15z" fill="#6feeff"/><path d="M8 12h16L16 27z" fill="#a8f6ff"/><path d="M12 6l4 6 4-6" fill="#e4fdff"/><path d="M8 12h16M16 12v15" stroke="#3fc5d8" stroke-width="1"/>'),
+  },
+  sand: {
+    id: 'sand', name: 'Sand', stack: 500, kind: 'resource',
+    desc: 'Desert sand, dug out round the oasis. Hold it and click on the sand to pour it back: heap it up, fill a hole, or dam a channel to stop the water.',
+    icon: svg('<path d="M4 25c3-7 7-11 12-11s9 4 12 11z" fill="#d6ad6b"/><path d="M9 25c2-4 4-6 7-6s5 2 7 6z" fill="#e8c88a"/><g fill="#b98a4c"><circle cx="11" cy="22" r="0.9"/><circle cx="18" cy="20" r="0.8"/><circle cx="22" cy="23" r="0.9"/><circle cx="15" cy="24" r="0.7"/></g>'),
   },
   fiber: {
     id: 'fiber', name: 'Plant Fiber', stack: 1000, kind: 'resource',

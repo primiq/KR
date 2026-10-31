@@ -522,6 +522,8 @@ export class CastawayVR {
             game.vr.eye.copyFrom(cam.position);
             cam.getDirectionToRef(Vector3.Forward(true), game.vr.dir);
         }
+        // (where the hands are: dragged through the desert's sand, they dig)
+        { const L = this.hands.get("left"), R = this.hands.get("right"); game.vr.handL = L ? (L.src.grip ?? L.src.pointer).absolutePosition.clone() : null; game.vr.handR = R ? (R.src.grip ?? R.src.pointer).absolutePosition.clone() : null; }
         this.panel.update(dt);
     }
 

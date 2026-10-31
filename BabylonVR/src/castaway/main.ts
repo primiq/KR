@@ -77,7 +77,7 @@ import { CLASSIC, cutBounds, findSpawn, heightAt, SPAWN_THETA, TERRAIN_SIZE } fr
 import { Waterfall } from "./world/waterfall";
 import { Seabed } from "./world/seabed";
 import { Desert } from "./world/desert";
-import { inDesert } from "./world/desertField";
+import { inDesert, OASIS_WATER } from "./world/desertField";
 import { Player } from "./world/player";
 import { Terrain } from "./world/terrain";
 import { Atmosphere } from "./world/atmosphere";
@@ -522,8 +522,14 @@ async function main() {
     game.under.trial = trial;
     // The Desert (the sand door in the secret room): dunes that keep your footprints round an oasis, far off at z ~ 20 km
     desertSurface = (x, z) => desert.surface(x, z);
-    const desert = new Desert(scene, headset || q.name === "low", vegetation.colliders, () => sun.direction);
+    const desert = new Desert(scene, headset || q.name === "low", vegetation.colliders, () => sun.direction, ocean);
     game.under.desert = desert;
+    game.sand = desert;
+    // (digging under a palm or a rock: it settles with the sand)
+    desert.works.onGround = (x0, z0, x1, z1) => vegetation.reseat(x0, z0, x1, z1);
+    // every dawn the ground near water greens: the host says when, so everybody's green is the same
+    desert.onDawn = () => { if (!sync || sync.session.isHost) { desert.green(); sync?.session.sendEvent({ k: "sg" }); } };
+    desert.onGreened = () => { if (desert.active) game.hud.message("The sand by the water has turned green overnight. Saplings will take there now."); };
     trial.say = (t) => game.hud.message(t);
     trial.myId = () => sync?.session.myId ?? 0;
     trial.myName = () => sync?.session.name || "You";
@@ -585,7 +591,7 @@ async function main() {
     const gfxNow = { reflect: q.reflect };
     const seaRefl = headset ? null : ocean.enableReflection(q.name === "high" ? 0.5 : 0.25, q.name === "high" ? 1 : 3, (m) => {
         const n = m.name;
-        if (n === "grass" || n.startsWith("sea_") || n === "seaShafts" || n === "seaSnow" || n === "rain" || n === "fallsPool" || n === "falls") return false;
+        if (n === "grass" || n === "oasisLake" || n.startsWith("sea_") || n === "seaShafts" || n === "seaSnow" || n === "rain" || n === "fallsPool" || n === "falls") return false;
         // (you are in it too: the mirror-only copy of you, not the head-less one you see your legs with)
         const md = m.metadata as { viewModel?: boolean; fpBody?: boolean } | null;
         return !md?.viewModel && !md?.fpBody;
@@ -743,8 +749,9 @@ async function main() {
                 const was = desert.active, walkers: { id: number | string; x: number; y: number; z: number; run: boolean }[] = [];
                 if (!player.cave) walkers.push({ id: "me", x: player.pos.x, y: player.pos.y, z: player.pos.z, run: player.sprinting });
                 if (sync) for (const a of sync.avatars.positions) { const st = sync.session.states.get(a.id); walkers.push({ id: a.id, x: a.x, y: a.y, z: a.z, run: !!st && (st.flags & 1) !== 0 }); }
-                desert.update(dt, player.pos, walkers, camera.globalPosition);
-                if (desert.active !== was) { ocean.mesh.setEnabled(!desert.active); vegetation.setGrassDetail(desert.active ? 3 : 0); }
+                desert.night = 1 - clock.day;
+                desert.update(dt, player.pos, walkers, camera.globalPosition, clock.hour);
+                if (desert.active !== was) { ocean.mesh.setEnabled(!desert.active); vegetation.setGrassDetail(desert.active ? 3 : 0); ocean.setMirrorLevel(desert.active ? OASIS_WATER : 0); }
                 clock.desert += ((desert.active ? 1 : 0) - clock.desert) * Math.min(1, dt * 2);
                 if (!desert.active && clock.desert < 1e-3) clock.desert = 0;
             }
@@ -794,7 +801,7 @@ async function main() {
             ocean.bio = BIO.value;
             if (seaRefl) {
                 // (paused, not drawn at all, where the sea cannot be seen: in a headset, underground, out in the far places)
-                const want = gfxNow.reflect && !vrActive() && !game.under.active && Math.abs(player.pos.x) < 2000 && Math.abs(player.pos.z) < 2000;
+                const want = gfxNow.reflect && !vrActive() && !game.under.active && ((Math.abs(player.pos.x) < 2000 && Math.abs(player.pos.z) < 2000) || desert.active);
                 if (want !== seaReflOn) {
                     seaReflOn = want; ocean.reflectOn = want;
                     const list = scene.customRenderTargets, i = list.indexOf(seaRefl);

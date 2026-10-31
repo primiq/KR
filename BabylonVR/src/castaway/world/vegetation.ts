@@ -10,6 +10,7 @@ import { foliageMaterial, rockMaterial } from "../render/materials";
 import { GrassLodPlugin, GrassMode } from "../render/grassLod";
 import { leafTexture } from "../render/leaves";
 import { hash3 } from "./geo";
+import { DESERT_SPAWN, DESERT_X, DESERT_Z, OASIS_R } from "./desertField";
 import { heightAt, inCut, riverDist, rockiness, slopeAt } from "./island";
 import { buildBush, buildDryFrond, buildGrassTuft, buildJungleTree, buildPalm, buildStump } from "./plants";
 
@@ -165,6 +166,43 @@ interface GrassMemo { idx: Map<number, number>; data: Float64Array; n: number }
  * indices match for multiplayer and saves), the same procedural palms, jungle trees, bushes and boulders, plus
  * distance LOD and tile culling. Every harvestable tree / rock / bush is a ResNode.
  */
+/** The desert oasis's plants and rocks: palms in clumps round the pond, bushes, berry bushes, a rocky outcrop on the far
+ *  shore and stones out in the sand (the same every time: their node numbers are saved). */
+function planOasis() {
+    const rnd = mulberry32(31337), out: Placement[] = [];
+    const clearOf = [{ x: DESERT_SPAWN.x, z: DESERT_SPAWN.z, r: 4 }, { x: DESERT_SPAWN.x, z: DESERT_SPAWN.z + 6, r: 3.5 }];
+    const ok = (x: number, z: number, gap: number) => !clearOf.some((c) => Math.hypot(c.x - x, c.z - z) < c.r) && !out.some((p) => Math.hypot(p.x - x, p.z - z) < gap);
+    /** n placements at polar points (r, angle) round the pond, at least `gap` apart */
+    const take = (n: number, at: () => [number, number], gap: number, s0: number, s1: number) => {
+        const list: Placement[] = [];
+        for (let t = 0; t < n * 30 && list.length < n; t++) {
+            const [r, a] = at(), x = DESERT_X + Math.cos(a) * r, z = DESERT_Z + Math.sin(a) * r;
+            if (!ok(x, z, gap)) continue;
+            const p: Placement = { x, z, y: heightAt(x, z), rot: rnd() * Math.PI * 2, scale: s0 + rnd() * (s1 - s0) };
+            list.push(p); out.push(p);
+        }
+        return list;
+    };
+    // palms: clumps of three to five, most round the water's edge, a few further out in the green
+    const palms: Placement[] = [];
+    for (let c = 0; c < 9; c++) {
+        const ca = (c / 9) * Math.PI * 2 + rnd() * 0.4, cr = OASIS_R + 3.5 + rnd() * (c < 6 ? 6 : 20), n = 3 + Math.floor(rnd() * 3);
+        // (a point within 4 m of the clump's middle, as r and angle from the pond's)
+        palms.push(...take(n, () => {
+            const ox = Math.cos(ca) * cr + (rnd() - 0.5) * 8, oz = Math.sin(ca) * cr + (rnd() - 0.5) * 8;
+            return [Math.max(OASIS_R + 2, Math.hypot(ox, oz)), Math.atan2(oz, ox)];
+        }, 2.4, 0.75, 1.45));
+    }
+    palms.push(...take(6, () => [OASIS_R + 25 + rnd() * 20, rnd() * Math.PI * 2], 5, 0.8, 1.3));
+    const berries = take(9, () => [OASIS_R + 5 + rnd() * 24, rnd() * Math.PI * 2], 3, 1.0, 1.4);
+    const bushes = take(46, () => [OASIS_R + 2 + rnd() * 34, rnd() * Math.PI * 2], 1.6, 0.7, 1.4);
+    // the rocky outcrop on the far shore, and stones scattered out in the sand
+    const OUT = Math.PI * 1.35;
+    const stones = [...take(7, () => [OASIS_R + 5 + rnd() * 9, OUT + (rnd() - 0.5) * 0.5], 2.2, 0.9, 2.3), ...take(10, () => [55 + rnd() * 70, rnd() * Math.PI * 2], 8, 0.8, 1.8)];
+    const ores = [...take(2, () => [OASIS_R + 9 + rnd() * 6, OUT + (rnd() - 0.5) * 0.6], 2.5, 0.8, 1.4), ...take(3, () => [70 + rnd() * 60, rnd() * Math.PI * 2], 10, 0.8, 1.5)];
+    return { palms, berries, bushes, stones, ores };
+}
+
 export class Vegetation {
     readonly colliders = new ColliderGrid();
     private grassNoise = new Noise2D(77);
@@ -353,8 +391,10 @@ export class Vegetation {
         const treeRefs = instanced("jungle", treeGeos, treeMat, trees, -0.25, [0.9, 1.4], true, 0.45, false, [5, 17].map((s) => buildJungleTree(s, true)));
         this.palmPlacements.push(...palms);
 
+        // (the desert oasis's own trees, bushes and rocks: planned here, made last so the island's node numbers never shift)
+        const oasis = planOasis();
         // ---- stumps (one slot per tree, shown when it is felled)
-        const stumpMesh = new Inst("stump", buildStump(), stumpMat, palms.length + trees.length, scene, shadows);
+        const stumpMesh = new Inst("stump", buildStump(), stumpMat, palms.length + trees.length + oasis.palms.length, scene, shadows);
         for (let i = 0; i < stumpMesh.cap; i++) stumpMesh.setMatrixAt(i, ZERO);
         stumpMesh.instanceMatrix.needsUpdate = true;
         let stumpIdx = 0;
@@ -605,6 +645,51 @@ export class Vegetation {
                 this.plantSlots.push(slot);
                 this.nodes.push(node);
             }
+        }
+
+        // ---- the desert oasis (through the secret room's sand door, ~20 km off): palms to fell, berry bushes, bushes, a rocky
+        //      outcrop by the pond and stones out in the sand, just like the island's (nodes appended after everything else)
+        {
+            const oPalm = instanced("oasisPalm", palmGeos, palmMat, oasis.palms, -0.15, [0, 0], true, 0.3, false, [11, 23, 37].map((s) => buildPalm(s, leaflets, true)), 120);
+            oasis.palms.forEach((p, i) => addTree("palm", p, oPalm[i], 0.32 * p.scale, palmGeos[i % palmGeos.length]));
+            instanced("oasisBush", bushGeos, bushMat, oasis.bushes, -0.05, [0, 0], false, 0.5, true, [3, 8, 14].map((s) => buildBush(s, "plain", true)), 50);
+            const bFull = instanced("oasisBerry", [buildBush(21, "berry"), buildBush(22, "berry")], bushMat, oasis.berries, -0.05, [0, 0], false, 0, false, [21, 22].map((s) => buildBush(s, "berry", true)), 50);
+            const bBare = instanced("oasisBerryBare", [buildBush(21, "bare"), buildBush(22, "bare")], bushMat, oasis.berries.map((p) => ({ ...p })), -0.05, [0, 0], false, 0, false, [21, 22].map((s) => buildBush(s, "bare", true)), 50);
+            oasis.berries.forEach((p, i) => {
+                bBare[i].base.copy(bFull[i].base); hide(bBare[i]);
+                const full = bFull[i], bare = bBare[i];
+                this.nodes.push({
+                    kind: "berry", name: "Berry Bush", gather: "berries",
+                    x: p.x, y: p.y, z: p.z, r: 0.95 * p.scale, offs: [0.6 * p.scale],
+                    total: 3, left: 3, depleted: false, respawnAt: 0, respawnTime: 300,
+                    setDepleted: (d) => { show(full, d); show(bare, !d); },
+                });
+            });
+            for (const p of [...oasis.stones, ...oasis.ores]) p.squash = [1.0 + hash3(p.x, 1, 2) * 0.3, 0.62 + 0.25 * Math.abs(hash3(p.x, 5, 7)), 1.0 + hash3(p.z, 9, 4) * 0.3];
+            const sRefs = instanced("oasisBoulder", rockGeos, rockMaterial(scene), oasis.stones, -0.2, [0, 0], true, 0.75, false, [1, 2, 3].map((s) => buildRockGeometry(s, 1)), 80);
+            const oRefs = instanced("oasisOre", oreGeos, rockMaterial(scene, true), oasis.ores, -0.2, [0, 0], true, 0.75, false, [4, 5].map((s) => buildRockGeometry(s, 1)), 80);
+            oasis.stones.forEach((p, i) => addRock("stone", p, sRefs[i]));
+            oasis.ores.forEach((p, i) => addRock("ore", p, oRefs[i]));
+            // dry fronds under the palms and pebbles round the rocks
+            const orng = mulberry32(4711);
+            const fr: { x: number; y: number; z: number; yaw: number; s: number }[] = [];
+            for (const p of oasis.palms) for (let k = 0; k < 2; k++) {
+                const a = orng() * 6.28, d = 0.8 + orng() * 2.2, x = p.x + Math.cos(a) * d, z = p.z + Math.sin(a) * d;
+                fr.push({ x, y: heightAt(x, z) + 0.03, z, yaw: orng() * 6.28, s: 0.7 + orng() * 0.6 });
+            }
+            const fm = new Inst("oasisFronds", buildDryFrond(), foliageMaterial(scene, "dryFrond", 0.0001), fr.length, scene);
+            fr.forEach((o, i) => { dummy.position.set(o.x, o.y, o.z); dummy.rotation.set(0, o.yaw, 0); dummy.scale.setScalar(o.s); dummy.updateMatrix(); fm.setMatrixAt(i, dummy.matrix); this.track(fm, i, dummy.matrix.clone(), o.x, o.z, true); });
+            fm.instanceMatrix.needsUpdate = true; fm.refreshBounds();
+            this.cullable.push({ mesh: fm, c: new THREE.Vector3(DESERT_X, 0, DESERT_Z), r: 90, far: false, lod: 0 });
+            const pebs: { x: number; y: number; z: number; s: number }[] = [];
+            for (const p of [...oasis.stones, ...oasis.ores]) for (let k = 0; k < 4; k++) {
+                const a = orng() * 6.28, d = (1 + orng() * 1.3) * p.scale, x = p.x + Math.cos(a) * d, z = p.z + Math.sin(a) * d;
+                pebs.push({ x, y: heightAt(x, z), z, s: 0.07 + orng() * 0.15 });
+            }
+            const pm = new Inst("oasisPebbles", buildRockGeometry(7, 0), rockMaterial(scene), pebs.length, scene);
+            pebs.forEach((o, i) => { dummy.position.set(o.x, o.y - o.s * 0.2, o.z); dummy.rotation.set(orng() * 0.5, orng() * 6.28, orng() * 0.5); dummy.scale.set(o.s * 1.2, o.s * 0.8, o.s); dummy.updateMatrix(); pm.setMatrixAt(i, dummy.matrix); this.track(pm, i, dummy.matrix.clone(), o.x, o.z, true); });
+            pm.instanceMatrix.needsUpdate = true; pm.refreshBounds();
+            this.cullable.push({ mesh: pm, c: new THREE.Vector3(DESERT_X, 0, DESERT_Z), r: 160, far: false, lod: 0 });
         }
     }
 

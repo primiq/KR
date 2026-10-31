@@ -207,10 +207,10 @@ export function buildBush(seed: number, mode: 'plain' | 'berry' | 'bare' = 'plai
 }
 
 /** One grass tuft: fan of tapered, bent blades. */
-export function buildGrassTuft(far = false): THREE.BufferGeometry {
+export function buildGrassTuft(far = false, baseCol = '#608a26', tipCol = '#c8d85a'): THREE.BufferGeometry {
   const rnd = mulberry32(far ? 9 : 5);
   const b = new GeoBuilder();
-  const base = hex('#608a26'), tip = hex('#c8d85a');
+  const base = hex(baseCol), tip = hex(tipCol);
   const up = new THREE.Vector3(0, 1, 0);
   const blades = far ? 4 : 6;
   for (let i = 0; i < blades; i++) {

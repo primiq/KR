@@ -35,6 +35,7 @@ export function captureWorld(g: Game) {
         doors: g.doors.capture(),
         paintings: g.paintings.capture(),
         boats: g.boats.capture(),
+        sand: g.under.desert?.capture() ?? null,
         camp: g.under.camp?.exportProgress(),
         structs: g.structures.list.map((s) => [s.nid, s.kind, +s.x.toFixed(2), +s.y.toFixed(3), +s.z.toFixed(2), +s.yaw.toFixed(3), +s.fuel.toFixed(1), s.lit ? 1 : 0, +s.prog.toFixed(1), packInv(s.inv)]),
     };
@@ -57,6 +58,8 @@ export function applyWorld(g: Game, snap: any) {
     r.pickups.clear();
     for (const [nid, id, c, d, x, y, z] of snap.pickups ?? []) r.pickups.spawn(id, c, x, y, z, d ?? undefined, nid, true);
     for (const [i, left, rin] of snap.nodes ?? []) { const n = r.nodeAt(i); if (n) r.restoreNode(n, left, rin); }
+    // (the desert's dug sand first: what stands on it is placed on the ground as it is)
+    g.under.desert?.restore(snap.sand);
     for (const [t, i, j, a, H, L, d] of snap.pieces ?? []) g.building.placeRemote(t as PieceKind, i, j, a, H, L ?? 0, d ?? 0);
     for (const s of [...g.structures.list]) g.structures.remove(s, true);
     for (const row of snap.structs ?? []) placeStruct(g, row);

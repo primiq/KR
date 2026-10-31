@@ -62,7 +62,7 @@ export function heldModel(id: ItemId): THREE.Group {
 }
 
 export const ITEM_COLOR: Partial<Record<ItemId, string>> = {
-    coconut: "#5b3c22", berries: "#c9253d", wood: "#8a5a30", stone: "#9b9a94", metal_ore: "#b5703c", fiber: "#b4c46a", metal: "#bcc4cb",
+    coconut: "#5b3c22", berries: "#c9253d", wood: "#8a5a30", stone: "#9b9a94", sand: "#d2a866", metal_ore: "#b5703c", fiber: "#b4c46a", metal: "#bcc4cb",
     roasted_coconut: "#9a6030", raw_meat: "#b8434d", cooked_meat: "#7a4422", raw_fish: "#7fb0cc", cooked_fish: "#c58a4e", coal: "#1c1d21", diamond: "#7ff4ff",
 };
 

@@ -3,6 +3,7 @@
 import type { Vegetation } from '../world/vegetation';
 import type { Resources } from './resources';
 import { heightAt, slopeAt } from '../world/island';
+import { greenAt, inDesert, wetAt } from '../world/desertField';
 
 export const GROW_DAY = 1500;
 export const STAGES = [
@@ -31,14 +32,16 @@ export class Saplings {
   /** can a tree stand here? returns '' when yes, or the reason */
   check(x: number, z: number): string {
     const h = heightAt(x, z);
-    if (h < 1.3) return 'Too close to the water';
+    // (in the desert: only on green ground, the oasis's own or what water has greened)
+    if (inDesert(x, z)) { if (wetAt(x, z)) return 'Not in the water'; if (greenAt(x, z) < 0.5) return 'Saplings only take on green ground: dig a channel to bring water here, and it greens overnight'; }
+    else if (h < 1.3) return 'Too close to the water';
     if (h > 34 || slopeAt(x, z) > 0.5) return 'Too steep';
     const near: any[] = []; this.veg.colliders.near(x, z, 1.6, near);
     if (near.length) return 'Too close to something';
     for (const p of this.list) if (Math.hypot(p.x - x, p.z - z) < 2.2) return 'Too close to another tree';
     return '';
   }
-  kindAt(x: number, z: number): 'palm' | 'tree' { return heightAt(x, z) < 7 ? 'palm' : 'tree'; }
+  kindAt(x: number, z: number): 'palm' | 'tree' { return inDesert(x, z) || heightAt(x, z) < 7 ? 'palm' : 'tree'; }
 
   plant(x: number, y: number, z: number, opts: { slot?: number; age?: number; rot?: number; remote?: boolean } = {}): Planted | null {
     const kind = this.kindAt(x, z);

@@ -3,6 +3,8 @@ import type { Input } from "../core/input";
 import { clamp } from "../core/noise";
 import { Hud } from "../ui/hud";
 import { heightAt } from "../world/island";
+import type { Desert } from "../world/desert";
+import { groundAt } from "../world/desertField";
 import type { Player } from "../world/player";
 import type { Vegetation, Zone } from "../world/vegetation";
 import { Sfx } from "./audio";
@@ -123,6 +125,10 @@ export class Game {
     private boatTurn = 0;
     /** seconds since the giant wave hit (-1: not happening) */
     wreckT = -1;
+    /** the desert's sand round the oasis (set by main): dig it, heap it, pour it */
+    sand: Desert | null = null;
+    private sandAcc = 0;
+    private sandProbe = new Map<string, { x: number; y: number; z: number; cd: number }>();
     /** how blurred the view is while your eyes open (px; main puts it on the canvas) */
     eyeBlur = 0;
     private wreckStage = 0;
@@ -153,7 +159,7 @@ export class Game {
     /** multiplayer: friends and pings for the map (set by net/sync) */
     mapExtras: { friends?: () => { x: number; z: number; name: string; color: string }[]; pings?: () => { x: number; z: number; name: string; color: string; age: number }[] } = {};
     /** VR: aim comes from the hand, not the head; the VR rig fills this in every frame */
-    readonly vr = { active: false, eye: new Vector3(), dir: new Vector3(0, 0, -1), tip: null as Vector3 | null, head: null as Vector3 | null, headDir: null as Vector3 | null, haptic: null as null | ((strength: number) => void), paint: null as null | ((p: Painting, done: (data: string | null) => void) => void) };
+    readonly vr = { active: false, eye: new Vector3(), dir: new Vector3(0, 0, -1), tip: null as Vector3 | null, handL: null as Vector3 | null, handR: null as Vector3 | null, head: null as Vector3 | null, headDir: null as Vector3 | null, haptic: null as null | ((strength: number) => void), paint: null as null | ((p: Painting, done: (data: string | null) => void) => void) };
     /** multiplayer glue (set by net/sync) */
     netId = 0;
     net: {
@@ -748,6 +754,7 @@ export class Game {
 
     update(dt: number, active: boolean) {
         const { player, stats, input, hud, view } = this;
+        this.handsInSand(dt);
         if (this.vrSwingT > 0) {
             this.vrSwingT -= dt;
             const hit = this.vr.tip && !this.under.active ? this.resources.touching(this.vr.tip, 0.35) : null;
@@ -1114,6 +1121,8 @@ export class Game {
             if (def?.tool?.model === "rod") {
                 if (input.attackQueued && !view.swinging && this.fishing.click(eye, dir)) view.swing();
             } else if (def?.tool && !view.swinging) { view.swing(); this.sfx.swing(); }
+            else if (!def && input.attackQueued && this.sand?.active) { if (this.digWith(null, eye, dir, 2.6)) view.place(); }
+            else if (held?.id === "sand" && input.attackQueued && this.sand?.active) this.pourSand(eye, dir);
             else if (def?.boat && input.attackQueued && !ug.active && !this.boats.on) {
                 const ba = this.boatAim;
                 if (!ba || !ba.ok) { hud.message(ba?.why || "Aim at open water"); this.sfx.denied(); }
@@ -1404,6 +1413,7 @@ export class Game {
             return;
         }
         if (an && (!t || t.type !== "node" || an.dist < t.dist)) { this.hitAnimal(an.a, def.tool.dmg); return; }
+        if (!t && !forced && this.digWith(held!.id, eye, this.dir, def.tool.reach)) return;
         if (!t) { this.sfx.hit("leaf"); return; }
         this.vr.haptic?.(0.55);
         if (t.type !== "node" || t.node.gather === "berries") { this.sfx.hit("leaf"); return; }
@@ -1431,6 +1441,65 @@ export class Game {
         // felling a tree sometimes shakes a sapling loose
         if (emptied && (n.kind === "palm" || n.kind === "tree") && Math.random() < (wasPlanted ? 0.4 : 0.12)) { this.give("sapling", 1); this.hud.message("A sapling fell out of the tree!"); }
         this.wearHeld();
+    }
+
+    // ------------------------------------------------------------ the desert's sand
+    /** dig where you are looking (a tool's swing, or your bare hands); true if some sand came up */
+    private digWith(id: ItemId | null, eye: Vector3, dir: Vector3, reach: number): boolean {
+        const sd = this.sand;
+        if (!sd?.active) return false;
+        const hit = sd.ray(eye, dir, reach);
+        if (!hit) return false;
+        if (!sd.diggable(hit.x, hit.z)) { this.hud.message("The sand out here just slides back in. Dig nearer the oasis."); return true; }
+        // a pickaxe bites deepest, then an axe, a rock, a spear; hands scoop a little
+        const tool = id ? ITEMS[id].tool : null;
+        const pick = id?.includes("pickaxe"), axe = id?.includes("hatchet");
+        const r = pick ? 0.5 : axe ? 0.45 : tool?.model === "rock" ? 0.4 : tool ? 0.32 : 0.3;
+        const d = pick ? 0.24 : axe ? 0.16 : tool?.model === "rock" ? 0.13 : tool ? 0.09 : 0.08;
+        return this.scoop(hit.x, hit.z, r, d, 0.6);
+    }
+    /** take sand out here (r: radius, d: depth); it goes into your pockets */
+    private scoop(x: number, z: number, r: number, d: number, haptic: number): boolean {
+        const v = this.sand!.dig({ x, z, r, d: -d });
+        if (v <= 0) { this.hud.message("You can't dig any deeper here"); return true; }
+        this.sandAcc += v;
+        const n = Math.floor(this.sandAcc / 0.012);
+        if (n > 0) {
+            this.sandAcc -= n * 0.012;
+            const fit = this.inv.canFit("sand", n);
+            if (fit > 0) { this.inv.add("sand", fit); this.hud.gain("sand", fit); }
+        }
+        this.sfx.hit("leaf");
+        this.vr.haptic?.(haptic);
+        return true;
+    }
+    /** pour a handful of sand where you are looking: heap it up, fill a hole, dam a channel */
+    private pourSand(eye: Vector3, dir: Vector3) {
+        const sd = this.sand!, hit = sd.ray(eye, dir, 3.4);
+        if (!hit) { this.hud.message("Aim at the sand"); this.sfx.denied(); return; }
+        const v = sd.dig({ x: hit.x, z: hit.z, r: 0.55, d: 0.2 });
+        if (v <= 0) { this.hud.message(sd.diggable(hit.x, hit.z) ? "It won't heap any higher" : "Pour it nearer the oasis"); this.sfx.denied(); return; }
+        this.inv.takeAt(this.hud.selected, 1);
+        this.sfx.place(); this.view.place();
+    }
+    /** a headset: hands (and a tool's head) pushed into the sand and dragged through it dig it out */
+    private handsInSand(dt: number) {
+        const sd = this.sand;
+        if (!this.vr.active || !sd?.active) { this.sandProbe.clear(); return; }
+        const probes: [string, Vector3 | null, boolean][] = [["l", this.vr.handL, false], ["r", this.vr.tip ? null : this.vr.handR, false], ["t", this.vr.tip, true]];
+        for (const [key, p, tool] of probes) {
+            if (!p) { this.sandProbe.delete(key); continue; }
+            let s = this.sandProbe.get(key);
+            if (!s) { s = { x: p.x, y: p.y, z: p.z, cd: 0 }; this.sandProbe.set(key, s); }
+            const sp = Math.hypot(p.x - s.x, p.y - s.y, p.z - s.z) / Math.max(dt, 1 / 120);
+            s.x = p.x; s.y = p.y; s.z = p.z; s.cd -= dt;
+            if (s.cd > 0 || sp < 0.35 || !sd.diggable(p.x, p.z)) continue;
+            const g = groundAt(p.x, p.z);
+            if (p.y > g + 0.03) continue;
+            s.cd = tool ? 0.1 : 0.14;
+            const id = this.equipped?.id ?? null, pick = !!id?.includes("pickaxe");
+            this.scoop(p.x, p.z, tool ? (pick ? 0.34 : 0.28) : 0.2, Math.min(tool ? (pick ? 0.16 : 0.12) : 0.09, g - p.y + 0.05), tool ? 0.35 : 0.2);
+        }
     }
 
     // ------------------------------------------------------------ boats

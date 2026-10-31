@@ -122,7 +122,7 @@ void main(void) {
     gl_Position = viewProjection * vec4(p, 1.0);
 }`;
 
-const FRAGMENT = `
+export const OCEAN_FRAGMENT = `
 precision highp float;
 uniform samplerCube envMap;
 uniform sampler2D ripples;
@@ -157,7 +157,15 @@ float noise(vec2 p) {
 }
 float fbm(vec2 p) { float s = 0.0; float a = 0.5; for (int i = 0; i < 4; i++) { s += a * noise(p); p *= 2.07; a *= 0.5; } return s; }
 
+#ifdef LAKE
+uniform sampler2D lakeMask;
+uniform vec4 lakeRect;
+#endif
 void main(void) {
+#ifdef LAKE
+    // (a lake: only where the water has got to)
+    if (texture2D(lakeMask, (vPos.xz - lakeRect.xy) / lakeRect.z).r < 0.5) discard;
+#endif
     vec3 N = normalize(vNormal);
     // Interactive ripples: normal from the simulated height gradient.
     vec2 ruv = vRippleUV;
@@ -340,7 +348,7 @@ export class Ocean {
         this.ripples = new RippleSimulation(scene, q === "mobile" ? 128 : 256, q === "mobile" ? 24 : 32);
 
         Effect.ShadersStore["oceanVertexShader"] = VERTEX;
-        Effect.ShadersStore["oceanFragmentShader"] = FRAGMENT;
+        Effect.ShadersStore["oceanFragmentShader"] = OCEAN_FRAGMENT;
         const mat = new ShaderMaterial(
             "oceanMat",
             scene,
@@ -363,14 +371,7 @@ export class Ocean {
         mat.onBindObservable.add(() => {
             const cam = scene.activeCamera!;
             const e = mat.getEffect()!;
-            e.setFloat("time", this.time);
-            e.setFloat("daylight", this.daylight);
-            e.setFloat("bio", this.bio);
-            e.setFloat("flash", this.flash);
-            e.setFloat("rough", this.rough);
-            const hz = this.horizon;
-            if (hz) { e.setColor3("hzAway", hz.away); e.setColor3("hzSun", hz.toSun); }
-            e.setFloat3("hzSunXZ", hz?.sunX ?? 0, hz?.sunZ ?? 0, hz ? 1 : 0);
+            this.bindCommon(e);
             e.setArray4("waveA", this.waveA as unknown as number[]);
             e.setArray4("waveB", this.waveB as unknown as number[]);
             e.setVector3("cameraPos", cam.globalPosition);
@@ -379,12 +380,6 @@ export class Ocean {
             e.setFloat4("rippleRect", r.origin.x, r.origin.y, r.worldSize, r.enabled ? 1 : 0);
             e.setFloat2("rippleTexel", 1 / r.size, 1 / r.size);
             e.setTexture("ripples", r.texture);
-            const rf = this.reflection;
-            const on = !!rf && this.reflectOn;
-            e.setFloat("useRefl", on ? 1 : 0);
-            e.setTexture("reflTex", rf ?? r.texture);
-            const eng = scene.getEngine();
-            e.setFloat2("screenSize", eng.getRenderWidth(), eng.getRenderHeight());
         });
         this.mesh.material = mat;
 
@@ -393,6 +388,62 @@ export class Ocean {
         scene.onBeforePhysicsObservable?.add(() => this.physicsStep());
         scene.onBeforeRenderObservable.add(() => this.frame());
     }
+
+    /** the sea's look, shared by every water surface drawn with its shader (the light, the sky, the reflection) */
+    private bindCommon(e: Effect) {
+        const scene = this.scene;
+        e.setFloat("time", this.time);
+        e.setFloat("daylight", this.daylight);
+        e.setFloat("bio", this.bio);
+        e.setFloat("flash", this.flash);
+        e.setFloat("rough", this.rough);
+        const hz = this.horizon;
+        if (hz) { e.setColor3("hzAway", hz.away); e.setColor3("hzSun", hz.toSun); }
+        e.setFloat3("hzSunXZ", hz?.sunX ?? 0, hz?.sunZ ?? 0, hz ? 1 : 0);
+        const rf = this.reflection;
+        const on = !!rf && this.reflectOn;
+        e.setFloat("useRefl", on ? 1 : 0);
+        e.setTexture("reflTex", rf ?? this.ripples.texture);
+        const eng = scene.getEngine();
+        e.setFloat2("screenSize", eng.getRenderWidth(), eng.getRenderHeight());
+    }
+
+    /**
+     * A lake (or pond, or channel) drawn just like the sea: its own vertex shader (`vertex`: the surface, its seabed and
+     * small waves, through the same varyings) with the sea's own fragment shader, discarding wherever `lakeMask` is dry.
+     */
+    makeLake(name: string, vertex: string, uniforms: string[], samplers: string[], bind: (e: Effect) => void): ShaderMaterial {
+        Effect.ShadersStore[`${name}VertexShader`] = vertex;
+        const sea = this.mesh.material as unknown as { _vectors3?: Record<string, Vector3>; _colors3?: Record<string, Color3>; _textures?: Record<string, BaseTexture> };
+        const mat = new ShaderMaterial(name, this.scene, { vertex: name, fragment: "ocean" }, {
+            attributes: ["position"],
+            uniforms: ["world", "viewProjection", "time", "cameraPos", "sunDir", "sunColor", "shallowColor", "deepColor", "daylight", "bio", "useRefl", "screenSize", "hzAway", "hzSun", "hzSunXZ", "flash", "rough", "rippleRect", "rippleTexel", "lakeRect", ...uniforms],
+            samplers: ["ripples", "envMap", "reflTex", "lakeMask", ...samplers],
+            defines: ["#define LAKE", ...(this.opts.quality === "mobile" ? ["#define LITE"] : [])],
+            needAlphaBlending: true,
+        });
+        mat.backFaceCulling = false;
+        mat.setTexture("envMap", this.opts.env);
+        mat.onBindObservable.add(() => {
+            const e = mat.getEffect(); if (!e) return;
+            this.bindCommon(e);
+            // (the sun as the sea has it this moment: the sky sets it on the sea's material)
+            const sd = sea._vectors3?.sunDir, sc = sea._colors3?.sunColor;
+            if (sd) e.setVector3("sunDir", sd);
+            if (sc) e.setColor3("sunColor", sc);
+            // (and the sky it reflects: re-captured through the day, dark at night)
+            const env = sea._textures?.envMap; if (env) e.setTexture("envMap", env);
+            e.setVector3("cameraPos", this.scene.activeCamera!.globalPosition);
+            e.setFloat4("rippleRect", 0, 0, 1, 0);
+            e.setFloat2("rippleTexel", 1, 1);
+            e.setTexture("ripples", this.ripples.texture);
+            bind(e);
+        });
+        return mat;
+    }
+
+    /** the reflection mirrors about this height (the sea's level; the oasis pond's in the desert) */
+    setMirrorLevel(y: number) { if (this.reflection) this.reflection.mirrorPlane = new Plane(0, -1, 0, y - 0.05); }
 
     /** Height of the water surface at (x, z) (Gerstner swell; ripples are cosmetic). */
     private rough = 0;

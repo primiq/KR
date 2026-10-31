@@ -545,7 +545,7 @@ const GRIPS: Record<ItemId, Grip> = {
   sapling: G_BUNDLE, campfire: G_BUNDLE, torch: { ...G_HANDLE, gy: -0.03 }, furnace: G_BIG, workbench: { ...G_HANDLE, gy: -0.04 }, bed: G_BUNDLE, sleeping_bag: G_BUNDLE, box: G_BIG, building_plan: G_LOG,
   leather: G_BUNDLE, leather_cap: G_BIG, leather_vest: G_BIG, leather_pants: G_BIG, metal_helmet: G_BIG, metal_chestplate: G_BIG, metal_greaves: G_BIG,
   diamond_helmet: G_BIG, diamond_chestplate: G_BIG, diamond_greaves: G_BIG, boat: G_BIG,
-  meat_stick: { ...G_HANDLE, gy: 0.0 }, roast_stick: { ...G_HANDLE, gy: 0.0 }, guitar: { ...G_HANDLE, gy: -0.02 },
+  meat_stick: { ...G_HANDLE, gy: 0.0 }, roast_stick: { ...G_HANDLE, gy: 0.0 }, guitar: { ...G_HANDLE, gy: -0.02 }, sand: G_STONE,
 };
 const DESK_POSE: Partial<Record<ItemId, [number, number, number]>> = { drumsticks: [0.9, 0, 0], meat_stick: [1.2, 0, -0.4], roast_stick: [1.2, 0, -0.4], guitar: [1.1, 0.35, 0.5] };
 const GRIP_L: Partial<Record<ItemId, Grip>> = { drumsticks: { ...G_HANDLE, gy: -0.03 }, workbench: { ...G_LOG, fit: F_HANDLE, cz: 0.034, th: [0.9, 0.8, 0.4], roll: 0.2, fz: 0.1 } };
