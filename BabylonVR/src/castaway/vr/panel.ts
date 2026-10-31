@@ -1,4 +1,4 @@
-import { Mesh, MeshBuilder, type Scene, Vector3, type WebXRInputSource } from "@babylonjs/core";
+import { Mesh, MeshBuilder, Quaternion, type Scene, Vector3, type WebXRInputSource } from "@babylonjs/core";
 import type { GfxCustom, Quality } from "../core/quality";
 import { AdvancedDynamicTexture, Button, Control, Grid, Image, Rectangle, ScrollViewer, StackPanel, TextBlock } from "@babylonjs/gui";
 import type { Game } from "../game/game";
@@ -48,7 +48,7 @@ function slotControl(name: string, size: number): { root: Button; img: Image; cn
 }
 
 /**
- * Castaway's HUD and bag for the headset, in Babylon GUI: a wrist display on the left hand (vitals, hotbar, what you
+ * Castaway's HUD and bag for the headset, in Babylon GUI: a heads-up display floating in the lower left of your view (vitals, hotbar, what you
  * are looking at, messages) and a floating bag / crafting panel you point at with the right hand's laser. Both read
  * the same Hud state as the flat-screen HTML overlay and call the same actions, so they always agree.
  */
@@ -419,9 +419,9 @@ export class VRPanel {
         btn(r3, 690, () => `Grass: ${GN[eff().grassTier]}`, () => { g().custom.grass = GRASS[(GRASS.indexOf(eff().grassTier) + 1) % 3]; });
         const r4 = row();
         btn(r4, 500, () => "Back to the preset", () => { g().custom = {}; });
-        const ap = btn(r4, 600, () => "Apply & restart", () => this.menuActions?.applyGfx(g().pref, g().custom));
+        const ap = btn(r4, 600, () => "Apply", () => this.menuActions?.applyGfx(g().pref, g().custom));
         ap.background = "#7a3a3a";
-        text("Applying restarts the game (it is saved first): put the headset back on and press Continue.", 110, 30);
+        text("Most changes apply straight away. A new preset or grass range rebuilds the island (saved first): you come straight back to it.", 110, 30);
         pane.isVisible = false;
     }
 
@@ -507,18 +507,34 @@ export class VRPanel {
         pane.isVisible = false;
     }
 
-    /** the wrist display rides on the left controller, facing up at you */
-    attach(src: WebXRInputSource) {
-        const grip = src.grip ?? src.pointer;
-        this.wrist.parent = grip;
-        this.wrist.position.set(0, 0.06, 0.07);
-        // (a plane's readable side is its +z here, right-handed: tilted up and back towards you, the top of the text away)
-        this.wrist.rotation.set(-(Math.PI / 2 - 0.6), 0, 0);
+    /**
+     * The HUD (vitals and the hotbar) floats in the lower left of your view, about 75 cm away, and follows your head lazily
+     * (it trails a turn a little instead of being glued to your eyes, which is easier to look at and to read).
+     */
+    attach(_src: WebXRInputSource) {
+        this.hudOn = true;
+        this.hudInit = false;
         this.wrist.setEnabled(true);
+    }
+    private hudOn = false;
+    private hudInit = false;
+    private static readonly HUD_AT = new Vector3(-0.23, -0.2, -0.72);
+    private followHead(dt: number) {
+        const cam = this.scene.activeCamera;
+        if (!cam || !this.hudOn) return;
+        // (the camera's own turn, so the panel's readable side, +z, faces your eyes)
+        const q = cam.absoluteRotation, at = cam.globalPosition.add(VRPanel.HUD_AT.applyRotationQuaternion(q));
+        const w = this.wrist;
+        if (!w.rotationQuaternion) w.rotationQuaternion = q.clone();
+        const k = this.hudInit ? 1 - Math.exp(-dt * 7) : 1;
+        this.hudInit = true;
+        Vector3.LerpToRef(w.position, at, k, w.position);
+        Quaternion.SlerpToRef(w.rotationQuaternion, q, k, w.rotationQuaternion);
     }
 
     setVisible(v: boolean) {
-        this.wrist.setEnabled(v && !!this.wrist.parent);
+        this.hudOn = v && this.hudOn;
+        this.wrist.setEnabled(v && this.hudOn);
         if (!v) this.board.setEnabled(false);
     }
 
@@ -561,6 +577,7 @@ export class VRPanel {
     }
 
     update(_dt: number) {
+        this.followHead(_dt);
         const g = this.game, hud = g.hud, s = g.stats;
         // wrist
         const vals = [s.health, s.hunger, s.thirst, s.stamina];

@@ -117,6 +117,20 @@ async function main() {
     $("version").textContent = __CASTAWAY_VERSION__;
     /** saves the game first when one is running (set once it is) */
     let saveBeforeReload = () => {};
+    /** switches what it can of a new graphics choice on the spot; false: the island must be built again for it */
+    let liveGfx: ((nq: ReturnType<typeof pickQuality>) => boolean) | null = null;
+    /** whether a room was being hosted (it is opened again, under the same code, after a reload) */
+    let hostingNow = () => false;
+    /** apply a graphics choice: on the spot if it can be, else reload and go straight back to this island */
+    const applyGfx = (pref: string, custom: GfxCustom): string => {
+        setPref("castaway.quality", pref);
+        setPref("castaway.gfx", JSON.stringify(custom));
+        if (liveGfx?.(pickQuality(pref, custom))) return "Applied.";
+        if (liveGfx) { try { sessionStorage.setItem("castaway.resume", hostingNow() ? "host" : "continue"); } catch { /* private mode */ } }
+        saveBeforeReload();
+        location.reload();
+        return "Restarting…";
+    };
 
     // ---- settings: a graphics preset, and your own mix over it (both take effect on a restart: they decide how the island
     //      is built and which shaders it compiles)
@@ -129,7 +143,7 @@ async function main() {
             box("g-shadows").checked = eff.shadows; box("g-reflect").checked = eff.reflect; box("g-bloom").checked = eff.bloom; box("g-ao").checked = eff.ao;
             sel("g-res").value = String(Math.round((1 / eff.scale) * 100) / 100 >= 1 ? 1 : Math.round((1 / eff.scale) * 100) / 100);
             sel("g-grass").value = eff.grassTier;
-            $("gfx-note").textContent = Object.keys(custom).length ? "Your own mix over the preset. Apply restarts the game (it is saved first)." : "The preset sets everything above; change any of it for your own mix.";
+            $("gfx-note").textContent = Object.keys(custom).length ? "Your own mix over the preset." : "The preset sets everything above; change any of it for your own mix.";
         };
         for (const b of document.querySelectorAll<HTMLButtonElement>("#q-seg button")) b.addEventListener("click", () => { pending = b.dataset.q!; custom = {}; show(); });
         box("g-shadows").addEventListener("change", () => { custom.shadows = box("g-shadows").checked; show(); });
@@ -139,12 +153,7 @@ async function main() {
         sel("g-res").addEventListener("change", () => { custom.res = Number(sel("g-res").value); show(); });
         sel("g-grass").addEventListener("change", () => { custom.grass = sel("g-grass").value as GfxCustom["grass"]; show(); });
         $("gfx-reset").addEventListener("click", () => { custom = {}; show(); });
-        $("gfx-apply").addEventListener("click", () => {
-            setPref("castaway.quality", pending);
-            setPref("castaway.gfx", JSON.stringify(custom));
-            saveBeforeReload();
-            location.reload();
-        });
+        $("gfx-apply").addEventListener("click", () => { $("gfx-note").textContent = applyGfx(pending, custom); });
         show();
     }
     // the menu's pages: the main column, multiplayer, settings
@@ -213,6 +222,12 @@ async function main() {
     const w = window as unknown as { __castawayStart?: string; __castawayReady?: boolean };
     w.__castawayReady = true;
     if (!startWith && w.__castawayStart) startWith = w.__castawayStart;
+    // back from a graphics change that needed the island rebuilt: straight back in (and the room opened again)
+    {
+        let r: string | null = null;
+        try { r = sessionStorage.getItem("castaway.resume"); sessionStorage.removeItem("castaway.resume"); } catch { /* private mode */ }
+        if (!startWith && saved && (r === "continue" || r === "host")) startWith = r === "host" ? "mp-host" : "continue";
+    }
     if (!startWith) {
         await new Promise<void>((res) => {
             const ids = ["continue", "play", "play-vr", "mp-host", "mp-join"];
@@ -525,7 +540,8 @@ async function main() {
     };
 
     // ---- the sea mirrors the island, the trees, the clouds, the moon and the stars (medium and high quality; off in a headset)
-    const seaRefl = !q.reflect ? null : ocean.enableReflection(q.name === "high" ? 0.5 : 0.25, q.name === "high" ? 1 : 3, (m) => {
+    const gfxNow = { reflect: q.reflect };
+    const seaRefl = headset ? null : ocean.enableReflection(q.name === "high" ? 0.5 : 0.25, q.name === "high" ? 1 : 3, (m) => {
         const n = m.name;
         if (n === "grass" || n.startsWith("sea_") || n === "seaShafts" || n === "seaSnow" || n === "rain" || n === "fallsPool" || n === "falls") return false;
         // (you are in it too: the mirror-only copy of you, not the head-less one you see your legs with)
@@ -554,12 +570,36 @@ async function main() {
         scene.imageProcessingConfiguration.vignetteEnabled = true;
         scene.imageProcessingConfiguration.vignetteWeight = 0;
     }
-    if (q.ao && !params.has("nossao")) {
-        const ssao = new SSAO2RenderingPipeline("ssao", scene, { ssaoRatio: 0.5, blurRatio: 1 }, [camera]);
-        ssao.radius = 1.6;
-        ssao.totalStrength = 1.0;
-        ssao.samples = 16;
-        ssao.maxZ = 120;
+    let ssao: SSAO2RenderingPipeline | null = null;
+    const setAO = (on: boolean) => {
+        if (on && !ssao && !headset && !params.has("nossao")) {
+            ssao = new SSAO2RenderingPipeline("ssao", scene, { ssaoRatio: 0.5, blurRatio: 1 }, [camera]);
+            ssao.radius = 1.6;
+            ssao.totalStrength = 1.0;
+            ssao.samples = 16;
+            ssao.maxZ = 120;
+            return;
+        }
+        if (!ssao) return;
+        const pm = scene.postProcessRenderPipelineManager;
+        if (on) pm.attachCamerasToRenderPipeline("ssao", camera); else pm.detachCamerasFromRenderPipeline("ssao", camera);
+    };
+    setAO(q.ao);
+    // ---- graphics changes in the middle of a game: what can be switched on the spot is; the rest needs the island rebuilt
+    {
+        let cur = { ...q };
+        liveGfx = (nq) => {
+            const rebuild = nq.name !== cur.name || nq.terrainSegments !== cur.terrainSegments || nq.bushes !== cur.bushes || nq.grass !== cur.grass
+                || nq.treeCull !== cur.treeCull || nq.palmDetail !== cur.palmDetail || nq.grassTier !== cur.grassTier || (nq.shadows && !q.shadows);
+            if (rebuild) return false;
+            if (nq.scale !== cur.scale) { engine.setHardwareScalingLevel(nq.scale / Math.min(window.devicePixelRatio || 1, nq.name === "high" ? 2 : nq.name === "medium" ? 1.25 : 1)); engine.resize(); }
+            if (pipeline) pipeline.bloomEnabled = nq.bloom;
+            if (nq.ao !== cur.ao) setAO(nq.ao);
+            gfxNow.reflect = nq.reflect;
+            if (nq.shadows !== cur.shadows) sun.shadowEnabled = nq.shadows;
+            cur = { ...nq };
+            return true;
+        };
     }
 
     progress(0.91, "Looking for a headset…");
@@ -701,7 +741,7 @@ async function main() {
             ocean.bio = BIO.value;
             if (seaRefl) {
                 // (paused, not drawn at all, where the sea cannot be seen: in a headset, underground, out in the far places)
-                const want = !vrActive() && !game.under.active && Math.abs(player.pos.x) < 2000 && Math.abs(player.pos.z) < 2000;
+                const want = gfxNow.reflect && !vrActive() && !game.under.active && Math.abs(player.pos.x) < 2000 && Math.abs(player.pos.z) < 2000;
                 if (want !== seaReflOn) {
                     seaReflOn = want; ocean.reflectOn = want;
                     const list = scene.customRenderTargets, i = list.indexOf(seaRefl);
@@ -778,6 +818,7 @@ async function main() {
         saveChar(charId(), captureChar(game));
     };
     saveBeforeReload = doSave;
+    hostingNow = () => !!sync?.session.isHost;
     setInterval(doSave, 30000);
     window.addEventListener("pagehide", doSave);
     document.addEventListener("visibilitychange", () => { if (document.hidden) doSave(); });
@@ -1085,7 +1126,7 @@ async function main() {
             exitVR: () => void vm.exit(),
             gfx: () => ({ pref: getPref("castaway.quality") ?? "auto", custom: { ...gfx } }),
             gfxPreview: (pref, custom) => pickQuality(pref, custom),
-            applyGfx: (pref, custom) => { setPref("castaway.quality", pref); setPref("castaway.gfx", JSON.stringify(custom)); doSave(); location.reload(); },
+            applyGfx: (pref, custom) => game.hud.message(applyGfx(pref, custom) === "Applied." ? "Graphics applied." : "Rebuilding the island for that…"),
             chat: (t) => { if (sync) { sync.sendChat(t); chat.add("You", "#ffffff", t); } else game.hud.message("Host or join a room to chat"); },
             pingAt: (x, z) => { if (sync) sync.pingAt(x, z); else game.hud.message("Pings are for rooms with friends"); },
             players: () => {
