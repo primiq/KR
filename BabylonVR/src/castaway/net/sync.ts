@@ -100,6 +100,7 @@ export class WorldSync {
             w.remote = !session.isHost; w.myId = session.myId;
             w.onEvent = (e) => session.sendEvent({ k: "ml", ...e });
             game.guitar.onStrum = (e) => session.sendEvent({ k: "gs", ...e });
+            game.drum.onHit = (e) => session.sendEvent({ k: "dr", ...e });
             w.present = (pid) => pid === session.myId || session.players.has(pid);
             w.who = (pid) => ({ name: session.players.get(pid)?.name ?? (pid === session.myId ? "You" : "Friend"), color: playerColor(pid) });
         }
@@ -231,6 +232,7 @@ export class WorldSync {
         this.game.offshore.remote = false; this.game.offshore.onWhale = this.game.offshore.onShip = null;
         { const iv = this.game.invaders; iv.remote = false; iv.onEvent = null; iv.myId = 0; iv.aimOf = () => null; iv.who = (pid) => ({ name: pid === 0 ? "You" : "Friend", color: "#ffd23f" }); }
         this.game.guitar.onStrum = null;
+        this.game.drum.onHit = null;
         { const bo = this.game.boats; bo.onEvent = null; bo.present = () => true; for (const b of bo.list) b.helm = b === bo.on && bo.atHelm ? 0 : null; bo.myId = 0; }
         { const w = this.game.warp; w.remote = false; w.onEvent = null; w.present = () => true; w.who = () => ({ name: "You", color: "#3cb043" }); w.myId = 0; }
         { const dr = this.game.druids; dr.remote = false; dr.onTouch = null; dr.onPhase = null; dr.onHit = null; dr.players = () => [{ id: 0, x: this.game.player.pos.x, y: this.game.player.pos.y, z: this.game.player.pos.z }]; }
@@ -356,6 +358,7 @@ export class WorldSync {
             case "wh": if (!this.session.isHost) g.offshore.startWhale(+e.x, +e.z, +e.h, +e.s); break;
             case "sx": if (!this.session.isHost && !g.offshore.shipActive) g.offshore.startShip(+e.a, e.d < 0 ? -1 : 1, +e.p || 0); break;
             case "iv": g.invaders.net(e, from); break;
+            case "dr": if (typeof e.x === "number" && typeof e.v === "number") g.drum.remote({ x: e.x, y: e.y, z: e.z, v: Math.max(0, Math.min(1, e.v)) }, g.player.pos, g.structures.list); break;
             case "gs": if (typeof e.x === "number" && Array.isArray(e.s)) g.guitar.remote(e, Math.hypot(g.player.pos.x - e.x, g.player.pos.y - e.y, g.player.pos.z - e.z)); break;
             case "bo": if (e.op === "calm") { if (this.session.isHost && g.weather && g.weather.kind !== 0) g.weather.set(0); } else g.boats.net(e, from); break;
             case "cr": if (e.on) { const c = g.under.air?.cars[e.i]; if (c && c !== g.under.air?.driving) { g.under.air?.remote.set(e.i, from); c.driver = from; } } else g.under.air?.remoteLeave(e.i); break;

@@ -12,6 +12,7 @@ import type { Input } from "../core/input";
 import type { Game } from "../game/game";
 import { ITEMS, type ItemId } from "../game/items";
 import { VRHand } from "../game/hands";
+import { DRUM_R, DRUM_TOP } from "../game/structures";
 import * as THREE from "three";
 import { heldModel, ITEM_COLOR } from "../game/viewmodel";
 import { bakeGroup, disposeBaked } from "../render/bake";
@@ -486,7 +487,8 @@ export class CastawayVR {
         const heldId = game.equipped?.id ?? null;
         // the guitar is held by the neck in the left hand, so the right hand is free to strum; gorillas and cats hold nothing
         const guitar = heldId === "guitar" && !!L && !!R && !this.catOn;
-        const id = guitar || this.catOn || this.gorOn ? null : heldId;
+        const id = guitar || this.catOn || this.gorOn || game.drum.active ? null : heldId;
+        this.drumSticks(dt);
         this.setHeld(R, id);
         this.setGuitar(guitar ? L : null);
         if (guitar && this.strumZone && R) {
@@ -556,6 +558,40 @@ export class CastawayVR {
         this.strumZone = new TransformNode("vrStrum", this.scene);
         this.strumZone.parent = this.guitar;
         this.strumZone.position.set(0, -0.53, -0.05);
+    }
+
+    /** at the drum: a stick in each hand; a stick coming down through the head hits it (as hard as it was moving) */
+    private sticks = new Map<string, { g: THREE.Group; prev: Vector3 | null; cd: number }>();
+    private drumSticks(dt: number) {
+        const s = this.game.drum.active;
+        for (const h of this.hands.values()) {
+            let st = this.sticks.get(h.side);
+            if (!s) { if (st) { h.rig.remove(st.g); this.sticks.delete(h.side); } continue; }
+            if (!st) {
+                const g = new THREE.Group();
+                const wood = new THREE.MeshStandardMaterial({ color: "#8b5e34", roughness: 0.8 }), felt = new THREE.MeshStandardMaterial({ color: "#e8dcc0", roughness: 0.95 });
+                const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.012, 0.42, 8), wood); rod.position.y = 0.17;
+                const ball = new THREE.Mesh(new THREE.SphereGeometry(0.024, 10, 8), felt); ball.position.y = 0.39;
+                g.add(rod, ball);
+                // (the same hold as a tool: along the handle, forward and a little up)
+                g.rotation.x = -Math.PI / 2 + 0.35;
+                h.rig.add(g);
+                st = { g, prev: null, cd: 0 };
+                this.sticks.set(h.side, st);
+            }
+            st.cd -= dt;
+            const grip = h.src.grip ?? h.src.pointer;
+            const tip = grip.absolutePosition.add(grip.getDirection(_tipDir).scale(0.39));
+            const top = s.y + DRUM_TOP;
+            if (st.prev && st.prev.y > top && tip.y <= top + 0.01 && st.cd <= 0 && Math.hypot(tip.x - s.x, tip.z - s.z) < DRUM_R + 0.04) {
+                const vy = (st.prev.y - tip.y) / Math.max(dt, 1 / 120);
+                const v = Math.max(0.08, Math.min(1, (vy - 0.3) / 3.5));
+                this.game.drum.strike(s, v);
+                this.pulse(h.side, 0.2 + 0.6 * v);
+                st.cd = 0.09;
+            }
+            st.prev = tip;
+        }
     }
 
     /** the tool / item in your right hand */

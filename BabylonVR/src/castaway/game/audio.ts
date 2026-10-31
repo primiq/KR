@@ -442,6 +442,28 @@ export class Sfx {
     this.gtBus = body;
     return body;
   }
+  /**
+   * A big deep drum: a low membrane tone that drops in pitch as it rings, a softer overtone, and the slap of the stick on
+   * the hide. `vel` 0..1 how hard (louder, longer, a touch higher and brighter); `vol` the listener's distance falloff.
+   */
+  bigDrum(vel: number, vol = 1) {
+    const c = this.ctx; if (!c || !this.master || vol < 0.01) return;
+    const t = c.currentTime, v = Math.max(0.05, Math.min(1, vel)), peak = (0.18 + 0.7 * v) * vol, ring = 0.55 + 0.75 * v;
+    const f0 = 58 + 22 * v;
+    const tone = (f: number, k: number, dur: number) => {
+      const o = c.createOscillator(); o.type = 'sine';
+      o.frequency.setValueAtTime(f * 1.8, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.035); o.frequency.exponentialRampToValueAtTime(f * 0.86, t + dur);
+      const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak * k, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(this.master!); o.start(t); o.stop(t + dur + 0.05);
+    };
+    tone(f0, 1, ring); tone(f0 * 1.59, 0.32, ring * 0.45); tone(f0 * 2.14, 0.12 * v, ring * 0.25);
+    if (this.noise) {
+      const n = c.createBufferSource(); n.buffer = this.noise;
+      const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 350 + 1900 * v;
+      const g = c.createGain(); g.gain.setValueAtTime(peak * 0.5, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
+      n.connect(lp); lp.connect(g); g.connect(this.master); n.start(t); n.stop(t + 0.1);
+    }
+  }
   /** one plucked string: `vel` 0..1 how hard (louder and brighter), `vol` 0..1 the listener's distance falloff, `delay` seconds */
   pluck(midi: number, vel: number, vol = 1, delay = 0) {
     const c = this.ctx; if (!c || !this.master || vol < 0.01) return;

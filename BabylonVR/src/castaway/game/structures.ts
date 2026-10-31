@@ -145,6 +145,7 @@ const FOOT: Record<PlaceKind, Foot> = {
   lantern: { cols: [[0, 0, 0.1]], hits: [[0, 1.5, 0, 0.3]] },
   table: { cols: [[0, 0, 0.42]], hits: [[0, 0.5, 0, 0.5]] },
   cat_bed: { cols: [[0, 0, 0.3]], hits: [[0, 0.12, 0, 0.4]] },
+  drum: { cols: [[0, 0, 0.36]], hits: [[0, 0.5, 0, 0.45]] },
   lounger: { cols: [[0, -0.5, 0.36], [0, 0.45, 0.36]], hits: [[0, 0.45, -0.5, 0.5], [0, 0.4, 0.45, 0.5]] },
 };
 /** height of a small table's top */
@@ -156,9 +157,11 @@ const TABLE_R = 0.44;
 export const LOUNGER = { seatY: 0.42, hipZ: -0.1, back: 0.8 };
 /** a player's state flag: lying on a sun lounger (bits 18-21 carry a town's index) */
 export const F_LOUNGE = 1 << 24;
+/** the drum's head: how high it is (m) and its radius */
+export const DRUM_TOP = 0.86, DRUM_R = 0.33;
 const ON_TABLE: PlaceKind[] = ['flower_pot', 'cat_bed', 'lantern'];
 
-export const STRUCT_NAME: Record<PlaceKind, string> = { campfire: 'Campfire', furnace: 'Furnace', workbench: 'Workbench', bed: 'Bed', sleeping_bag: 'Sleeping Bag', box: 'Storage Box', torch: 'Torch', flower_pot: 'Clay Pot', rug: 'Rug', lantern: 'Lantern', table: 'Small Table', cat_bed: 'Cat Bed', lounger: 'Sun Lounger' };
+export const STRUCT_NAME: Record<PlaceKind, string> = { campfire: 'Campfire', furnace: 'Furnace', workbench: 'Workbench', bed: 'Bed', sleeping_bag: 'Sleeping Bag', box: 'Storage Box', torch: 'Torch', flower_pot: 'Clay Pot', rug: 'Rug', lantern: 'Lantern', table: 'Small Table', cat_bed: 'Cat Bed', lounger: 'Sun Lounger', drum: 'Drum' };
 
 
 export interface PlaceAim { ok: boolean; reason: string; x: number; y: number; z: number; yaw: number }
@@ -344,6 +347,21 @@ function buildModel(kind: PlaceKind, shadows: boolean, hook = 0): { group: THREE
         add(l);
       }
       add(mesh(new THREE.TorusGeometry(TABLE_R - 0.15, 0.014, 5, 18).rotateX(Math.PI / 2), W.beam, 0, 0.22, 0, false));
+      break;
+    }
+    case 'drum': {
+      // a hollowed log on three short feet, a hide head laced down the sides with cord
+      const T = DRUM_TOP;
+      add(mesh(cyl(0.33, 0.27, T - 0.12, 18), W.beam, 0, 0.12 + (T - 0.12) / 2, 0, shadows));
+      for (const y of [0.24, T - 0.1]) add(mesh(cyl(y > 0.5 ? 0.335 : 0.29, y > 0.5 ? 0.335 : 0.29, 0.035, 18), S.rope, 0, y, 0, false));
+      add(mesh(cyl(0.345, 0.345, 0.03, 20), S.cream, 0, T + 0.004, 0, shadows));   // (just proud of the shell: no shared top face)
+      for (let k = 0; k < 10; k++) {
+        const a = (k / 10) * Math.PI * 2, b = a + Math.PI / 10;
+        const top = new THREE.Vector3(Math.cos(a) * 0.336, T - 0.06, Math.sin(a) * 0.336), bot = new THREE.Vector3(Math.cos(b) * 0.3, 0.26, Math.sin(b) * 0.3);
+        const len = top.distanceTo(bot), c = mesh(cyl(0.007, 0.007, len, 4), S.rope, (top.x + bot.x) / 2, (top.y + bot.y) / 2, (top.z + bot.z) / 2, false);
+        c.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), top.clone().sub(bot).normalize()); add(c);
+      }
+      for (let k = 0; k < 3; k++) { const a = (k / 3) * Math.PI * 2; add(mesh(new THREE.BoxGeometry(0.08, 0.14, 0.08), W.beam, Math.cos(a) * 0.22, 0.07, Math.sin(a) * 0.22, shadows)); }
       break;
     }
     case 'lounger': {

@@ -31,6 +31,7 @@ import { druidMaterial } from "../world/druidView";
 import { Warp } from "../world/warp";
 import { Invaders } from "../world/invaders";
 import { CHORDS, Guitar } from "./guitar";
+import { Drum } from "./drum";
 import { Slide } from "../world/slide";
 import { type Boat, Boats } from "../world/boat";
 import { skyMirrorMaterial } from "../world/skyView";
@@ -109,6 +110,8 @@ export class Game {
     private ivEye = new THREE.Vector3();
     /** the guitar: a click strums the chord (R changes it); in VR the strings are real */
     readonly guitar: Guitar;
+    /** the drum you are playing, and every drum's sound */
+    readonly drum: Drum;
     private guitarHinted = false;
     /** the giant water slide on the far side */
     readonly slide: Slide;
@@ -302,6 +305,7 @@ export class Game {
             this.hud.message("You pop out of the pipe, back on the island.");
         };
         this.guitar = new Guitar(this.sfx);
+        this.drum = new Drum(this.sfx);
         this.slide = new Slide(this.natureRoot, o.vegetation.colliders, o.shadows);
         this.slide.say = (t) => this.hud.message(t);
         this.slide.sound = (k, v) => { if (k === "splash") this.sfx.splash(v); else if (k === "land") this.sfx.splash(0.6); else this.sfx.whoosh(); };
@@ -598,6 +602,12 @@ export class Game {
         if (s.kind === "workbench") { this.setInventory(true, "craft"); return; }
         if (s.kind === "bed" || s.kind === "sleeping_bag") { this.useBed(s); return; }
         if (s.kind === "lounger") { if (this.lounger === s) this.getUp(); else this.lieOn(s); return; }
+        if (s.kind === "drum") {
+            if (this.drum.active === s) { this.drum.active = null; this.hud.message("You put the sticks down."); return; }
+            this.drum.active = s; this.drum.hold = -1;
+            this.hud.message(this.vr.active ? "Sticks in hand: hit the drum! The faster the stick comes down, the louder." : `Sticks in hand: ${this.input.touch ? "tap HIT" : "click"} to hit the drum; hold it a moment for a harder hit. ${this.keyLabel("E")} puts them down.`);
+            return;
+        }
         if (!s.inv) return;
         const user = this.net.inUse?.(s);
         if (user) { this.hud.message(`${user} is using this`); this.sfx.denied(); return; }
@@ -867,7 +877,7 @@ export class Game {
         if (input.hotbarDelta) { hud.select(hud.selected + input.hotbarDelta); input.hotbarDelta = 0; }
         const held = this.equipped;
         const def = held ? ITEMS[held.id] : null;
-        view.setItem(held ? held.id : null);
+        view.setItem(this.drum.active && !this.vr.active ? "drumsticks" : held ? held.id : null);
         if ((held?.id ?? null) !== this.lastHeld) {
             this.lastHeld = held?.id ?? null;
             this.placeYaw = Math.round(player.yaw / STEP) * STEP; // new placeable: face the player
@@ -1076,8 +1086,21 @@ export class Game {
             if (input.meowQueued) { input.meowQueued = false; this.meow(); }
         }
         input.meowQueued = false;
+        // at the drum: a press raises the sticks, letting go hits (held longer, harder); nothing else happens with a click
+        const dr = this.drum.active;
+        if (dr) {
+            if (Math.hypot(dr.x - player.pos.x, dr.z - player.pos.z) > 2.8 || !this.structures.list.includes(dr) || this.stats.dead) { this.drum.active = null; this.drum.hold = -1; }
+            else if (!this.vr.active) {
+                // (timed by the clock, not frames: a slow frame must not make a long press a soft hit)
+                const now = performance.now() / 1000;
+                if (input.attackHeld) { if (this.drum.hold < 0) this.drum.hold = now; }
+                else if (this.drum.hold >= 0) { this.drum.strike(dr, 0.25 + Math.min(1, (now - this.drum.hold) / 0.5) * 0.75); this.drum.hold = -1; view.place(); }
+                input.attackQueued = false;
+            } else input.attackQueued = false;
+        }
+        this.drum.update(dt);
         // primary action: swing a tool, or eat held food
-        if (input.attackQueued || input.attackHeld) {
+        if (!this.drum.active && (input.attackQueued || input.attackHeld)) {
             if (def?.tool?.model === "rod") {
                 if (input.attackQueued && !view.swinging && this.fishing.click(eye, dir)) view.swing();
             } else if (def?.tool && !view.swinging) { view.swing(); this.sfx.swing(); }
@@ -1147,6 +1170,7 @@ export class Game {
     /** VR: a trigger pull (swung = false) or a real swing of the arm (swung = true). */
     vrPrimary(swung: boolean) {
         if (this.stats.dead || this.sleeping || this.hud.inventoryOpen || this.warp.inLevel || this.invaders.seated || this.under.air?.driving) return;
+        if (this.drum.active) return;   // (at the drum the sticks do the hitting: vr.ts)
         if (this.under.cat?.active) { if (!swung) this.pounce(); return; }
         if (this.under.camp?.active) { if (!swung) this.input.attackQueued = true; return; }
         const held = this.equipped, def = held ? ITEMS[held.id] : null;
@@ -1217,6 +1241,7 @@ export class Game {
         const hint = (tap: string) => `${this.keyLabel("E")} ${tap} &nbsp;·&nbsp; hold ${this.keyLabel("E")} pick up`;
         let name = STRUCT_NAME[s.kind];
         if (s.kind === "campfire" || s.kind === "furnace") name += s.lit ? " (burning)" : "";
+        if (s.kind === "drum") return this.hud.setPrompt(name, `${this.keyLabel("E")} ${this.drum.active === s ? "put the sticks down" : "take up the sticks"} &nbsp;·&nbsp; hold ${this.keyLabel("E")} pick up`, true);
         if (s.kind === "lounger") return this.hud.setPrompt(name, `${this.keyLabel("E")} ${this.lounger === s ? "get up" : "lie down"} &nbsp;·&nbsp; hold ${this.keyLabel("E")} pick up`, true);
         const tap = s.kind === "bed" || s.kind === "sleeping_bag" ? "sleep / set respawn" : s.kind === "workbench" ? "craft" : s.kind === "flower_pot" ? (s.inv?.slots[0] ? "change the flower" : "plant a flower") : "open";
         if (s.kind === "torch" || s.kind === "rug" || s.kind === "lantern" || s.kind === "table" || s.kind === "cat_bed") return this.hud.setPrompt(name, `hold ${this.keyLabel("E")} pick up`, true);

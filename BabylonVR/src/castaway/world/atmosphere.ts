@@ -252,10 +252,15 @@ export class Atmosphere {
         //      the sun and away from it), so there is no seam where the sea ends; a storm greys it over
         {
             const g = 0.08 + 0.5 * day, grey = new Color3(g * 0.9, g * 0.93, g);
-            const away = Color3.Lerp(Color3.Lerp(new Color3(0.7, 0.8, 0.92), new Color3(0.07, 0.09, 0.17), nightK), new Color3(0.3, 0.27, 0.4), dusk);
-            const toSun = Color3.Lerp(Color3.Lerp(new Color3(0.86, 0.88, 0.9), new Color3(0.07, 0.09, 0.17), nightK), new Color3(1.0, 0.56, 0.3), dusk);
-            this.hzAway = Color3.Lerp(away, grey, ov);
-            this.hzSun = Color3.Lerp(toSun, grey, ov);
+            // (the sunset glow dies away as the sun sinks below the horizon: once it has gone, the haze is the night's dark blue)
+            // (and the daylight haze goes as fast as the sky darkens overhead, not when the sun is far below the horizon)
+            const glow = smoothstep(-0.13, 0.03, sy), dg = dusk * glow, hzNight = 1 - smoothstep(-0.08, 0.15, sy);
+            const away = Color3.Lerp(Color3.Lerp(new Color3(0.7, 0.8, 0.92), new Color3(0.07, 0.09, 0.17), hzNight), new Color3(0.17, 0.15, 0.25).scale(0.4 + 0.6 * glow), dg);
+            const toSun = Color3.Lerp(Color3.Lerp(new Color3(0.86, 0.88, 0.9), new Color3(0.07, 0.09, 0.17), hzNight), new Color3(0.95, 0.52, 0.28).scale(0.35 + 0.65 * glow), dg);
+            // (dimmed with the daylight: the night's exposure lift would otherwise make the band glow over a dark sky)
+            const dim = 0.45 + 0.55 * day;
+            this.hzAway = Color3.Lerp(away, grey, ov).scale(dim);
+            this.hzSun = Color3.Lerp(toSun, grey, ov).scale(dim);
             this.deco.setHorizon(this.hzAway, this.hzSun, this.sunDir);
             if (this.ocean) this.ocean.horizon = { away: this.hzAway, toSun: this.hzSun, sunX: this.sunDir.x, sunZ: this.sunDir.z };
             // the fog is never switched off (that would rebuild every lit shader: a freeze, just as a storm blows up)

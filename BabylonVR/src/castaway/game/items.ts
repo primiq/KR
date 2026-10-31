@@ -9,12 +9,12 @@ export type ItemId =
   | 'campfire' | 'furnace' | 'workbench' | 'bed' | 'sleeping_bag' | 'box'
   | 'building_plan' | 'torch' | 'sapling' | 'picture_frame' | 'flower_pot' | 'rug' | 'lantern' | 'door'
   | 'leather' | 'leather_cap' | 'leather_vest' | 'leather_pants' | 'metal_helmet' | 'metal_chestplate' | 'metal_greaves'
-  | 'diamond_helmet' | 'diamond_chestplate' | 'diamond_greaves' | 'boat' | 'table' | 'cat_bed' | 'lounger'
+  | 'diamond_helmet' | 'diamond_chestplate' | 'diamond_greaves' | 'boat' | 'table' | 'cat_bed' | 'lounger' | 'drum' | 'drumsticks'
   | 'meat_stick' | 'roast_stick' | 'guitar';
 export type ArmorSlot = 'head' | 'chest' | 'legs';
 export const ARMOR_SLOTS: ArmorSlot[] = ['head', 'chest', 'legs'];
 export const ARMOR_SLOT_LABEL: Record<ArmorSlot, string> = { head: 'Head', chest: 'Chest', legs: 'Legs' };
-export type PlaceKind = 'campfire' | 'furnace' | 'workbench' | 'bed' | 'sleeping_bag' | 'box' | 'torch' | 'flower_pot' | 'rug' | 'lantern' | 'table' | 'cat_bed' | 'lounger';
+export type PlaceKind = 'campfire' | 'furnace' | 'workbench' | 'bed' | 'sleeping_bag' | 'box' | 'torch' | 'flower_pot' | 'rug' | 'lantern' | 'table' | 'cat_bed' | 'lounger' | 'drum';
 export type GatherKind = 'wood' | 'stone' | 'ore';
 export type ItemKind = 'resource' | 'tool' | 'food' | 'placeable' | 'plan' | 'armor' | 'seed';
 
@@ -261,6 +261,16 @@ export const ITEMS = {
     id: 'table', name: 'Small Table', stack: 5, kind: 'placeable', place: 'table',
     desc: 'A little round side table. Put a clay pot, a cat bed or a lantern on top of it: hold the thing and aim at the table top.',
     icon: svg('<ellipse cx="16" cy="10" rx="12" ry="4" fill="#a8743f"/><path d="M4 10v2c0 2 5 4 12 4s12-2 12-4v-2" fill="#7a5230"/><path d="M8 15l-2 13M24 15l2 13M16 16v12" stroke="#6a4424" stroke-width="2.4" stroke-linecap="round"/>'),
+  },
+  drum: {
+    id: 'drum', name: 'Drum', stack: 5, kind: 'placeable', place: 'drum',
+    desc: 'A big deep drum: a hollowed log with a hide stretched over it. Press E at it to take up the sticks, then hit it: the harder you hit, the louder and deeper it booms. Everyone nearby hears it.',
+    icon: svg('<path d="M7 11v13c0 2 4 4 9 4s9-2 9-4V11" fill="#8a5328"/><ellipse cx="16" cy="11" rx="9" ry="4" fill="#e8dcc0"/><path d="M8 13l4 13M24 13l-4 13M16 15v13" stroke="#c9a26a" stroke-width="1.4"/><path d="M22 3l-5 7M27 5l-7 6" stroke="#6a4424" stroke-width="2.2" stroke-linecap="round"/>'),
+  },
+  drumsticks: {
+    id: 'drumsticks', name: 'Drumsticks', stack: 1, kind: 'resource',
+    desc: 'For the drum.',
+    icon: svg('<path d="M6 27 24 7M10 28 27 11" stroke="#8b5e34" stroke-width="2.4" stroke-linecap="round"/>'),
   },
   lounger: {
     id: 'lounger', name: 'Sun Lounger', stack: 5, kind: 'placeable', place: 'lounger',
