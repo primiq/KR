@@ -203,7 +203,7 @@ async function main() {
         }
         // (the headset check is cheap; the XR session itself is set up with the island)
         // (in a headset Continue and New game go straight into VR, so there is no separate VR button there)
-        void navigator.xr?.isSessionSupported("immersive-vr").then((ok) => { if (ok) { if (!headset) $("play-vr").classList.remove("hidden"); $("mp-vr-opt").classList.remove("hidden"); } }).catch(() => {});
+        void navigator.xr?.isSessionSupported("immersive-vr").then((ok) => { if (ok) { if (!headset) $("play-vr").classList.remove("hidden"); } }).catch(() => {});
     }
     $("loading").classList.add("hidden");
     $("menu").classList.remove("hidden");
@@ -1091,9 +1091,8 @@ async function main() {
             },
         };
     }
-    if (vrMode) $("mp-vr-opt").classList.remove("hidden");
-    $("mp-host").addEventListener("click", () => void doHost($<HTMLInputElement>("mp-vr").checked));
-    $("mp-join").addEventListener("click", () => void doJoin(codeEl.value, $<HTMLInputElement>("mp-vr").checked));
+    $("mp-host").addEventListener("click", () => void doHost(headset));
+    $("mp-join").addEventListener("click", () => void doJoin(codeEl.value, headset));
     {
         const turn = (getPref("castaway.turn") ?? "").split("|");
         const [tu, tn, tp] = [$<HTMLInputElement>("mp-turn"), $<HTMLInputElement>("mp-turn-user"), $<HTMLInputElement>("mp-turn-pass")];
@@ -1106,7 +1105,8 @@ async function main() {
     if (params.has("host") && params.has("auto")) void doHost();
     if (params.has("go") && !params.has("auto")) begin();
     // the start button that was pressed in the menu: the island is built now, carry it out
-    const vrBox = () => $<HTMLInputElement>("mp-vr").checked;
+    // (a room on a headset goes straight into VR)
+    const vrBox = () => headset;
     switch (startWith) {
         // (in a headset, straight into VR)
         case "continue": if (loadSaved()) ready(headset, "Your island is ready."); break;
