@@ -751,6 +751,8 @@ async function main() {
     let wid = newWorldId();
     let sync: WorldSync | null = null;
     let noSave = false;
+    /** playing on a friend's island (joined their room): it is theirs, so it is never saved over your own */
+    let guestWorld = false;
     const nameEl = $<HTMLInputElement>("mp-name");
     const myName = () => { const n = nameEl.value.trim().slice(0, 14) || `Castaway ${Math.floor(10 + Math.random() * 90)}`; setPref("name", nameEl.value.trim()); return n; };
     const charId = () => (sync && !sync.session.isHost ? guestKey(wid, myName()) : wid);
@@ -768,7 +770,7 @@ async function main() {
     applyOutfit();
     const doSave = () => {
         if (!started || game.stats.dead || noSave) return;
-        if (!sync || sync.session.isHost) saveWorld({ v: 1, layout: LAYOUT, wid, hour: clock.hour, world: captureWorld(game), savedAt: Date.now() });
+        if (!guestWorld && (!sync || sync.session.isHost)) saveWorld({ v: 1, layout: LAYOUT, wid, hour: clock.hour, world: captureWorld(game), savedAt: Date.now() });
         saveChar(charId(), captureChar(game));
     };
     saveBeforeReload = doSave;
@@ -811,7 +813,15 @@ async function main() {
         if (!vrActive()) input.requestLock();
         if (input.touch && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
     };
+    /** the Multiplayer page, said for a game in progress: open this island, or visit a friend's */
+    const mpWords = () => {
+        if (!started) return;
+        $("mp-host-help").textContent = "Invite friends to this island: you get a 5-letter code (the same one each time you host it). They see everything you have built and can help.";
+        $("mp-host").textContent = "Host this island";
+        $("mp-join-help").textContent = "Visit a friend's island with their code. Yours is saved first and comes back when you leave.";
+    };
     const inGameMenu = () => {
+        mpWords();
         contBtn.classList.remove("hidden");
         contBtn.textContent = "Resume";
         $("quit-menu").classList.remove("hidden");
@@ -932,6 +942,8 @@ async function main() {
     };
     const leave = () => {
         if (!sync) return;
+        // (a guest's character on a friend's island is saved under that island while still in the room)
+        if (guestWorld) doSave();
         const s = sync.session, w = sync;
         w.onLost = null;
         s.close();
@@ -939,7 +951,10 @@ async function main() {
         w.avatars.clear();
         sync = null;
         mpIdle();
-        game.hud.message("You left the room. You are playing solo now.");
+        // off a friend's island: back to the main menu, where Continue brings your own island back (your character on
+        // theirs is kept for next time)
+        if (guestWorld) { noSave = true; location.reload(); return; }
+        game.hud.message("You left the room. Your island is yours alone again.");
     };
     const attach = (session: Session, snap?: unknown) => {
         if (sync) { sync.detach(); sync.avatars.clear(); }
@@ -1008,9 +1023,17 @@ async function main() {
         say("Opening a room…");
         try {
             if (!started && saved) loadSaved();
-            const session = await Session.host(netKind, myName(), $<HTMLInputElement>("mp-pvp").checked, wid);
+            // the same island gets the same room code every time it is hosted (if it is free), so friends can come back
+            // with the code they already have
+            const roomKey = `castaway.room.${wid}`, old = getPref(roomKey) ?? undefined, pvp = $<HTMLInputElement>("mp-pvp").checked;
+            let session: Session;
+            try { session = await Session.host(netKind, myName(), pvp, wid, old); }
+            catch (e) { if (!old) throw e; session = await Session.host(netKind, myName(), pvp, wid); }
+            setPref(roomKey, session.code);
+            guestWorld = false;
             attach(session);
             say(`Room code <b>${session.code}</b><br>Friends open this page, tap Multiplayer, and enter it.`);
+            if (started) game.hud.message(`Your island is open to friends: room code ${session.code}. They tap Multiplayer and enter it.`);
             if (!started) ready(wantVR, `Room ${session.code} is open. Friends tap Multiplayer and enter this code.`);
             return null;
         } catch (e) {
@@ -1026,10 +1049,13 @@ async function main() {
         const b = $<HTMLButtonElement>("mp-join");
         b.disabled = true;
         say("Joining…");
+        // (your own island is saved first: joining a friend puts theirs in its place until you leave)
+        if (started && !guestWorld) doSave();
         try {
             const { session, snap, hour } = await Session.join(netKind, code, myName());
             clock.hour = hour;
             wid = session.wid || wid;
+            guestWorld = true;
             const s = attach(session, snap);
             const ch = loadChar(guestKey(wid, myName()));
             if (ch) applyChar(game, ch);
