@@ -61,7 +61,8 @@ function symbolTex(sym: number | null) {
   const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 
-interface Tile { mesh: THREE.Mesh; sym: number; state: 'up' | 'shake' | 'fall' | 'gone'; ft: number; delay: number; vy: number; pop: number }
+/** `mesh`: the tile (a body and, on top, `top`: the face with the symbol) */
+interface Tile { mesh: THREE.Group; top: THREE.Mesh; sym: number; state: 'up' | 'shake' | 'fall' | 'gone'; ft: number; delay: number; vy: number; pop: number }
 
 export class TileTrial {
   readonly group = new THREE.Group();
@@ -80,7 +81,10 @@ export class TileTrial {
   private t = 0; private dur = 0; private round = 0; private target = 0;
   private grid: number[] = [];
   private tiles: Tile[] = [];
-  private mats: THREE.Material[][] = [];
+  private mats: THREE.Material[] = [];
+  /** the strip of floor just inside the gate: it falls away into the pit once the gate seals (no standing safe there) */
+  private ledge: THREE.Mesh | null = null;
+  private ledgeY = 0;
   private gateMesh: THREE.Group = new THREE.Group();
   private gateT = 0;
   private gears: { m: THREE.Mesh; s: number }[] = [];
@@ -136,7 +140,10 @@ export class TileTrial {
     M.box(1.3, 2.4, 0.12, copper, 0, 1.2, HALL_END - 0.08); M.sph(0.1, '#e0c070', 0.45, 1.1, HALL_END - 0.2, 1, 1, 1, 8);
     // ---- the room
     const RW = ROOM_W + 0.3, RL = GATE_Z - ROOM_END, RZ = (GATE_Z + ROOM_END) / 2, RH = 11;
-    M.box(ROOM_W * 2, 0.3, GATE_Z - LEDGE_END, '#4a5058', 0, -0.15, (GATE_Z + LEDGE_END) / 2);
+    {
+      const lm = new Mesher(); lm.box(ROOM_W * 2, 0.3, GATE_Z - LEDGE_END, '#4a5058', 0, -0.15, (GATE_Z + LEDGE_END) / 2);
+      this.ledge = bm(lm); this.group.add(this.ledge);
+    }
     for (const s of [-1, 1]) M.box(0.4, RH + 40, RL + 0.6, steel, s * RW, (RH - 40) / 2, RZ);             // side walls, going all the way down the pit
     M.box(RW * 2 + 0.8, RH + 40, 0.4, steel, 0, (RH - 40) / 2, ROOM_END - 0.2);                           // far wall
     M.box(RW - HALL_W, RH + 40, 0.4, steel, -(HALL_W + (RW - HALL_W) / 2), (RH - 40) / 2, GATE_Z + 0.0);   // front wall either side of the doorway
@@ -178,13 +185,19 @@ export class TileTrial {
     // ---- the tiles
     for (let k = 0; k < 6; k++) this.mats.push(this.tileMats(symbolTex(k)));
     this.mats.push(this.tileMats(symbolTex(null)));
-    const geo = new THREE.BoxGeometry(TILE - 0.08, 0.35, TILE - 0.08);
+    // (a plain body with the symbol on a separate face on top: a box with a material per face drew only one of them,
+    //  so the symbols never showed)
+    const geo = new THREE.BoxGeometry(TILE - 0.08, 0.35, TILE - 0.08), topGeo = new THREE.PlaneGeometry(TILE - 0.1, TILE - 0.1).rotateX(-Math.PI / 2);
+    const body = new THREE.MeshBasicMaterial({ color: '#4b5159' });
     for (let i = 0; i < N * N; i++) {
-      const mesh = new THREE.Mesh(geo, this.mats[6] as any);
+      const mesh = new THREE.Group();
+      const b = new THREE.Mesh(geo, body); b.frustumCulled = false;
+      const top = new THREE.Mesh(topGeo, this.mats[6] as any); top.position.y = 0.176; top.frustumCulled = false;
+      mesh.add(b, top);
       const c = i % N, r = Math.floor(i / N);
-      mesh.position.set(-ROOM_W + TILE * (c + 0.5), -0.175, LEDGE_END - TILE * (r + 0.5)); mesh.frustumCulled = false;
+      mesh.position.set(-ROOM_W + TILE * (c + 0.5), -0.175, LEDGE_END - TILE * (r + 0.5));
       this.group.add(mesh);
-      this.tiles.push({ mesh, sym: -1, state: 'up', ft: 0, delay: 0, vy: 0, pop: 1 });
+      this.tiles.push({ mesh, top, sym: -1, state: 'up', ft: 0, delay: 0, vy: 0, pop: 1 });
     }
 
     // ---- the gate (a big slab that drops into the doorway)
@@ -244,9 +257,8 @@ export class TileTrial {
     const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
     const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide })); m.frustumCulled = false; return m;
   }
-  private tileMats(top: THREE.Texture): THREE.Material[] {
-    const side = new THREE.MeshBasicMaterial({ color: '#4b5159' }), bottom = new THREE.MeshBasicMaterial({ color: '#25282c' });
-    return [side, side, new THREE.MeshBasicMaterial({ map: top }), bottom, side, side];
+  private tileMats(top: THREE.Texture): THREE.Material {
+    return new THREE.MeshBasicMaterial({ map: top });
   }
 
   // ------------------------------------------------------------ the player's cave-style ground
@@ -258,7 +270,8 @@ export class TileTrial {
   private gateClosed() { return this.gateT > 0.5; }
   floor(x: number, z: number, _y: number) {
     const lx = x - TX, lz = z - TZ;
-    if (lz > LEDGE_END) return BASE;                                     // hall and the ledge inside the gate
+    if (lz > GATE_Z) return BASE;                                        // the hall
+    if (lz > LEDGE_END) return this.phase === 'idle' ? BASE : BASE - 90;  // the ledge inside the gate: gone while a game is on
     const t = this.tileAt(lx, lz);
     if (t < 0) return BASE - 90;
     const s = this.tiles[t].state;
@@ -356,7 +369,7 @@ export class TileTrial {
       case 'rest': this.sfx?.go(); break;
       case 'pick':
         this.target = e.sym ?? 0; this.grid = e.grid ?? [];
-        this.tiles.forEach((t, i) => { t.sym = this.grid[i] ?? 0; t.state = 'up'; t.mesh.visible = true; t.mesh.position.y = -0.175; t.mesh.rotation.set(0, 0, 0); t.pop = 0; t.mesh.material = this.mats[t.sym] as any; });
+        this.tiles.forEach((t, i) => { t.sym = this.grid[i] ?? 0; t.state = 'up'; t.mesh.visible = true; t.mesh.position.y = -0.175; t.mesh.rotation.set(0, 0, 0); t.pop = 0; t.top.material = this.mats[t.sym] as any; });
         this.sfx?.go(); break;
       case 'drop':
         this.atDrop = this.inRoomIds(); this.resolved = false;
@@ -364,7 +377,7 @@ export class TileTrial {
         this.sfx?.drop(); break;
     }
   }
-  private resetTiles() { this.tiles.forEach((t) => { t.sym = -1; t.state = 'up'; t.mesh.visible = true; t.mesh.position.set(t.mesh.position.x, -0.175, t.mesh.position.z); t.mesh.rotation.set(0, 0, 0); t.mesh.material = this.mats[6] as any; t.pop = 1; }); }
+  private resetTiles() { this.tiles.forEach((t) => { t.sym = -1; t.state = 'up'; t.mesh.visible = true; t.mesh.position.set(t.mesh.position.x, -0.175, t.mesh.position.z); t.mesh.rotation.set(0, 0, 0); t.top.material = this.mats[6] as any; t.pop = 1; }); }
   private resetRound() { this.round = 0; this.died.clear(); this.deadNames = []; this.resolved = false; }
 
   // ------------------------------------------------------------ the controller's moves
@@ -382,6 +395,12 @@ export class TileTrial {
     this.inRoom = lz < GATE_Z - 0.9 && Math.abs(p.pos.x - TX) < ROOM_W;
     // gears and the gate
     for (const g of this.gears) g.m.rotation.z += g.s * dt;
+    // the ledge drops away while a game is on, and rises back when it is over
+    if (this.ledge) {
+      const want = this.phase === 'idle' ? 0 : -45;
+      this.ledgeY += (want - this.ledgeY) * Math.min(1, dt * (want < this.ledgeY ? 0.9 : 3));
+      this.ledge.position.y = this.ledgeY; this.ledge.visible = this.ledgeY > -40;
+    }
     const goal = this.phase === 'idle' ? 0 : 1;
     this.gateT += Math.sign(goal - this.gateT) * Math.min(Math.abs(goal - this.gateT), dt * 0.7);
     this.gateMesh.position.y = 4.5 - this.gateT * 4.5;
@@ -401,8 +420,8 @@ export class TileTrial {
       if (p.pos.y < BASE - 7 && !this.reported) {
         this.reported = true; this.sfx?.fall();
         this.send({ k: 'td', n: this.round, name: this.myName() }); this.died.add(this.myId()); this.deadNames.push(this.myName());
-        // nobody dies here: whoever falls waits on the ledge and is put back on the tiles when the next round is ready
-        p.teleport(TX, BASE, TZ + GATE_Z - 0.8, Math.PI); p.vel.set(0, 0, 0); this.fallen = true;
+        // nobody dies here: whoever falls waits in the hall behind the gate and is put back on the tiles when the next round is ready
+        p.teleport(TX, BASE, TZ + GATE_Z + 1.4, Math.PI); p.vel.set(0, 0, 0); this.fallen = true;
         this.say('You fell! You will be back on the tiles when the next round is ready.');
       }
     }
