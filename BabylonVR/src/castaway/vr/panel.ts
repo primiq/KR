@@ -113,6 +113,8 @@ export class VRPanel {
         chat?(text: string): void;
         pingAt?(x: number, z: number): void;
         players?(): string | null;
+        /** Settings > Developer (the cheats: no keys for them) */
+        dev?: { flying(): boolean; fly(): void; time(h: number): void };
     } | null = null;
     private craftKey = "";
     private jcWas = false;
@@ -423,6 +425,11 @@ export class VRPanel {
         const ap = btn(r4, 600, () => "Apply", () => this.menuActions?.applyGfx(g().pref, g().custom));
         ap.background = "#7a3a3a";
         text("Most changes apply straight away. A new preset or grass range rebuilds the island (saved first): you come straight back to it.", 110, 30);
+        text("Developer", 70, 34);
+        const r5 = row();
+        btn(r5, 520, () => `Flying: ${this.menuActions?.dev?.flying() ? "on" : "off"}`, () => this.menuActions?.dev?.fly(), () => !!this.menuActions?.dev?.flying());
+        btn(r5, 400, () => "Time -1 h", () => this.menuActions?.dev?.time(-1));
+        btn(r5, 400, () => "Time +1 h", () => this.menuActions?.dev?.time(1));
         pane.isVisible = false;
     }
 

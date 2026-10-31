@@ -11,7 +11,7 @@ export class Input {
   jumpQueued = false;
   jumpHeld = false;
   sprint = false;
-  flyToggle = false;
+  flyToggle = false;   // (set from Settings > Developer: no key for it)
   timeDelta = 0;
   enabled = false;
   locked = false;
@@ -52,9 +52,6 @@ export class Input {
       if (this.uiOpen) return;
       this.keys.add(e.code);
       if (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar') { this.jumpQueued = true; this.jumpHeld = true; e.preventDefault(); }
-      if (e.code === 'KeyF') this.flyToggle = true;
-      if (e.code === 'KeyT') this.timeDelta -= 1;
-      if (e.code === 'KeyY') this.timeDelta += 1;
       if (e.code === 'KeyB' && !e.repeat) this.modeQueued = true;
       if (e.code === 'KeyR' && !e.repeat) this.rotateQueued++;
       if (e.code === 'KeyQ' && !e.repeat) this.cycleDelta += e.shiftKey ? -1 : 1;

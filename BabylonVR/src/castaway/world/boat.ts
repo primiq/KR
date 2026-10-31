@@ -650,6 +650,12 @@ export class Boats {
     const was = this.on;
     if (!this.atHelm) this.on = free && !away ? this.boatUnder(me.x, me.y, me.z) : null;
     const ride = this.on && !this.atHelm ? toLocal(pose(this.on), me.x, me.y, me.z, new THREE.Vector3()) : null;
+    // (in the storm nobody goes over the side: whoever is on deck stays on it)
+    if (ride && this.storm > 0.1) {
+      ride.z = Math.max(-LEN / 2 + 1.5, Math.min(LEN / 2 - 0.7, ride.z));
+      const hh = deckHalf(ride.z) - 0.25;
+      if (hh > 0) ride.x = Math.max(-hh, Math.min(hh, ride.x));
+    }
     const yaw0 = this.on ? this.on.yaw : 0;
 
     for (const b of this.list) {

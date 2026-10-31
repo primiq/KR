@@ -358,6 +358,17 @@ async function main() {
     // (the shared environment's flat sun disc faced one way only and read as an ellipse: SkyDeco draws a round sun instead)
     sunMesh.setEnabled(false);
     const clock = new Atmosphere(scene, sun, skybox, env, ocean, null, q.name !== "high");
+    // ---- Settings > Developer: flying and the time of day (no keys for them any more)
+    const devTools = {
+        flying: () => (player.mode === "fly") !== input.flyToggle,
+        fly: () => { input.flyToggle = !input.flyToggle; devLabel(); },
+        time: (h: number) => { input.timeDelta += h; },
+    };
+    const devLabel = () => { $("dev-fly").textContent = `Flying: ${devTools.flying() ? "on" : "off"}`; };
+    $("dev-fly").addEventListener("click", () => devTools.fly());
+    $("dev-time-back").addEventListener("click", () => { devTools.time(-1); $("dev-note").textContent = "Time moved back an hour."; });
+    $("dev-time-fwd").addEventListener("click", () => { devTools.time(1); $("dev-note").textContent = "Time moved on an hour."; });
+    $("settings-open").addEventListener("click", devLabel);
     if (headset) clock.beLean();
     if (params.has("hour")) clock.hour = parseFloat(params.get("hour")!);
     progress(0.82, "Washing the castaway ashore…");
@@ -1168,6 +1179,7 @@ async function main() {
             exitVR: () => void vm.exit(),
             gfx: () => ({ pref: getPref("castaway.quality") ?? "auto", custom: { ...gfx } }),
             gfxPreview: (pref, custom) => pickQuality(pref, custom),
+            dev: devTools,
             applyGfx: (pref, custom) => game.hud.message(applyGfx(pref, custom) === "Applied." ? "Graphics applied." : "Rebuilding the island for that…"),
             chat: (t) => { if (sync) { sync.sendChat(t); chat.add("You", "#ffffff", t); } else game.hud.message("Host or join a room to chat"); },
             pingAt: (x, z) => { if (sync) sync.pingAt(x, z); else game.hud.message("Pings are for rooms with friends"); },

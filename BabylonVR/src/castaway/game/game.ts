@@ -857,7 +857,7 @@ export class Game {
             input.attackQueued = false; input.attackHeld = false; input.hotbarDelta = 0; input.hotbarSelect = null;
             return;
         }
-        if (this.boats.atHelm && input.interactQueued) { input.interactQueued = false; this.leaveHelm(); }
+        if (this.boats.atHelm && input.interactQueued) { input.interactQueued = false; this.tryLeaveHelm(); }
         if (stats.dead || this.sleeping || this.wreckT >= 0 || this.warp.inLevel || this.invaders.seated) { hud.setPrompt(null); this.hideBuildUi(); return; }
 
         if (hud.inventoryOpen) {
@@ -1442,11 +1442,20 @@ export class Game {
         if (!this.boats.takeHelm(b)) { this.hud.message("Somebody else is steering"); this.sfx.denied(); return; }
         if (!this.vr.active) { p.yaw = b.yaw; p.pitch = 0; } // facing the bow
         p.ride = () => {
-            if (this.input.jumpQueued) { this.leaveHelm(); return false; }
+            if (this.input.jumpQueued) { this.input.jumpQueued = false; if (this.tryLeaveHelm()) return false; }
             return this.boats.carryHelm(p.pos, p);
         };
         const vr = this.vr.active, touch = this.input.touch;
         this.hud.message(vr ? "At the wheel: left stick steers, right trigger fills the sails · A let go" : touch ? "At the wheel: the stick steers and sails · USE let go" : "At the wheel: W / S sails, A / D steer, Shift full sail · E or Space let go");
+    }
+    /** letting go of the wheel (E, Space, A): not once the storm has you, out past the reef - you hold on and ride it out */
+    private tryLeaveHelm(): boolean {
+        if (this.boats.storm > 0.1 && this.wreckT < 0) {
+            this.hud.message("The sea is far too rough to let go of the wheel! Turn back for the island."); this.sfx.denied();
+            return false;
+        }
+        this.leaveHelm();
+        return true;
     }
     private leaveHelm() {
         const p = this.player;
