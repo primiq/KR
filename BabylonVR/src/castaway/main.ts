@@ -51,7 +51,7 @@ import { FPGorilla } from "./campaign/gorilla";
 import { Mosquito, setListener } from "./campaign/mosquito";
 import { lightRoom, ThreeMirror } from "./render/mirror";
 import { toneMapOwnShaders } from "./render/headsetTone";
-import { StructureManager } from "./game/structures";
+import { F_LOUNGE, StructureManager } from "./game/structures";
 import { isProbablyHeadset } from "../config";
 import { Dolphins } from "./world/dolphins";
 import { SEA } from "./world/waves";
@@ -618,6 +618,7 @@ async function main() {
                 const held = game.equipped, pose = vrMode?.pose() ?? null;
                 const me: PState = { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch, spd: game.walkSpeed, item: held ? held.id : "", swing: game.swings, flags: (player.sprinting && !game.boats.atHelm ? 1 : 0) | (player.mode === "swim" ? 2 : 0) | (game.stats.dead ? 4 : 0) | (game.isSleeping ? 8 : 0) | (game.drinking ? 32 : 0), hp: game.stats.health, arm: game.armorCode };
                 if (pose) { me.v = pose; me.yaw = pose.h[3]; me.pitch = pose.h[4]; }
+                if (game.lounger) { me.flags |= F_LOUNGE; me.yaw = game.loungeYaw; me.v = null; }
                 const mirrorOn = sky.active || (seaReflOn && !game.under.active);
                 const fpOn = !game.stats.dead && !game.isSleeping && player.mode !== "swim" && !game.warp.inLevel && !game.invaders.seated && !game.under.cat?.active && !game.under.camp?.active && !game.under.air?.driving && !game.dive?.active && !game.slide.riding;
                 if (mirrorOn || fpOn || mirrorAv) {

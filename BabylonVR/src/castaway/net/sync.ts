@@ -8,6 +8,7 @@ import { heightAt } from "../world/island";
 import { Avatars, playerColor } from "./avatars";
 import { parseOutfit } from "./outfit";
 import { F_LEVEL } from "../world/warp";
+import { F_LOUNGE } from "../game/structures";
 import { type PState, Session, type VRPoseData } from "./session";
 import { applyWorld, captureWorld, packInv, unpackInv } from "./world";
 
@@ -75,6 +76,7 @@ export class WorldSync {
         game.flowers.onUnplant = (p) => session.sendEvent({ k: "fd", n: p.nid });
         game.net.hitPlayer = (to, dmg) => session.sendEvent({ k: "ph", to, d: +dmg.toFixed(1), x: +game.player.pos.x.toFixed(1), z: +game.player.pos.z.toFixed(1) });
         game.net.rayPlayer = (eye, dir, reach) => this.rayPlayer(eye, dir, reach);
+        game.net.lyingOn = (x, z) => { for (const [id, st] of this.session.states) if (id !== this.session.myId && (st.flags & F_LOUNGE) && Math.hypot(st.x - x, st.z - z) < 0.7) return true; return false; };
         // ---- wildlife: the host simulates, clients mirror
         const fauna = game.fauna;
         if (!session.isHost) { fauna.remote = true; game.turtles.remote = true; game.stalkers.remote = true; game.twins.remote = true; }
@@ -499,6 +501,8 @@ export class WorldSync {
         };
         const pose = this.vrPose?.() ?? null;
         if (pose) { st.v = pose; st.yaw = pose.h[3]; st.pitch = pose.h[4]; }
+        // lying on a sun lounger: the body faces the lounger's foot, whichever way you look; no headset pose (it would stand you up)
+        if (g.lounger) { st.flags |= F_LOUNGE; st.yaw = g.loungeYaw; st.v = null; }
         s.setMyState(st);
         s.update(dt);
         this.pushApart(dt);

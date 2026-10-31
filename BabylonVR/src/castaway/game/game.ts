@@ -12,7 +12,7 @@ import { ARMOR_SLOTS, type GatherKind, GATHER_ITEM, GATHER_LABEL, ITEMS, type It
 import { BENCH_REACH, COAL_BURN, MAX_FUEL, type Recipe, craft } from "./recipes";
 import { type HitFx, Resources, type Target } from "./resources";
 import { Stats } from "./survival";
-import { type PlaceAim, STRUCT_NAME, type Structure, StructureManager } from "./structures";
+import { LOUNGER, type PlaceAim, STRUCT_NAME, type Structure, StructureManager } from "./structures";
 import { ViewModel } from "./viewmodel";
 import { Fishing } from "./fishing";
 import { type Animal, Fauna, type FaunaTarget } from "./fauna";
@@ -160,6 +160,8 @@ export class Game {
         /** everyone the animals might go after (multiplayer host) */
         targets?: () => FaunaTarget[];
         rayPlayer?: (eye: Vector3, dir: Vector3, reach: number) => { id: number; name: string; dist: number } | null;
+        /** is another player lying on the lounger here? */
+        lyingOn?: (x: number, z: number) => boolean;
         inUse?: (s: Structure) => string | null;
         slept?: () => void;
         died?: () => void;
@@ -181,6 +183,10 @@ export class Game {
     private eye = new Vector3();
     private eatCd = 0;
     private vrCd = 0;
+    /** the sun lounger you are lying on, and the way it faces (your body faces its foot end) */
+    lounger: Structure | null = null;
+    loungeYaw = 0;
+    private loungeT = 0;
     /** a headset swing in progress: what the tool's head touches is hit; if nothing, the old aim when it ends */
     private vrSwingT = 0;
     private seaCd = 0;
@@ -591,6 +597,7 @@ export class Game {
     private openStructure(s: Structure) {
         if (s.kind === "workbench") { this.setInventory(true, "craft"); return; }
         if (s.kind === "bed" || s.kind === "sleeping_bag") { this.useBed(s); return; }
+        if (s.kind === "lounger") { if (this.lounger === s) this.getUp(); else this.lieOn(s); return; }
         if (!s.inv) return;
         const user = this.net.inUse?.(s);
         if (user) { this.hud.message(`${user} is using this`); this.sfx.denied(); return; }
@@ -736,6 +743,12 @@ export class Game {
             const hit = this.vr.tip && !this.under.active ? this.resources.touching(this.vr.tip, 0.35) : null;
             if (hit) { this.vrSwingT = 0; this.swingHit(hit); }
             else if (this.vrSwingT <= 0) this.swingHit();
+        }
+        // on a sun lounger: moving gets you up, and so does the lounger going away
+        if (this.lounger) {
+            this.loungeT += dt;
+            const mv = Math.abs(this.input.move.x) + Math.abs(this.input.move.y) > 0.3 || this.input.jumpQueued;
+            if (!this.structures.list.includes(this.lounger) || this.stats.dead || (mv && this.loungeT > 0.4)) { this.input.jumpQueued = false; this.getUp(); }
         }
         this.hurtCd -= dt; this.vrCd -= dt; this.meowCd -= dt; this.eatCd -= dt; this.seaCd -= dt; this.drinkCd -= dt;
         this.resources.update(dt, player.pos.x, player.pos.z);
@@ -1204,6 +1217,7 @@ export class Game {
         const hint = (tap: string) => `${this.keyLabel("E")} ${tap} &nbsp;·&nbsp; hold ${this.keyLabel("E")} pick up`;
         let name = STRUCT_NAME[s.kind];
         if (s.kind === "campfire" || s.kind === "furnace") name += s.lit ? " (burning)" : "";
+        if (s.kind === "lounger") return this.hud.setPrompt(name, `${this.keyLabel("E")} ${this.lounger === s ? "get up" : "lie down"} &nbsp;·&nbsp; hold ${this.keyLabel("E")} pick up`, true);
         const tap = s.kind === "bed" || s.kind === "sleeping_bag" ? "sleep / set respawn" : s.kind === "workbench" ? "craft" : s.kind === "flower_pot" ? (s.inv?.slots[0] ? "change the flower" : "plant a flower") : "open";
         if (s.kind === "torch" || s.kind === "rug" || s.kind === "lantern" || s.kind === "table" || s.kind === "cat_bed") return this.hud.setPrompt(name, `hold ${this.keyLabel("E")} pick up`, true);
         this.hud.setPrompt(name, hint(tap), true);
@@ -1292,6 +1306,31 @@ export class Game {
     }
 
     /** The moment a swing connects. */
+    /** lie back on a sun lounger: your body on it, your eyes where a reclining head would be, free to look round */
+    private lieOn(s: Structure) {
+        if (this.net.lyingOn?.(s.x, s.z)) { this.hud.message("Somebody is lying there"); this.sfx.denied(); return; }
+        const p = this.player, { seatY, hipZ, back } = LOUNGER;
+        const sn = Math.sin(s.yaw), cs = Math.cos(s.yaw), at = (lz: number) => ({ x: s.x + sn * lz, z: s.z + cs * lz });
+        // (the eyes a little above and in front of the backrest's cushion and the pillow)
+        const hip = at(hipZ), head = at(hipZ - Math.sin(back) * 0.72 + 0.12);
+        this.lounger = s; this.loungeYaw = s.yaw + Math.PI; this.loungeT = 0;
+        p.eyeAt = { x: head.x, y: s.y + seatY + 0.22 + Math.cos(back) * 0.72, z: head.z };
+        p.ride = () => { if (this.lounger !== s) return false; p.pos.set(hip.x, s.y, hip.z); return true; };
+        p.pos.set(hip.x, s.y, hip.z);
+        p.yaw = this.loungeYaw; p.pitch = -0.15;
+        this.sfx.creak();
+        this.hud.message(`You lie back on the lounger. Move or press ${this.keyLabel("E")} to get up.`);
+    }
+    /** off the lounger, standing beside it */
+    getUp() {
+        const s = this.lounger; if (!s) return;
+        this.lounger = null;
+        const p = this.player;
+        p.ride = null; p.eyeAt = null;
+        const x = s.x + Math.cos(s.yaw) * 0.75, z = s.z - Math.sin(s.yaw) * 0.75;
+        p.pos.set(x, this.building.ground(x, z, s.y + 0.6), z);
+    }
+
     private swingHit(forced: Target | null = null) {
         const held = this.equipped;
         const def = held ? ITEMS[held.id] : null;

@@ -18,7 +18,7 @@ const S_TOK = {
   stone: tok("stone"), log: tok("log"), logEnd: tok("logEnd"), char: tok("char"), steel: tok("steel"), iron: tok("iron"),
   cream: tok("cream"), pillow: tok("pillow"), blanket: tok("blanket"), rope: tok("rope"), soot: tok("soot"), ash: tok("ash"),
   coal: tok("coal"), flameOuter: tok("flameOuter"), flameMid: tok("flameMid"), flameIn: tok("flameIn"), furnaceGlow: tok("furnaceGlow"),
-  glow: tok("glow"), clay: tok("clay"), soil: tok("soil"), lamp: tok("lamp"), catbed: tok("catbed"),
+  glow: tok("glow"), clay: tok("clay"), soil: tok("soil"), lamp: tok("lamp"), catbed: tok("catbed"), denim: tok("denim"),
 };
 const W_TOK = { wall: tok("wall"), slab: tok("slab"), beam: tok("beam"), pile: tok("pile") };
 
@@ -46,6 +46,7 @@ function matFor(scene: Scene, key: string): Material {
     case "clay": return solid(scene, "#b5653a", 0.95);
     case "soil": return solid(scene, "#3a2a1c", 1);
     case "catbed": return solid(scene, "#c4634f", 1);
+    case "denim": return solid(scene, "#3a86b8", 0.95);
     case "flameOuter": return flameMaterial(scene, "#ff5a14", 0.8);
     case "flameMid": return flameMaterial(scene, "#ff9a2a", 0.85);
     case "flameIn": return flameMaterial(scene, "#ffe49a", 0.9);
@@ -144,14 +145,20 @@ const FOOT: Record<PlaceKind, Foot> = {
   lantern: { cols: [[0, 0, 0.1]], hits: [[0, 1.5, 0, 0.3]] },
   table: { cols: [[0, 0, 0.42]], hits: [[0, 0.5, 0, 0.5]] },
   cat_bed: { cols: [[0, 0, 0.3]], hits: [[0, 0.12, 0, 0.4]] },
+  lounger: { cols: [[0, -0.5, 0.36], [0, 0.45, 0.36]], hits: [[0, 0.45, -0.5, 0.5], [0, 0.4, 0.45, 0.5]] },
 };
 /** height of a small table's top */
 export const TABLE_TOP = 0.74;
 const TABLE_R = 0.44;
 /** the small things that can stand on a table top */
+/** the sun lounger: the seat's height, where your hips go along it (local z; the head end is -z) and how far back the
+ *  backrest leans from upright (radians) */
+export const LOUNGER = { seatY: 0.42, hipZ: -0.1, back: 0.8 };
+/** a player's state flag: lying on a sun lounger (bits 18-21 carry a town's index) */
+export const F_LOUNGE = 1 << 24;
 const ON_TABLE: PlaceKind[] = ['flower_pot', 'cat_bed', 'lantern'];
 
-export const STRUCT_NAME: Record<PlaceKind, string> = { campfire: 'Campfire', furnace: 'Furnace', workbench: 'Workbench', bed: 'Bed', sleeping_bag: 'Sleeping Bag', box: 'Storage Box', torch: 'Torch', flower_pot: 'Clay Pot', rug: 'Rug', lantern: 'Lantern', table: 'Small Table', cat_bed: 'Cat Bed' };
+export const STRUCT_NAME: Record<PlaceKind, string> = { campfire: 'Campfire', furnace: 'Furnace', workbench: 'Workbench', bed: 'Bed', sleeping_bag: 'Sleeping Bag', box: 'Storage Box', torch: 'Torch', flower_pot: 'Clay Pot', rug: 'Rug', lantern: 'Lantern', table: 'Small Table', cat_bed: 'Cat Bed', lounger: 'Sun Lounger' };
 
 
 export interface PlaceAim { ok: boolean; reason: string; x: number; y: number; z: number; yaw: number }
@@ -337,6 +344,27 @@ function buildModel(kind: PlaceKind, shadows: boolean, hook = 0): { group: THREE
         add(l);
       }
       add(mesh(new THREE.TorusGeometry(TABLE_R - 0.15, 0.014, 5, 18).rotateX(Math.PI / 2), W.beam, 0, 0.22, 0, false));
+      break;
+    }
+    case 'lounger': {
+      // a wooden frame on four legs, slatted, a backrest leaning back at the head end (-z), a striped cushion all along
+      const { seatY, hipZ, back } = LOUNGER;
+      for (const [x, z] of [[-0.3, -0.85], [0.3, -0.85], [-0.3, 0.85], [0.3, 0.85]]) add(mesh(new THREE.BoxGeometry(0.06, seatY - 0.05, 0.06), W.beam, x, (seatY - 0.05) / 2, z, shadows));
+      for (const s of [-1, 1]) add(mesh(new THREE.BoxGeometry(0.06, 0.09, 1.9), W.beam, s * 0.3, seatY - 0.08, 0, shadows));
+      for (let i = 0; i < 9; i++) add(mesh(new THREE.BoxGeometry(0.62, 0.025, 0.09), W.slab, 0, seatY - 0.03, hipZ + 0.06 + i * 0.105, shadows));
+      // the backrest: hinged at the hips, leaning back `back` radians from upright
+      const bl = 0.85, by = seatY + Math.cos(back) * bl / 2, bz = hipZ - Math.sin(back) * bl / 2;
+      const rest = mesh(new THREE.BoxGeometry(0.62, bl, 0.035), W.slab, 0, by, bz, shadows); rest.rotation.x = -back; add(rest);
+      const strut = mesh(new THREE.BoxGeometry(0.05, 0.38, 0.05), W.beam, 0, seatY - 0.05 + 0.16, hipZ - 0.42, shadows); strut.rotation.x = 0.5; add(strut);
+      // the cushion: blue and cream stripes on the seat and up the back
+      const stripes = 6;
+      for (let i = 0; i < stripes; i++) {
+        const m2 = i % 2 ? S.cream : S.denim;
+        add(mesh(new RoundedBoxGeometry(0.58, 0.06, 1.0 / stripes, 2, 0.02), m2, 0, seatY + 0.02, hipZ + 0.06 + (i + 0.5) * (1.0 / stripes), false));
+        const c = mesh(new RoundedBoxGeometry(0.58, bl / stripes, 0.06, 2, 0.02), m2, 0, seatY + 0.02 + Math.cos(back) * bl * (i + 0.5) / stripes, hipZ - Math.sin(back) * bl * (i + 0.5) / stripes + 0.03, false);
+        c.rotation.x = -back; add(c);
+      }
+      add(mesh(new RoundedBoxGeometry(0.4, 0.09, 0.16, 2, 0.04), S.pillow, 0, seatY + 0.02 + Math.cos(back) * (bl - 0.12), hipZ - Math.sin(back) * (bl - 0.12) + 0.08, false));
       break;
     }
     case 'cat_bed': {

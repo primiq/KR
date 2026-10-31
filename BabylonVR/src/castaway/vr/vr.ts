@@ -461,7 +461,9 @@ export class CastawayVR {
         if (!this.active) return;
         const { game, player } = this;
         const cam = this.cam;
-        cam.position.set(player.pos.x, player.pos.y + this.eyeH, player.pos.z);
+        // (lying on a sun lounger: your head where a reclining head is)
+        if (player.eyeAt) cam.position.set(player.eyeAt.x, player.eyeAt.y, player.eyeAt.z);
+        else cam.position.set(player.pos.x, player.pos.y + this.eyeH, player.pos.z);
         player.eye.copyFrom(cam.position);
         // the game reads the headset's own position and gaze (the warp level's screen, the invasion cannon, sound)
         game.vr.head = cam.position;

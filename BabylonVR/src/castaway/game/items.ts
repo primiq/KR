@@ -9,12 +9,12 @@ export type ItemId =
   | 'campfire' | 'furnace' | 'workbench' | 'bed' | 'sleeping_bag' | 'box'
   | 'building_plan' | 'torch' | 'sapling' | 'picture_frame' | 'flower_pot' | 'rug' | 'lantern' | 'door'
   | 'leather' | 'leather_cap' | 'leather_vest' | 'leather_pants' | 'metal_helmet' | 'metal_chestplate' | 'metal_greaves'
-  | 'diamond_helmet' | 'diamond_chestplate' | 'diamond_greaves' | 'boat' | 'table' | 'cat_bed'
+  | 'diamond_helmet' | 'diamond_chestplate' | 'diamond_greaves' | 'boat' | 'table' | 'cat_bed' | 'lounger'
   | 'meat_stick' | 'roast_stick' | 'guitar';
 export type ArmorSlot = 'head' | 'chest' | 'legs';
 export const ARMOR_SLOTS: ArmorSlot[] = ['head', 'chest', 'legs'];
 export const ARMOR_SLOT_LABEL: Record<ArmorSlot, string> = { head: 'Head', chest: 'Chest', legs: 'Legs' };
-export type PlaceKind = 'campfire' | 'furnace' | 'workbench' | 'bed' | 'sleeping_bag' | 'box' | 'torch' | 'flower_pot' | 'rug' | 'lantern' | 'table' | 'cat_bed';
+export type PlaceKind = 'campfire' | 'furnace' | 'workbench' | 'bed' | 'sleeping_bag' | 'box' | 'torch' | 'flower_pot' | 'rug' | 'lantern' | 'table' | 'cat_bed' | 'lounger';
 export type GatherKind = 'wood' | 'stone' | 'ore';
 export type ItemKind = 'resource' | 'tool' | 'food' | 'placeable' | 'plan' | 'armor' | 'seed';
 
@@ -261,6 +261,11 @@ export const ITEMS = {
     id: 'table', name: 'Small Table', stack: 5, kind: 'placeable', place: 'table',
     desc: 'A little round side table. Put a clay pot, a cat bed or a lantern on top of it: hold the thing and aim at the table top.',
     icon: svg('<ellipse cx="16" cy="10" rx="12" ry="4" fill="#a8743f"/><path d="M4 10v2c0 2 5 4 12 4s12-2 12-4v-2" fill="#7a5230"/><path d="M8 15l-2 13M24 15l2 13M16 16v12" stroke="#6a4424" stroke-width="2.4" stroke-linecap="round"/>'),
+  },
+  lounger: {
+    id: 'lounger', name: 'Sun Lounger', stack: 5, kind: 'placeable', place: 'lounger',
+    desc: 'A wooden sun lounger with a striped cushion. Put it on the beach or in your house; E lies you down on it, and you can look round while you lie there. Move (or press E) to get up. Best enjoyed side by side, at sunset.',
+    icon: svg('<path d="M4 22l10-1 6-9 2 1-5 9 11-1" fill="none" stroke="#8a5a32" stroke-width="2.4" stroke-linejoin="round"/><path d="M6 20.5l9-.8 5.6-8.2" stroke="#e8c46a" stroke-width="3" stroke-linecap="round"/><path d="M15 21.5l11-.9" stroke="#3a86b8" stroke-width="3" stroke-linecap="round"/><path d="M7 23v4M24 22v5" stroke="#6a4424" stroke-width="2"/>'),
   },
   cat_bed: {
     id: 'cat_bed', name: 'Cat Bed', stack: 5, kind: 'placeable', place: 'cat_bed',

@@ -1,4 +1,5 @@
 // Ported from Castaway (the cat-house and gorilla bodies are left for the world-content port); drawn by render/mirror.ts.
+import { F_LOUNGE, LOUNGER } from "../game/structures";
 import * as THREE from 'three';
 import type { Scene } from '@babylonjs/core';
 import { ThreeMirror } from '../render/mirror';
@@ -155,7 +156,7 @@ class Avatar {
   private run = 0;
   /** the water surface under a swimmer (this client's waves) */
   private surf = 0;
-  private wAir = 0; private wSwim = 0; private wSleep = 0; private wDead = 0; private wCarry = 0; private wDrink = 0; private wSit = 0; private drinkT = 0;
+  private wAir = 0; private wSwim = 0; private wSleep = 0; private wDead = 0; private wCarry = 0; private wDrink = 0; private wSit = 0; private wLounge = 0; private drinkT = 0;
   private deadT = 0;
   private blinkT = 2 + Math.random() * 3;
   private target: PState | null = null;
@@ -346,6 +347,7 @@ class Avatar {
     this.wSleep = wr(this.wSleep, asleep && !dead, 3); this.wDead = wr(this.wDead, dead, 9);
     this.wCarry = wr(this.wCarry, !!s.item && !dead && !asleep && !seatedF, 8);
     this.wSit = wr(this.wSit, seatedF && !dead && !swim, 10);
+    this.wLounge = wr(this.wLounge, (s.flags & F_LOUNGE) !== 0 && !dead && !swim, 6);
     const drinking = (s.flags & 32) !== 0 && !dead && !asleep && !swim;
     if (drinking && this.wDrink < 0.02) this.drinkT = 0;
     this.wDrink = wr(this.wDrink, drinking, 6);
@@ -423,6 +425,18 @@ class Avatar {
       upX = lerp(upX, 0.05, w); upY = lerp(upY, 0, w); upZ = lerp(upZ, 0, w); headX = lerp(headX, 0, w); headY = lerp(headY, 0, w);
       bob = lerp(bob, -0.78, w);
     }
+    // ---- on a sun lounger: lying back against the backrest, legs out along the seat, hands resting on the stomach
+    if (this.wLounge > 0.001) {
+      const w = this.wLounge, back = LOUNGER.back;
+      for (let i = 0; i < 2; i++) {
+        const sd = i ? 1 : -1;
+        th[i] = lerp(th[i], Math.PI / 2 - back - 0.05, w); kn[i] = lerp(kn[i], 0.12 + (i ? 0.25 : 0), w); an[i] = lerp(an[i], 0.25, w); thZ[i] = lerp(thZ[i], sd * 0.06, w);
+        shX[i] = lerp(shX[i], 0.35, w); el[i] = lerp(el[i], 1.25, w); shZ[i] = lerp(shZ[i], -sd * 0.18, w);
+      }
+      pitch = lerp(pitch, back, w); upX = lerp(upX, 0, w); upY = lerp(upY, 0, w); upZ = lerp(upZ, 0, w); headX = lerp(headX, 0.35, w); headY = lerp(headY, 0, w);
+      // the hips sit on the cushion
+      bob = lerp(bob, LOUNGER.seatY + 0.08 - HIP_Y, w);
+    }
     // ---- airborne: knees tuck, arms rise
     if (this.wAir > 0.001) {
       const w = this.wAir, up = this.vel.y > 0 ? 1 : 0.4;
@@ -484,7 +498,7 @@ class Avatar {
     }
     // body root: pitch about the hips, then a drop so a lying body rests on the ground / floats on the water
     const lying = Math.abs(Math.sin(pitch));
-    let dropY = 0.78 * lying * (1 - this.wSwim);
+    let dropY = 0.78 * lying * (1 - this.wSwim) * (1 - this.wLounge);   // (on a lounger the hips sit on the seat instead)
     if (this.wSwim > 0.01 && !useVR) {
       const surface = (this.surf - 0.14) - (this.cur.y + HIP_Y * Math.cos(pitch));   // hips ride just under MY water line
       dropY = lerp(dropY, -surface, this.wSwim);
@@ -782,7 +796,8 @@ export class ThreeAvatars {
     const me = getOutfit();
     if (this.fpAv && this.fpAv.key !== outfitKey(me) + '|') { this.group.remove(this.fpAv.group); this.fpAv.dispose(); this.fpAv = null; }
     if (!this.fpAv) { this.fpAv = new Avatar(myId, '', false, me); this.group.add(this.fpAv.group); }
-    const a = this.fpAv, back = vr ? 0.15 : 0.2;
+    // (not on a sun lounger: there you are lying where the body is)
+    const a = this.fpAv, back = (st.flags & F_LOUNGE) ? 0 : vr ? 0.15 : 0.2;
     a.group.visible = true;
     // (the body does not lean with your view: the head it would lean with is not drawn)
     a.set({ ...st, x: st.x + Math.sin(st.yaw) * back, z: st.z + Math.cos(st.yaw) * back, pitch: vr ? st.pitch : 0 });
