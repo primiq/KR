@@ -18,17 +18,19 @@ export const RAIL_H = 1.05;
 const RAIL_POST = 0.14;
 
 export const PIECES: { kind: PieceKind; name: string; cost: number; desc: string }[] = [
-    { kind: "foundation", name: "Foundation", cost: 25, desc: "The base of every building. Works on slopes too (stilts reach the low side). Next to an existing foundation it may stick out over a drop or the water, up to 2 blocks from solid ground." },
+    { kind: "foundation", name: "Foundation", cost: 25, desc: "The base of every building. Works on slopes too (stilts reach the low side). Next to an existing foundation it may stick out over a drop or the water, up to 4 blocks from solid ground, and stands on stilts in shallow water." },
     { kind: "pool", name: "Pool", cost: 30, desc: "A foundation with a pool in it: crystal clear water, waist deep, with a wooden deck round the edge. Pools built side by side join into one bigger pool." },
     { kind: "wall", name: "Wall", cost: 15, desc: "Goes on the edge of a foundation." },
     { kind: "doorway", name: "Doorway", cost: 12, desc: "A wall with an opening to walk through." },
     { kind: "window", name: "Window", cost: 14, desc: "A wall with a window opening." },
     { kind: "railing", name: "Railing", cost: 8, desc: "A waist-high railing along the edge of a foundation or floor: posts, a handrail and balusters. Hold a torch and aim at one of its end posts to stand the torch on it." },
-    { kind: "floor", name: "Floor / Roof", cost: 20, desc: "An upper floor that is also your roof: one storey up, walkable on top. Goes on top of a foundation or floor, or sticks out from one: at most 2 blocks away from a block that stands on something solid." },
+    { kind: "floor", name: "Floor / Roof", cost: 20, desc: "An upper floor that is also your roof: one storey up, walkable on top. Goes on top of a foundation or floor, or sticks out from one: at most 4 blocks away from a block that stands on something solid." },
     { kind: "stairs", name: "Staircase", cost: 30, desc: "Climbs one storey in the direction you face. Leave the floor above it open, and put a floor next to its top." },
 ];
 export const PIECE_INFO: { kind: PieceKind; name: string; cost: number }[] = [...PIECES, { kind: "roof", name: "Roof", cost: 20 }];
 export const MAX_LEVEL = 3;
+/** how many blocks a platform can stick out from one that stands on something; how deep the water can be under a block on stilts (m) */
+const MAX_OUT = 4, SHALLOW = -1.2;
 /** which way a staircase climbs, by direction index (x, z) */
 export const STAIR_DIRS: [number, number][] = [[0, -1], [1, 0], [0, 1], [-1, 0]];
 const STEPS = 12;
@@ -509,13 +511,13 @@ export class BuildingSystem {
   }
 
   // ------------------------------------------------------------ support rules
-  /** blocks from solid support: 0 = fully supported, 1-2 = sticking out from a supported block, -1 = cannot stand here */
+  /** blocks from solid support: 0 = fully supported, 1-MAX_OUT = sticking out from a supported block, -1 = cannot stand here */
   private slabSpan(i: number, j: number, L: number, terrainOk: boolean): number {
     if (L === 0 && terrainOk) return 0;
     if (L > 0) { const b = this.cells.get(cellKey(i, j, L - 1)); if (b) return b.span; }
     let best = 99;
     for (const [a, c] of [[i - 1, j], [i + 1, j], [i, j - 1], [i, j + 1]]) { const n = this.cells.get(cellKey(a, c, L)); if (n) best = Math.min(best, n.span + 1); }
-    return best <= 2 ? best : -1;
+    return best <= MAX_OUT ? best : -1;
   }
   private groundRange(i: number, j: number) {
     let hMax = -1e9, hMin = 1e9;
@@ -527,7 +529,7 @@ export class BuildingSystem {
   }
   private terrainOk(i: number, j: number, H: number, hasNb: boolean) {
     const { hMin } = this.groundRange(i, j);
-    return hMin <= H + 0.1 && hMin >= (hasNb ? 0.02 : 0.25) && H - hMin <= (hasNb ? 3.0 : 3.2);
+    return hMin <= H + 0.1 && hMin >= (hasNb ? SHALLOW : SHALLOW + 0.25) && H - hMin <= (hasNb ? 3.6 : 3.6);
   }
 
   // ------------------------------------------------------------ aiming / ghost
@@ -582,18 +584,20 @@ export class BuildingSystem {
       for (const n of nb) { const d = Math.hypot(n.i * CELL + CELL / 2 - eye.x, n.j * CELL + CELL / 2 - eye.z); if (d < bd) { bd = d; ref = n; } }
       a.H = ref.H;
       if (hMin > a.H + 0.1) { a.ok = false; a.reason = 'Ground is too high here (slab fully buried)'; }
-      else if (a.H - hMin > 3.0) soft = 'Ground drops away too far';
-      else if (hMin < 0.02) soft = 'Too close to the water';
+      else if (a.H - hMin > 3.6) soft = 'Ground drops away too far';
+      else if (hMin < SHALLOW) soft = 'The water is too deep';
     } else {
       // Level ground: sit just above the highest corner. Slopes: sink the uphill side into the hill (up to half a metre)
       // and let the pilings reach down to the low side, like a real stilt house. Only truly steep ground is refused.
       const spread = hMax - hMin;
       a.H = spread <= 0.7 ? hMax + 0.12 : Math.max(hMax - 0.5, hMin + 0.3);
-      if (a.H - hMin > 3.2) { a.ok = false; a.reason = 'Ground is too steep'; }
-      else if (hMin < 0.25) { a.ok = false; a.reason = 'Too close to the water'; }
+      // (in the shallows the pilings stand on the sea floor: the slab sits just above the water)
+      if (hMin < 0.3) a.H = Math.max(a.H, 0.45);
+      if (a.H - hMin > 3.6) { a.ok = false; a.reason = 'Ground is too steep'; }
+      else if (hMin < SHALLOW + 0.25) { a.ok = false; a.reason = 'The water is too deep here: build out from the shore'; }
     }
     a.y = a.H;
-    if (a.ok && soft && this.slabSpan(i, j, 0, false) < 0) { a.ok = false; a.reason = `${soft}: a block can only stick out 2 blocks from solid ground`; }
+    if (a.ok && soft && this.slabSpan(i, j, 0, false) < 0) { a.ok = false; a.reason = `${soft}: a block can only stick out ${MAX_OUT} blocks from solid ground`; }
     if (a.ok && Math.hypot(a.x - eye.x, a.z - eye.z) > 9) { a.ok = false; a.reason = 'Too far away'; }
     if (a.ok && !soft && (this.colliders.anyIn(x0, z0, x0 + CELL, z0 + CELL, 0.12) || this.blockedByStructures?.(x0, z0, x0 + CELL, z0 + CELL))) {
       a.ok = false; a.reason = 'Something is in the way';
@@ -610,7 +614,7 @@ export class BuildingSystem {
     if (this.roofs.has(below)) { a.reason = 'Remove the roof first'; return a; }
     if (this.stairs.has(below)) { a.reason = 'The staircase needs this opening'; return a; }
     if (c.L > MAX_LEVEL) { a.reason = 'That is as high as you can build'; return a; }
-    if (this.slabSpan(c.i, c.j, c.L, false) < 0) { a.reason = 'Needs support: at most 2 blocks out from a block that stands on something solid'; return a; }
+    if (this.slabSpan(c.i, c.j, c.L, false) < 0) { a.reason = `Needs support: at most ${MAX_OUT} blocks out from a block that stands on something solid`; return a; }
     if (Math.hypot(a.x - eye.x, a.z - eye.z) > 10) { a.reason = 'Too far away'; return a; }
     a.ok = true; a.reason = '';
     return a;

@@ -695,7 +695,7 @@ export class StructureManager {
   }
 
   nearBench(x: number, y: number, z: number, reach: number): boolean {
-    for (const s of this.list) if (s.kind === "workbench" && Math.hypot(s.x - x, s.z - z) < reach && Math.abs(s.y - y) < 3) return true;
+    for (const s of this.list) if (s.kind === "workbench" && Math.hypot(s.x - x, s.z - z) < reach && Math.abs(s.y - y) < 10) return true;   // (three storeys up or down)
     return false;
   }
 

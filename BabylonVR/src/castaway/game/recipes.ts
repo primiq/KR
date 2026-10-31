@@ -12,7 +12,8 @@ export interface Recipe {
   subs?: Partial<Record<ItemId, { alts: ItemId[]; label: string }>>;
 }
 
-export const BENCH_REACH = 4.5;
+/** how far a workbench's crafting reaches (m): a whole house round it */
+export const BENCH_REACH = 14;
 
 export const RECIPES: Recipe[] = [
   // by hand: the bare essentials for surviving the first days

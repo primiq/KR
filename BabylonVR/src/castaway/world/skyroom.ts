@@ -1,5 +1,6 @@
 // The secret room: a small hall floating high above the island, reached through the odd door in one of the huts.
-// The floor is glass (you look straight down at the island), your photo hangs on the far wall and the song plays while you are inside.
+// The floor is glass (you look straight down at the island), your photo hangs on the far wall, and a button on a stand below it
+// plays the song.
 // It is a cave-style "ground" for the player (floor + walls), so nothing else in the world needs to know about it.
 // Babylon port: Castaway's code, drawn by render/mirror.ts. The mirror on the east wall is a plane named 'skyMirror' (the
 // Babylon side gives it a MirrorTexture); only its gold frame is built here.
@@ -10,6 +11,7 @@ import songUrl from '../assets/song.mp3?inline';
 interface V3 { x: number; y: number; z: number }
 
 export const SKY_Y = 300;
+const SONG_Z = -4 + 0.75;
 const HALF = 4, H = 3.6, EDGE = 0.32, CAT_X = -3.1, HIDE_X = 2.6, TRIAL_X = -2.6, CLOUD_X = 3.1, CAMP_Z = -2.5, LOC_Z = 2.5;
 
 export class SkyRoom {
@@ -23,6 +25,9 @@ export class SkyRoom {
   muted = () => false;
   /** the cloud door: swings open, then (jump) is called to launch the skydive */
   readonly cloudDoor = new THREE.Group();
+  /** the song button's cap (it dips when pressed) */
+  private songCap = new THREE.Group();
+  private capT = 0;
   private cloudT = -1;
   onJump: (() => void) | null = null;
   onDoorOpen: (() => void) | null = null;
@@ -61,6 +66,15 @@ export class SkyRoom {
     box(PH + 0.3, PH + 0.3, 0.12, 0, py, pz + 0.01, trim);
     const pic = new THREE.Mesh(new THREE.PlaneGeometry(PH, PH), new THREE.MeshBasicMaterial({ map: tex }));
     pic.position.set(0, SKY_Y + py, pz + 0.08); pic.frustumCulled = false; this.group.add(pic);
+    // the song button: a little dark stand in front of the picture with a brass plate and a big red button on top
+    box(0.34, 0.95, 0.34, 0, 0.475, SONG_Z, trim);
+    box(0.42, 0.05, 0.42, 0, 0.975, SONG_Z, gold);
+    {
+      const red = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.11, 0.07, 20), basic('#d8322c'));
+      const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.135, 0.135, 0.03, 20), basic('#2b1e15'));
+      red.position.y = 0.05; rim.position.y = 0.015; red.frustumCulled = rim.frustumCulled = false;
+      this.songCap.add(rim, red); this.songCap.position.set(0, SKY_Y + 1.0, SONG_Z); this.group.add(this.songCap);
+    }
     // a runner carpet leading in from the door, and two small lamps flanking the picture
     box(1.6, 0.03, 6.4, 0, 0.0, 0.8, basic('#7a2c33'));
     for (const x of [-2.2, 2.2]) { box(0.14, 0.9, 0.14, x, 0.45, -HALF + 0.5, trim); box(0.4, 0.3, 0.4, x, 1.05, -HALF + 0.5, glow); }
@@ -239,13 +253,30 @@ export class SkyRoom {
     const px = dx - dir.x * t, py = dy - dir.y * t, pz = dz - dir.z * t, r = 1.0 * assist;
     return px * px + py * py + pz * pz <= r * r ? t : null;
   }
+  /** the song button under the photo */
+  pickSong(eye: V3, dir: V3, reach: number, assist = 1): number | null {
+    if (!this.active) return null;
+    const dx = -eye.x, dy = SKY_Y + 1.03 - eye.y, dz = SONG_Z - eye.z;
+    const t = dx * dir.x + dy * dir.y + dz * dir.z;
+    if (t < 0 || t > reach + 1) return null;
+    const px = dx - dir.x * t, py = dy - dir.y * t, pz = dz - dir.z * t, r = 0.35 * assist;
+    return px * px + py * py + pz * pz <= r * r ? t : null;
+  }
+  /** is the song playing now */
+  get songOn() { return this.want > 0 && !this.ended; }
+  /** press the button: the song plays once from the start (pressed while it plays, it stops) */
+  pressSong() {
+    this.capT = 0.25;
+    if (this.songOn) this.play(false);
+    else this.play(true, true);
+  }
   private closeCloud() { this.cloudT = -1; this.cloudDoor.rotation.y = 0; }
   /** (back) from the airstrip or the cat house: arrive in front of the door you left by */
   enter(p: { teleport(x: number, y: number, z: number, yaw: number): void; cave: any }, from: 'hut' | 'air' | 'cat' | 'hide' | 'trial' | 'camp' | 'loc' = 'hut') {
     this.active = true; this.group.visible = true; this.closeCloud();
     p.cave = this;
     if (from === 'air') p.teleport(-HALF + 1.6, SKY_Y, 0, -Math.PI / 2); else if (from === 'camp') p.teleport(-HALF + 1.6, SKY_Y, CAMP_Z, -Math.PI / 2); else if (from === 'loc') p.teleport(-HALF + 1.6, SKY_Y, LOC_Z, -Math.PI / 2); else if (from === 'cat') p.teleport(CAT_X, SKY_Y, -HALF + 1.6, Math.PI); else if (from === 'hide') p.teleport(HIDE_X, SKY_Y, HALF - 1.6, 0); else if (from === 'trial') p.teleport(TRIAL_X, SKY_Y, HALF - 1.6, 0); else p.teleport(0, SKY_Y, HALF - 1.5, 0);
-    this.play(true, from === 'hut');
+    void from;
   }
   /** the player goes elsewhere (the airstrip sets its own ground): just hide the room and stop the song */
   depart() { this.active = false; this.group.visible = false; this.play(false); this.closeCloud(); }
@@ -257,7 +288,7 @@ export class SkyRoom {
   }
 
   private ended = false;
-  /** the song plays once, at 40% of its old volume; coming back from another door carries on where it was and never restarts a finished song */
+  /** the song (at 40% of its old volume), once, when the button is pressed; it fades out when you leave the room */
   private play(on: boolean, fresh = false) {
     this.want = on ? 0.32 : 0;
     if (!on) return;
@@ -287,6 +318,8 @@ export class SkyRoom {
       if (this.cloudT > 2.2) { this.cloudT = -1; this.onJump?.(); }
     }
     this.fadeSong(dt);
+    if (this.capT > 0) this.capT = Math.max(0, this.capT - dt);
+    this.songCap.position.y = SKY_Y + 1.0 - (this.capT > 0 ? 0.03 : 0);
     if (this.skydiving()) return;
     if (this.active && (Math.abs(p.pos.x) > HALF + 1 || Math.abs(p.pos.z) > HALF + 1 || p.pos.y < SKY_Y - 60)) {
       this.active = false; this.group.visible = false; p.cave = null; this.play(false);

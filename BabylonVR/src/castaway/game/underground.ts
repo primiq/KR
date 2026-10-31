@@ -48,6 +48,7 @@ export type UgTarget =
   | { kind: 'skydoor'; dist: number }
   | { kind: 'skyexit'; dist: number }
   | { kind: 'clouddoor'; dist: number }
+  | { kind: 'songbutton'; dist: number }
   | { kind: 'airdoor'; dist: number }
   | { kind: 'airexit'; dist: number }
   | { kind: 'car'; car: Car; dist: number }
@@ -240,6 +241,8 @@ export class Underground {
     if (xt != null && (!best || xt < (best as UgTarget).dist)) best = { kind: 'skyexit', dist: xt };
     const cd2 = this.sky?.pickCloud(eye, dir, Math.max(reach, 3.2), assist);
     if (cd2 != null && (!best || cd2 < (best as UgTarget).dist)) best = { kind: 'clouddoor', dist: cd2 };
+    const sb = this.sky?.pickSong(eye, dir, Math.max(reach, 3.2), assist);
+    if (sb != null && (!best || sb < (best as UgTarget).dist)) best = { kind: 'songbutton', dist: sb };
     const at = this.sky?.pickAir(eye, dir, Math.max(reach, 3.2), assist);
     if (at != null && (!best || at < (best as UgTarget).dist)) best = { kind: 'airdoor', dist: at };
     const ht2 = this.sky?.pickHide(eye, dir, Math.max(reach, 3.2), assist);
@@ -295,6 +298,7 @@ export class Underground {
       case 'airdoor': return { name: 'Door to the airstrip', hint: '<b>E</b> open', ok: true };
       case 'airexit': return { name: 'Door back home', hint: '<b>E</b> go back to the secret room', ok: true };
       case 'car': return t.car.driver !== null || this.air?.remote.has(t.car.index) ? { name: t.car.spec.name, hint: 'Someone is driving it', ok: false } : { name: t.car.spec.name, hint: `<b>E</b> drive · ${t.car.spec.blurb}`, ok: true };
+      case 'songbutton': return { name: 'Our song', hint: this.sky?.songOn ? '<b>E</b> stop the song' : '<b>E</b> play the song', ok: true };
       case 'clouddoor': return { name: 'Cloud door', hint: '<b>E</b> open · jump out and parachute down', ok: true };
       case 'skydoor': return { name: 'Strange door', hint: '<b>E</b> open', ok: true };
       case 'skyexit': return { name: 'Door', hint: '<b>E</b> go back down', ok: true };
@@ -312,6 +316,7 @@ export class Underground {
       case 'pit': this.enter(t.index); break;
       case 'chest': this.openChest(t.chest); break;
       case 'loot': this.openSiteChest(t.chest); break;
+      case 'songbutton': this.sky?.pressSong(); this.h.sfx.pickup(); break;
       case 'clouddoor': this.sky?.openCloud(); break;
       case 'townexit': this.onTownExit?.(); this.h.sfx.creak(); break;
       case 'locdoor': if (this.sky && this.locs) { this.sky.depart(); this.locs.enter(this.h.player); this.onLocs?.(); this.h.sfx.creak(); } break;
