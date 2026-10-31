@@ -150,7 +150,7 @@ export class Game {
     /** multiplayer: friends and pings for the map (set by net/sync) */
     mapExtras: { friends?: () => { x: number; z: number; name: string; color: string }[]; pings?: () => { x: number; z: number; name: string; color: string; age: number }[] } = {};
     /** VR: aim comes from the hand, not the head; the VR rig fills this in every frame */
-    readonly vr = { active: false, eye: new Vector3(), dir: new Vector3(0, 0, -1), head: null as Vector3 | null, headDir: null as Vector3 | null, haptic: null as null | ((strength: number) => void), paint: null as null | ((p: Painting, done: (data: string | null) => void) => void) };
+    readonly vr = { active: false, eye: new Vector3(), dir: new Vector3(0, 0, -1), tip: null as Vector3 | null, head: null as Vector3 | null, headDir: null as Vector3 | null, haptic: null as null | ((strength: number) => void), paint: null as null | ((p: Painting, done: (data: string | null) => void) => void) };
     /** multiplayer glue (set by net/sync) */
     netId = 0;
     net: {
@@ -181,6 +181,8 @@ export class Game {
     private eye = new Vector3();
     private eatCd = 0;
     private vrCd = 0;
+    /** a headset swing in progress: what the tool's head touches is hit; if nothing, the old aim when it ends */
+    private vrSwingT = 0;
     private seaCd = 0;
     private drinkCd = 0;
     private hurtCd = 0;
@@ -729,6 +731,12 @@ export class Game {
 
     update(dt: number, active: boolean) {
         const { player, stats, input, hud, view } = this;
+        if (this.vrSwingT > 0) {
+            this.vrSwingT -= dt;
+            const hit = this.vr.tip && !this.under.active ? this.resources.touching(this.vr.tip, 0.35) : null;
+            if (hit) { this.vrSwingT = 0; this.swingHit(hit); }
+            else if (this.vrSwingT <= 0) this.swingHit();
+        }
         this.hurtCd -= dt; this.vrCd -= dt; this.meowCd -= dt; this.eatCd -= dt; this.seaCd -= dt; this.drinkCd -= dt;
         this.resources.update(dt, player.pos.x, player.pos.z);
         this.saplings.update(dt);
@@ -1133,6 +1141,9 @@ export class Game {
             if (this.vrCd > 0) return;
             this.vrCd = 0.42;
             this.sfx.swing();
+            // in a headset the blow lands when the tool's head reaches something during the swing (below); not the moment the
+            // hand starts moving, along wherever the controller points
+            if (this.vr.active && this.vr.tip) { this.vrSwingT = 0.35; return; }
             this.swingHit();
             return;
         }
@@ -1281,7 +1292,7 @@ export class Game {
     }
 
     /** The moment a swing connects. */
-    private swingHit() {
+    private swingHit(forced: Target | null = null) {
         const held = this.equipped;
         const def = held ? ITEMS[held.id] : null;
         if (!def?.tool || this.stats.dead) return;
@@ -1295,11 +1306,11 @@ export class Game {
         }
         if (def.tool.model === "rod") return;
         const ug = this.under;
-        const t = ug.active ? null : this.resources.findTarget(eye, this.dir, def.tool.reach, this.assist);
-        const an = ug.active ? null : this.fauna.raycast(eye, this.dir, def.tool.reach, this.assist);
+        const t = forced ?? (ug.active ? null : this.resources.findTarget(eye, this.dir, def.tool.reach, this.assist));
+        const an = ug.active || forced ? null : this.fauna.raycast(eye, this.dir, def.tool.reach, this.assist);
         // a pickaxe-class swing: mining ore underground, or digging for the way down
-        if (ug.swing(eye, this.dir, held!.id, t && t.type === "node" ? t.dist : 99, this.assist)) { this.vr.haptic?.(0.6); this.wearHeld(); return; }
-        const pl = this.net.rayPlayer?.(eye, this.dir, def.tool.reach) ?? null;
+        if (!forced && ug.swing(eye, this.dir, held!.id, t && t.type === "node" ? t.dist : 99, this.assist)) { this.vr.haptic?.(0.6); this.wearHeld(); return; }
+        const pl = forced ? null : this.net.rayPlayer?.(eye, this.dir, def.tool.reach) ?? null;
         if (pl && (!an || pl.dist < an.dist) && (!t || t.type !== "node" || pl.dist < t.dist)) {
             this.net.hitPlayer?.(pl.id, def.tool.dmg * (0.85 + Math.random() * 0.3));
             this.sfx.thwack();
@@ -1309,9 +1320,9 @@ export class Game {
             this.wearHeld();
             return;
         }
-        const sk = ug.active ? null : this.stalkers.raycast(eye, this.dir, def.tool.reach, this.assist);
+        const sk = ug.active || forced ? null : this.stalkers.raycast(eye, this.dir, def.tool.reach, this.assist);
         if (sk && (!an || sk.dist < an.dist) && (!t || t.type !== "node" || sk.dist < t.dist)) { this.hitStalker(sk.s); return; }
-        const md = ug.active ? null : this.druids.raycast(eye, this.dir, def.tool.reach);
+        const md = ug.active || forced ? null : this.druids.raycast(eye, this.dir, def.tool.reach);
         if (md !== null && (!an || md < an.dist) && (!t || t.type !== "node" || md < t.dist)) {
             this.druids.hit(def.tool.dmg, player.pos.x, player.pos.z);
             player.shake(0.3); this.resources.burst(eye.add(this.dir.scale(md)), "leaf", 8); this.vr.haptic?.(0.8);

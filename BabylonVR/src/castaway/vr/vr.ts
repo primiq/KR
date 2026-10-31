@@ -49,6 +49,8 @@ interface Hand {
 
 const btn = (h: Hand | null, i: number) => !!h?.src.inputSource.gamepad?.buttons?.[i]?.pressed;
 const val = (h: Hand | null, i: number) => h?.src.inputSource.gamepad?.buttons?.[i]?.value ?? 0;
+/** along a held tool's handle, in the grip's frame (see setHeld: the handle points forward and a little up) */
+const _tipDir = new Vector3(0, 0.34, -0.94);
 const axis = (h: Hand | null, i: number) => h?.src.inputSource.gamepad?.axes?.[i] ?? 0;
 
 /**
@@ -500,6 +502,9 @@ export class CastawayVR {
             ptr.getDirectionToRef(Vector3.Forward(true), game.vr.dir);
             // a rod's line runs from its tip, 1.4 m out along the hand
             game.fishing.tipOverride = id && ITEMS[id].tool?.model === "rod" ? ptr.absolutePosition.add(game.vr.dir.scale(1.4)) : null;
+            // where the tool's head is (its handle runs out of the fist, 0.4 m or so): what a swing hits
+            const tool = !!id && !!ITEMS[id].tool && ITEMS[id].tool!.model !== "rod";
+            game.vr.tip = tool ? grip.absolutePosition.add(grip.getDirection(_tipDir).scale(0.4)) : null;
             // hand speed relative to the head (so walking does not count as swinging)
             const rel = grip.absolutePosition.subtract(cam.position);
             if (R.prev) {
@@ -509,6 +514,7 @@ export class CastawayVR {
             }
             R.prev = rel;
         } else {
+            game.vr.tip = null;
             game.vr.eye.copyFrom(cam.position);
             cam.getDirectionToRef(Vector3.Forward(true), game.vr.dir);
         }

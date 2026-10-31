@@ -533,6 +533,21 @@ export class Resources {
     }
 
     /** Nearest thing along the view ray within `reach`. `assist` widens hit spheres (touch and VR aiming). */
+    /** the resource a swung tool's head is touching (in a headset you hit what your hand reaches, wherever you look) */
+    touching(p: Vector3, pad: number): Target | null {
+        let best: Target | null = null, bd = pad;
+        for (const n of this.veg.nodes) {
+            if (n.depleted) continue;
+            const ex = n.x - p.x, ez = n.z - p.z, lim = n.r + pad + 3;
+            if (ex * ex + ez * ez > lim * lim) continue;
+            for (const off of n.offs) {
+                const d = Math.hypot(n.x - p.x, n.y + off - p.y, n.z - p.z) - n.r;
+                if (d < bd) { bd = d; best = { type: "node", node: n, dist: 0, point: p.clone() }; }
+            }
+        }
+        return best;
+    }
+
     findTarget(eye: Vector3, dir: Vector3, reach: number, assist = 1): Target | null {
         const ox = eye.x, oy = eye.y, oz = eye.z, dx = dir.x, dy = dir.y, dz = dir.z;
         let best: Target | null = null;

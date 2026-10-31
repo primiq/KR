@@ -31,7 +31,7 @@ function part(g: THREE.BufferGeometry, c: string, x: number, y: number, z: numbe
   return n;
 }
 const ball = (r = 1) => new THREE.SphereGeometry(r, 5, 4);
-const stem = (h: number, c: string, x = 0, z = 0, lean = 0, ry = 0) => part(new THREE.CylinderGeometry(0.006, 0.009, h, 4), c, x + Math.sin(lean) * h * 0.5 * Math.cos(ry), h / 2, z + Math.sin(lean) * h * 0.5 * Math.sin(ry), 1, 1, 1, 0, -ry, lean);
+const stem = (h: number, c: string, x = 0, z = 0, lean = 0, ry = 0) => part(new THREE.CylinderGeometry(0.011, 0.017, h, 5), c, x + Math.sin(lean) * h * 0.5 * Math.cos(ry), h / 2, z + Math.sin(lean) * h * 0.5 * Math.sin(ry), 1, 1, 1, 0, -ry, lean);
 const leaf = (c: string, y: number, ry: number, L = 0.07) => part(ball(), c, Math.cos(ry) * L * 0.8, y, -Math.sin(ry) * L * 0.8, L, 0.008, L * 0.35, 0, ry, -0.5);
 function ring(out: Part[], n: number, c: string, x: number, y: number, z: number, len: number, wid: number, tilt: number, cup = 0) {
   for (let i = 0; i < n; i++) {
@@ -112,6 +112,12 @@ export function flowerGeometry(k: number): THREE.BufferGeometry {
       P.push(part(new THREE.ConeGeometry(0.008, 0.07, 4), f.mid, 0.06, H + 0.03, 0, 1, 1, 1, 0, 0, -1.0));
       break;
   }
+  // every flower stands in a little rosette of its own leaves, sunk into the ground (no thin stalk floating on the grass)
+  for (let i = 0; i < 6; i++) {
+    const a = i * 1.05 + k * 0.4, L = 0.06 + (i % 3) * 0.02;
+    P.push(part(ball(), f.leaf, Math.cos(a) * L * 0.75, 0.015, -Math.sin(a) * L * 0.75, L, 0.012, L * 0.38, 0, a, -0.35));
+  }
+  P.push(part(new THREE.CylinderGeometry(0.035, 0.05, 0.05, 6), '#4a6a2a', 0, -0.015, 0));
   const g = mergeGeometries(P)!;
   // sway: nothing at the root, most at the head; flutter for the petals
   const pos = g.getAttribute('position'), n = pos.count, sw = new Float32Array(n), fl = new Float32Array(n), top = H * 1.1;
@@ -180,7 +186,8 @@ export class Flowers {
       const n = k === 3 ? 2 + Math.floor(rnd() * 3) : 5 + Math.floor(rnd() * 10), spread = k === 3 ? 1.6 : 1.2 + rnd() * 2.4;
       for (let i = 0; i < n && this.wild.length < count; i++) {
         const b = rnd() * Math.PI * 2, q = Math.sqrt(rnd()) * spread, x = cx + Math.cos(b) * q, z = cz + Math.sin(b) * q;
-        const y = heightAt(x, z);
+        // (the lowest ground under it, a little sunk: on a slope the downhill side never floats)
+        const y = Math.min(heightAt(x, z), heightAt(x + 0.08, z), heightAt(x - 0.08, z), heightAt(x, z + 0.08), heightAt(x, z - 0.08)) - 0.02;
         if (y < 2.4 || slopeAt(x, z) > 0.5) continue;
         const kk = rnd() < 0.08 ? Math.floor(rnd() * 8) : k;   // the odd stray
         const w: Wild = { x, y, z, k: kk, rot: rnd() * 6.28, s: 1.1 + rnd() * 0.55 };
