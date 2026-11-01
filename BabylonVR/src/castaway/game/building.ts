@@ -1,4 +1,4 @@
-import { Mesh, type Material, type Scene, TransformNode } from "@babylonjs/core";
+import { Constants, Mesh, type Material, RawTexture, type Scene, Texture, TransformNode } from "@babylonjs/core";
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { PBRCustomMaterial } from "@babylonjs/materials";
@@ -67,7 +67,84 @@ const cellKey = (i: number, j: number, L = 0) => (L ? `${i},${j},${L}` : `${i},$
 const edgeKey = (axis: "x" | "z", i: number, j: number, L = 0) => (L ? `${axis}${i},${j},${L}` : `${axis}${i},${j}`);
 
 // ---------------------------------------------------------------- pools
-export const POOL_RIM = 0.45, POOL_WATER = 0.1, POOL_DEPTH = 0.8;
+export const POOL_RIM = 0.45, POOL_WATER = 0.1, POOL_DEPTH = 2.0;
+/** the sea's own water for pools (main makes it from the ocean once there is one) */
+let POOL_SEA: Material | null = null;
+export function setPoolWater(m: Material) { POOL_SEA = m; }
+/** every pool's open water (world x0, z0, x1, z1 per cell, up to 24): the ground is not drawn inside, where the basin is */
+export const POOL_RECTS = { data: new Float32Array(24 * 4), n: 0, version: 0 };
+/** a pool's water surface for the sea's shader (island/ocean.ts makeLake): small ripples, its "seabed" `seeDepth` below */
+export const POOL_VS = `
+precision highp float;
+attribute vec3 position;
+uniform mat4 world;
+uniform mat4 viewProjection;
+uniform float time;
+uniform float seeDepth;
+varying vec3 vPos;
+varying vec3 vNormal;
+varying float vSeabed;
+varying float vCrest;
+varying vec2 vRippleUV;
+void main(void) {
+    vec4 wp = world * vec4(position, 1.0);
+    vec3 p = wp.xyz, n = vec3(0.0, 1.0, 0.0);
+    float crest = 0.0;
+    for (int i = 0; i < 3; i++) {
+        float fi = float(i);
+        float L = 1.6 / (1.0 + fi * 0.8), k = 6.2832 / L, A = 0.012 / (1.0 + fi * 1.3);
+        vec2 d = vec2(cos(1.1 + fi * 2.1), sin(1.1 + fi * 2.1));
+        float ph = k * dot(d, wp.xz) - sqrt(9.81 * k) * time + fi * 1.9;
+        p.y += A * sin(ph);
+        n.xz -= d * k * A * cos(ph);
+        crest += k * A * sin(ph);
+    }
+    vPos = p; vNormal = n; vSeabed = wp.y - seeDepth; vCrest = crest; vRippleUV = vec2(-1.0);
+    gl_Position = viewProjection * vec4(p, 1.0);
+}`;
+let POOL_TEX: RawTexture | null = null;
+/** POOL_RECTS as a 24 x 1 float texture (kept up to date) for the ground shaders: `if (inPool(xz)) discard;` */
+export function poolRectsTexture(scene: Scene): RawTexture {
+    if (POOL_TEX) return POOL_TEX;
+    const t = RawTexture.CreateRGBATexture(new Float32Array(24 * 4), 24, 1, scene, false, false, Texture.NEAREST_SAMPLINGMODE, Constants.TEXTURETYPE_FLOAT);
+    let v = -1;
+    scene.onBeforeRenderObservable.add(() => { if (v !== POOL_RECTS.version) { v = POOL_RECTS.version; t.update(POOL_RECTS.data); } });
+    return (POOL_TEX = t);
+}
+/** GLSL: is this ground point inside a pool's basin (uniforms poolTex, poolN) */
+export const POOL_GLSL = `
+bool inPool(vec2 w) {
+    for (int i = 0; i < 24; i++) {
+        if (float(i) >= poolN) break;
+        vec4 r = texelFetch(poolTex, ivec2(i, 0), 0);
+        if (w.x > r.x && w.y > r.y && w.x < r.z && w.y < r.w) return true;
+    }
+    return false;
+}`;
+let POOLT: PBRCustomMaterial | null = null;
+/** the basin's tiles: pale blue squares with darker grout and light dancing over them */
+function poolTileMaterial(scene: Scene) {
+    if (POOLT) return POOLT;
+    const m = new PBRCustomMaterial("poolTiles", scene);
+    m.metallic = 0;
+    m.roughness = 0.35;
+    m.AddUniform("time", "float", 0);
+    m.Fragment_Definitions(NOISE_GLSL);
+    m.Fragment_Custom_Albedo(`
+        vec3 wp = vPositionW;
+        vec3 an = abs(normalize(vNormalW));
+        vec2 p = an.y > 0.5 ? wp.xz : (an.x > 0.5 ? wp.zy : wp.xy);
+        vec2 g = abs(fract(p / 0.25) - 0.5) * 2.0;
+        float grout = smoothstep(0.86, 0.95, max(g.x, g.y));
+        vec3 tiles = mix(vec3(0.62, 0.86, 0.9), vec3(0.3, 0.5, 0.56), grout);
+        float c1 = cNoise(vec3(wp.xz * 2.3, time * 0.6)), c2 = cNoise(vec3(wp.xz * 2.9 + 3.3, time * 0.75 + 5.0));
+        surfaceAlbedo = tiles * (0.85 + 0.15 * cNoise(vec3(p * 0.7, 2.0))) + pow(1.0 - abs(c1 - c2), 6.0) * 0.25 * step(0.5, an.y);
+    `);
+    let t = 0;
+    scene.onBeforeRenderObservable.add(() => (t += scene.getEngine().getDeltaTime() / 1000));
+    m.onBindObservable.add(() => m.getEffect()?.setFloat("time", t));
+    return (POOLT = m);
+}
 let POOLW: PBRCustomMaterial | null = null;
 /** Pool water: pale tiles with grout seen through rippling water, caustics dancing over them, sky caught at a slant. */
 function poolMaterial(scene: Scene) {
@@ -102,7 +179,7 @@ function inPoolRim(mask: number, lx: number, lz: number) {
 }
 
 // ---------------------------------------------------------------- models
-type MatKey = "wall" | "slab" | "beam" | "pile" | "glass" | "pool" | "swall" | "sslab";
+type MatKey = "wall" | "slab" | "beam" | "pile" | "glass" | "pool" | "tile" | "swall" | "sslab";
 /** A piece's model while it is put together: boxes in local space, bucketed by material (one Babylon mesh per material). */
 class Kit {
     readonly parts = new Map<MatKey, THREE.BufferGeometry[]>();
@@ -144,13 +221,24 @@ function fillKit(kit: Kit, kind: PieceKind, depth = 0.6, pile?: (lx: number, lz:
             if (S) box(CELL - 0.004, 0.14, 0.2, 0, -rimH - 0.02, h - 0.1, "beam");
             if (W) box(0.2, 0.14, CELL - 0.4, -h + 0.09, -rimH - 0.02, 0, "beam");
             if (E) box(0.2, 0.14, CELL - 0.4, h - 0.09, -rimH - 0.02, 0, "beam");
+            // (the piles start under the basin, never inside it)
+            const D = POOL_DEPTH;
             for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-                const lx = x * (h - 0.2), lz = z * (h - 0.2), dd = pile ? pile(lx, lz) : 0.6;
-                box(0.28, dd, 0.28, lx, -0.3 - dd / 2, lz, "pile");
+                const lx = x * (h - 0.2), lz = z * (h - 0.2), dd = Math.max(0.1, (pile ? pile(lx, lz) : 0.6) - (D - 0.3));
+                box(0.28, dd, 0.28, lx, -D - 0.12 - dd / 2, lz, "pile");
             }
             const x0 = -h + (W ? r : 0), x1 = h - (E ? r : 0), z0 = -h + (N ? r : 0), z1 = h - (S ? r : 0);
-            kit.add("pool", new THREE.PlaneGeometry(x1 - x0, z1 - z0, 1, 1).rotateX(-Math.PI / 2).translate((x0 + x1) / 2, -POOL_WATER, (z0 + z1) / 2));
-            box(CELL - 0.02, 0.06, CELL - 0.02, 0, -rimH + 0.01, 0, "beam");
+            // the water: the sea's own (a little grid of it, for its small waves)
+            kit.add("pool", new THREE.PlaneGeometry(x1 - x0, z1 - z0, 8, 8).rotateX(-Math.PI / 2).translate((x0 + x1) / 2, -POOL_WATER, (z0 + z1) / 2));
+            // the basin: a tiled floor ~2 m down, tiled walls under the deck on every side it does not join another pool,
+            // and the wooden box round them (so a pool built up on piles is closed underneath)
+            const wh = D - rimH, wy = -rimH - wh / 2;
+            kit.add("tile", new THREE.PlaneGeometry(CELL, CELL).rotateX(-Math.PI / 2).translate(0, -D, 0));
+            box(CELL, 0.1, CELL, 0, -D - 0.06, 0, "slab");
+            if (W) { kit.add("tile", new THREE.PlaneGeometry(z1 - z0, wh).rotateY(Math.PI / 2).translate(x0, wy, (z0 + z1) / 2)); box(r - 0.01, wh, CELL, -h + (r - 0.01) / 2, wy, 0, "slab"); }
+            if (E) { kit.add("tile", new THREE.PlaneGeometry(z1 - z0, wh).rotateY(-Math.PI / 2).translate(x1, wy, (z0 + z1) / 2)); box(r - 0.01, wh, CELL, h - (r - 0.01) / 2, wy, 0, "slab"); }
+            if (N) { kit.add("tile", new THREE.PlaneGeometry(x1 - x0, wh).translate((x0 + x1) / 2, wy, z0)); box(CELL - (W ? r : 0) - (E ? r : 0), wh, r - 0.01, ((W ? r : 0) - (E ? r : 0)) / 2, wy, -h + (r - 0.01) / 2, "slab"); }
+            if (S) { kit.add("tile", new THREE.PlaneGeometry(x1 - x0, wh).rotateY(Math.PI).translate((x0 + x1) / 2, wy, z1)); box(CELL - (W ? r : 0) - (E ? r : 0), wh, r - 0.01, ((W ? r : 0) - (E ? r : 0)) / 2, wy, h - (r - 0.01) / 2, "slab"); }
             break;
         }
         case "foundation": {
@@ -253,7 +341,8 @@ function matFor(k: MatKey): Material {
         case "beam": { const b = W.beam; if (b.zOffset === 0) b.zOffset = -1; return b; }
         case "pile": return W.pile;
         case "glass": return glassMaterial(s);
-        case "pool": return poolMaterial(s);
+        case "pool": return POOL_SEA ?? poolMaterial(s);
+        case "tile": return poolTileMaterial(s);
         case "swall": return stoneMaterials(s).wall;
         case "sslab": return stoneMaterials(s).slab;
     }
@@ -465,7 +554,9 @@ export class BuildingSystem {
   }
   /** What a walker at height `y` stands on at (x, z): the terrain, or the highest floor / stair tread it can step up to. */
   ground = (x: number, z: number, y = 1e9): number => {
-    let g = heightAt(x, z);
+    // (in a pool's open water the ground does not count: its floor is 2 m down)
+    const pw = this.poolWater(x, z);
+    let g = pw !== null ? pw + POOL_WATER - POOL_DEPTH : heightAt(x, z);
     const l = this.colAt.get(`${Math.floor(x / CELL)},${Math.floor(z / CELL)}`);
     if (l) for (const p of l) {
       const h = p.kind === 'stairs' ? this.rampH(p, x, z) : p.kind === 'roof' ? p.H + WALL_H + 0.16
@@ -908,6 +999,25 @@ export class BuildingSystem {
     if (bit(mask, 1) && bit(mask, 3) && !bit(mask, 7)) deck(x0 + CELL - r, x0 + CELL, z0 + CELL - r, z0 + CELL);
     return out;
   }
+  /** the water surface here if (x, z) is in a pool's open water (you swim in it), else null */
+  poolWater(x: number, z: number): number | null {
+    const i = Math.floor(x / CELL), j = Math.floor(z / CELL), p = this.cells.get(cellKey(i, j));
+    if (!p || p.kind !== 'pool') return null;
+    return inPoolRim(p.mask ?? 0, x - i * CELL - CELL / 2, z - j * CELL - CELL / 2) ? null : p.H - POOL_WATER;
+  }
+  /** the pools' open water, for the ground's shaders (no ground drawn in a basin) */
+  private poolRects() {
+    let n = 0;
+    const d = POOL_RECTS.data, r = POOL_RIM;
+    for (const p of this.cells.values()) {
+      if (p.kind !== 'pool' || n >= 24) continue;
+      const m = p.mask ?? 0, x0 = p.i * CELL, z0 = p.j * CELL;
+      d[n * 4] = x0 + (bit(m, 0) ? 0 : r) - 0.02; d[n * 4 + 1] = z0 + (bit(m, 2) ? 0 : r) - 0.02;
+      d[n * 4 + 2] = x0 + CELL - (bit(m, 1) ? 0 : r) + 0.02; d[n * 4 + 3] = z0 + CELL - (bit(m, 3) ? 0 : r) + 0.02;
+      n++;
+    }
+    POOL_RECTS.n = n; POOL_RECTS.version++;
+  }
   /** a pool came or went at (i, j): the pools round it reshape (decks where they no longer join, open water where they now do) */
   private refreshPools(i: number, j: number) {
     for (let a = i - 1; a <= i + 1; a++) for (let b = j - 1; b <= j + 1; b++) {
@@ -921,6 +1031,7 @@ export class BuildingSystem {
       p.solid = this.poolSolid(a, b, p.H, m);
       for (const bx of p.solid) this.addBox(bx);
     }
+    this.poolRects();
   }
 
   /** Nearest piece along the view ray (slab test against each piece's hit box). */

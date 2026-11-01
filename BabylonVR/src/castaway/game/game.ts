@@ -748,6 +748,7 @@ export class Game {
 
     // ------------------------------------------------------------ per-frame
     preUpdate() {
+        this.poolClimb();
         this.player.canSprint = this.stats.canSprint;
         this.player.canJump = this.stats.stamina > 0.5;
     }
@@ -1441,6 +1442,31 @@ export class Game {
         // felling a tree sometimes shakes a sapling loose
         if (emptied && (n.kind === "palm" || n.kind === "tree") && Math.random() < (wasPlanted ? 0.4 : 0.12)) { this.give("sapling", 1); this.hud.message("A sapling fell out of the tree!"); }
         this.wearHeld();
+    }
+
+    // ------------------------------------------------------------ pools
+    private poolHint = false;
+    /** swimming in a pool: jump at the edge to pull yourself up onto the deck (it is 2 m deep) */
+    private poolClimb() {
+        const p = this.player, b = this.building;
+        if (p.mode !== "swim" || p.cave || b.poolWater(p.pos.x, p.pos.z) === null) return;
+        if (!this.poolHint) { this.poolHint = true; this.hud.message(this.vr.active ? "Swim to the edge and press B to climb out" : "Swim to the edge and press Space to climb out"); }
+        if (!this.input.jumpQueued) return;
+        // (the way you face first, then round about)
+        for (let k = 0; k < 16; k++) {
+            const a = -p.yaw - Math.PI / 2 + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * (Math.PI / 8);
+            for (const d of [0.6, 0.9, 1.2]) {
+                const x = p.pos.x + Math.cos(a) * d, z = p.pos.z + Math.sin(a) * d;
+                if (b.poolWater(x, z) !== null) continue;
+                const g = b.ground(x, z, p.pos.y + 2.6);
+                if (g < p.pos.y - 0.3 || g > p.pos.y + 2.4) continue;
+                this.input.jumpQueued = false;
+                p.teleport(x, g, z, p.yaw);
+                p.mode = "walk";
+                this.sfx.splash(0.4);
+                return;
+            }
+        }
     }
 
     // ------------------------------------------------------------ the desert's sand

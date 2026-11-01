@@ -30,6 +30,8 @@ import { type SandOp, SandWorks } from "./sandworks";
 import { mulberry32 } from "../core/noise";
 import type { ColliderGrid } from "./vegetation";
 import type { Ocean } from "../../island/ocean";
+import { heightAt, inCut } from "./island";
+import { POOL_GLSL, POOL_RECTS, poolRectsTexture } from "../game/building";
 
 /** the trodden-sand window (m), its texture size, the fine grid's size (m) and spacing (m) */
 const WIN = 32, DEF_N = 512, FINE = 20, FINE_STEP = 0.125;
@@ -170,7 +172,7 @@ export class Desert {
         this.fieldTex.wrapU = this.fieldTex.wrapV = Texture.CLAMP_ADDRESSMODE;
         // ---- the oasis's state: the digging (half floats), the water and the green
         const d16 = new Uint16Array(EDIT_N * EDIT_N);
-        for (let k = 0; k < d16.length; k++) d16[k] = ToHalfFloat(dig[k]);
+        for (let k = 0; k < d16.length; k++) d16[k] = ToHalfFloat(this.offsetAt(k));
         this.digTex = RawTexture.CreateRTexture(d16, EDIT_N, EDIT_N, scene, false, false, Texture.BILINEAR_SAMPLINGMODE, Constants.TEXTURETYPE_HALF_FLOAT);
         this.wetTex = new RawTexture(wet.map((v) => v * 255), EDIT_N, EDIT_N, Constants.TEXTUREFORMAT_R, scene, false, false, Texture.BILINEAR_SAMPLINGMODE, Constants.TEXTURETYPE_UNSIGNED_BYTE);
         this.greenTex = new RawTexture(green.slice(), GREEN_N, GREEN_N, Constants.TEXTUREFORMAT_R, scene, false, false, Texture.BILINEAR_SAMPLINGMODE, Constants.TEXTURETYPE_UNSIGNED_BYTE);
@@ -208,6 +210,8 @@ export class Desert {
         m.AddUniform("dWet", "sampler2D", null as never);
         m.AddUniform("dGreen", "sampler2D", null as never);
         m.AddUniform("dGrassTex", "sampler2D", null as never);
+        m.AddUniform("poolTex", "sampler2D", null as never);
+        m.AddUniform("poolN", "float", 0);
         m.AddUniform("dInfo", "vec4", null as never);      // field centre x, z; half size; cell
         m.AddUniform("dWin", "vec4", null as never);       // window origin x, z; size; fine (1) or coarse (0)
         m.AddUniform("dFine", "vec4", null as never);      // fine grid centre x, z; half size; time
@@ -250,9 +254,11 @@ float dOffset(vec2 w) { vec4 s = dDefAt(w); return s.g - s.r; }
                 normalUpdated = normalize(nn);
             }
         `);
-        m.Fragment_Definitions(NOISE_GLSL + FIELD_GLSL);
+        m.Fragment_Definitions(NOISE_GLSL + FIELD_GLSL + POOL_GLSL);
         m.Fragment_Custom_Albedo(`
             vec3 wp = vPositionW;
+            // (no sand inside a pool's basin)
+            if (poolN > 0.5 && inPool(wp.xz)) discard;
             // the coarse grid leaves a hole where the fine one is
             if (dWin.w < 0.5 && all(lessThan(abs(wp.xz - dFine.xy), vec2(dFine.z - 0.15)))) discard;
             // the dug and heaped sand and the footprints, shaped per pixel (sharper than either grid can show)
@@ -347,6 +353,8 @@ ${this.lite ? "" : `            wetN = max(wetN, 0.6 * max(max(dWetAt(wp.xz + ve
             e.setTexture("dWet", this.wetTex);
             e.setTexture("dGreen", this.greenTex);
             e.setTexture("dGrassTex", this.grassTex);
+            e.setTexture("poolTex", poolRectsTexture(this.scene));
+            e.setFloat("poolN", POOL_RECTS.n);
             e.setFloat4("dWin", this.origin.x, this.origin.z, WIN, fine ? 1 : 0);
             e.setFloat4("dFine", this.fine.position.x, this.fine.position.z, FINE / 2, this.time);
             e.setFloat4("dEdit", EDIT_X0, EDIT_Z0, EDIT_HALF * 2, this.night);
@@ -418,13 +426,13 @@ ${this.lite ? "" : `            wetN = max(wetN, 0.6 * max(max(dWetAt(wp.xz + ve
     }
 
     private grass() {
-        const rnd = mulberry32(777), dummy = new THREE.Object3D();
+        const rnd = mulberry32(777);
         const mat = foliageMaterial(this.scene, "oasisGrass", 0.5, true, 0.35);
         // (dusty olive grass, a little sun-bleached at the tips: an oasis, not a lawn)
         const tuft = buildGrassTuft(false, "#55602a", "#a49a5c"), reed = buildGrassTuft(false, "#3f4f22", "#8a8a4c");
         const put = (inst: Inst, k: number, x: number, z: number, sx: number, sy: number) => {
-            dummy.position.set(x, groundAt(x, z) - 0.03, z); dummy.rotation.set((rnd() - 0.5) * 0.15, rnd() * 6.28, (rnd() - 0.5) * 0.15);
-            dummy.scale.set(sx, sy, sx); dummy.updateMatrix(); inst.setMatrixAt(k, dummy.matrix);
+            const t = { inst, k, x, z, sx, sy, rx: (rnd() - 0.5) * 0.15, ry: rnd() * 6.28, rz: (rnd() - 0.5) * 0.15 };
+            this.tufts.push(t); this.setTuft(t);
         };
         const nat = this.lite ? 1400 : 2600, ring = new Inst("oasisGrass", tuft, mat, nat, this.scene);
         let k = 0;
@@ -450,6 +458,33 @@ ${this.lite ? "" : `            wetN = max(wetN, 0.6 * max(max(dWetAt(wp.xz + ve
         this.regrass();
     }
 
+    private tufts: { inst: Inst; k: number; x: number; z: number; sx: number; sy: number; rx: number; ry: number; rz: number }[] = [];
+    private tuftDummy = new THREE.Object3D();
+    /** a tuft stands on the ground as it is (and is not there at all under a building) */
+    private setTuft(t: Desert["tufts"][number]) {
+        const d = this.tuftDummy, gone = inCut(t.x, t.z, 0.35) || t.sx === 0;
+        d.position.set(t.x, heightAt(t.x, t.z) - 0.03, t.z); d.rotation.set(t.rx, t.ry, t.rz);
+        d.scale.set(gone ? 0 : t.sx, gone ? 0 : t.sy, gone ? 0 : t.sx); d.updateMatrix(); t.inst.setMatrixAt(t.k, d.matrix);
+    }
+    /** the sand's height offset in cell k (dug, heaped, or levelled under a building), for the GPU */
+    private offsetAt(k: number) {
+        const i = k % EDIT_N, j = (k - i) / EDIT_N, x = EDIT_X0 + (i + 0.5) * (EDIT_HALF * 2 / EDIT_N), z = EDIT_Z0 + (j + 0.5) * (EDIT_HALF * 2 / EDIT_N);
+        return inCut(x, z, 4.2) ? heightAt(x, z) - desertHeight(x, z) : dig[k];
+    }
+    /** a building went up or came down here: the sand under it is levelled (or comes back), grass under it goes */
+    terrainChanged(x0: number, z0: number, x1: number, z1: number) {
+        const c = EDIT_HALF * 2 / EDIT_N, i0 = Math.max(0, Math.floor((x0 - EDIT_X0) / c)), i1 = Math.min(EDIT_N - 1, Math.ceil((x1 - EDIT_X0) / c));
+        const j0 = Math.max(0, Math.floor((z0 - EDIT_Z0) / c)), j1 = Math.min(EDIT_N - 1, Math.ceil((z1 - EDIT_Z0) / c));
+        if (i0 > i1 || j0 > j1) return;
+        const w = this.works, r = w.digDirty;
+        w.digDirty = r ? { i0: Math.min(r.i0, i0), j0: Math.min(r.j0, j0), i1: Math.max(r.i1, i1), j1: Math.max(r.j1, j1) } : { i0, j0, i1, j1 };
+        if (!this.built) return;
+        const touched = new Set<Inst>();
+        for (const t of this.tufts) if (t.x > x0 && t.x < x1 && t.z > z0 && t.z < z1) { this.setTuft(t); touched.add(t.inst); }
+        for (const inst of touched) inst.instanceMatrix.needsUpdate = true;
+        this.regrass();
+    }
+
     /** tufts on every greened metre (a couple each, jittered the same way every time) */
     private regrass() {
         const inst = this.greenGrass, dummy = new THREE.Object3D();
@@ -459,9 +494,9 @@ ${this.lite ? "" : `            wetN = max(wetN, 0.6 * max(max(dWetAt(wp.xz + ve
             if (green[j * GREEN_N + i] < 128) continue;
             for (let t = 0; t < 2 && k < inst.cap; t++) {
                 const x = EDIT_X0 + (i + hash(i, j, t)) * GREEN_CELL, z = EDIT_Z0 + (j + hash(j, i, t + 5)) * GREEN_CELL;
-                if (wetAt(x, z) || Math.hypot(x - DESERT_X, z - DESERT_Z) < OASIS_GREEN0) continue;
+                if (wetAt(x, z) || Math.hypot(x - DESERT_X, z - DESERT_Z) < OASIS_GREEN0 || inCut(x, z, 0.35)) continue;
                 const s = 0.65 + hash(i, j, t + 9) * 0.7;
-                dummy.position.set(x, groundAt(x, z) - 0.03, z); dummy.rotation.set(0, hash(i, j, t + 3) * 6.28, 0); dummy.scale.setScalar(s); dummy.updateMatrix();
+                dummy.position.set(x, heightAt(x, z) - 0.03, z); dummy.rotation.set(0, hash(i, j, t + 3) * 6.28, 0); dummy.scale.setScalar(s); dummy.updateMatrix();
                 inst.setMatrixAt(k++, dummy.matrix);
             }
         }
@@ -606,7 +641,7 @@ ${this.lite ? "" : `            wetN = max(wetN, 0.6 * max(max(dWetAt(wp.xz + ve
             for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) data[j * W + i] = fill((j0 + j) * EDIT_N + i0 + i);
             eng.updateTextureData(it, data, i0, j0, W, H);
         };
-        if (w.digDirty) { sub(this.digTex, w.digDirty, (k) => ToHalfFloat(dig[k]), true); w.digDirty = null; }
+        if (w.digDirty) { sub(this.digTex, w.digDirty, (k) => ToHalfFloat(this.offsetAt(k)), true); w.digDirty = null; }
         if (w.wetDirty) { sub(this.wetTex, w.wetDirty, (k) => wet[k] * 255, false); w.wetDirty = null; }
         if (w.greenDirty) { this.greenTex.update(green); w.greenDirty = false; this.regrass(); }
     }

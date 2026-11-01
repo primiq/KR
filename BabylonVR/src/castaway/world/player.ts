@@ -75,6 +75,8 @@ export class Player {
     readonly pull = new Vector3();
     /** sea surface height (waves) at a point */
     surfaceAt: (x: number, z: number) => number = () => 0;
+    /** is the water here a lake or a pool (its own level), not the sea (level 0)? */
+    lakeAt: (x: number, z: number) => boolean = (x, z) => inDesert(x, z);
     /** camera shake output (radians / metres), read by the camera rig */
     readonly shakeRot = new Vector3();
     shakeY = 0;
@@ -210,7 +212,7 @@ export class Player {
         const ground = this.gnd(this.pos.x, this.pos.z);
         const surface = this.surfaceAt(this.pos.x, this.pos.z);
         // (the sea is at 0; in the desert the only water is the oasis pond, higher up)
-        this.waterDepth = this.cave ? 0 : inDesert(this.pos.x, this.pos.z) ? surface - ground : -ground;
+        this.waterDepth = this.cave ? 0 : this.lakeAt(this.pos.x, this.pos.z) ? surface - ground : -ground;
         const look = this.look;
 
         if (this.mode === "fly") {

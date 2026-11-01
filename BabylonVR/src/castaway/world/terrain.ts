@@ -6,6 +6,7 @@ import { resolveAsset } from "../../environment";
 import { lerp, smoothstep } from "../core/noise";
 import type { Quality } from "../core/quality";
 import { heightAt, rockiness, TERRAIN_SIZE } from "./island";
+import { POOL_GLSL, POOL_RECTS, poolRectsTexture } from "../game/building";
 
 /** Tiles per side: a building site only rebuilds the few tiles it touches, and tiles off-screen are culled. */
 const TILES = 8;
@@ -88,13 +89,17 @@ export class Terrain {
         m.AddAttribute("rocky");
         m.Vertex_Definitions("attribute float rocky; varying float vRocky;");
         m.Vertex_MainEnd("vRocky = rocky;");
-        m.Fragment_Definitions("varying float vRocky;");
+        m.Fragment_Definitions("varying float vRocky;" + POOL_GLSL);
         m.AddUniform("grassSampler", "sampler2D", null as never);
         m.AddUniform("rockSampler", "sampler2D", null as never);
         m.AddUniform("texReady", "float", 0);
         m.AddUniform("time", "float", 0);
         m.AddUniform("sunDirW", "vec3", null as never);
+        m.AddUniform("poolTex", "sampler2D", null as never);
+        m.AddUniform("poolN", "float", 0);
         m.Fragment_Custom_Albedo(`
+            // (no ground inside a pool's basin: its tiled walls and floor are there instead)
+            if (poolN > 0.5 && inPool(vPositionW.xz)) discard;
             vec2 wxz = vPositionW.xz;
             float hgt = vPositionW.y;
             vec3 nW = normalize(vNormalW);
@@ -154,6 +159,8 @@ export class Terrain {
             e.setFloat("texReady", ready ? 1 : 0);
             if (this.grass) e.setTexture("grassSampler", this.grass);
             if (this.rock) e.setTexture("rockSampler", this.rock);
+            e.setTexture("poolTex", poolRectsTexture(this.scene));
+            e.setFloat("poolN", POOL_RECTS.n);
         });
         return m;
     }

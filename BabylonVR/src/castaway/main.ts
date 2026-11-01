@@ -1,6 +1,9 @@
 import {
     Color3,
     CascadedShadowGenerator,
+    Constants,
+    RawTexture,
+    Texture,
     Color4,
     DefaultRenderingPipeline,
     Engine,
@@ -22,6 +25,7 @@ import {
 import "@babylonjs/materials/sky/sky.fragment";
 import { createSun } from "../environment";
 import { Ocean } from "../island/ocean";
+import { POOL_VS, setPoolWater } from "./game/building";
 import { createSky } from "../island/sky";
 import type { SkyMaterial } from "@babylonjs/materials";
 import { Input } from "./core/input";
@@ -325,6 +329,18 @@ async function main() {
     // the sea is one huge see-through mesh centred on the camera: sorted by distance it came last and was drawn over
     // everything see-through in front of it (torch flames, glass...). It goes right after the sky's layers instead.
     ocean.mesh.alphaIndex = 4;
+    // pools: the sea's own water, a gentle swell of its own, over a tiled basin (its depth only colours it: a pool stays clear)
+    {
+        const white = RawTexture.CreateRTexture(new Uint8Array([255]), 1, 1, scene, false, false, Texture.NEAREST_SAMPLINGMODE, Constants.TEXTURETYPE_UNSIGNED_BYTE);
+        setPoolWater(ocean.makeLake("poolSea", POOL_VS, ["seeDepth"], [], (e) => {
+            e.setTexture("lakeMask", white);
+            e.setFloat4("lakeRect", -1e5, -1e5, 2e5, 0);
+            e.setFloat("seeDepth", 0.75);
+            e.setFloat("useRefl", 0);
+            e.setColor3("shallowColor", new Color3(0.1, 0.66, 0.72));
+            e.setColor3("deepColor", new Color3(0.02, 0.22, 0.38));
+        }));
+    }
 
     progress(0.5, "Planting palms…");
     await nextFrame();
@@ -336,9 +352,13 @@ async function main() {
     progress(0.8, "Waking the wind…");
     await nextFrame();
     let desertSurface: ((x: number, z: number) => number | null) | null = null;
+    let poolAt: ((x: number, z: number) => number | null) | null = null;
+    let desertRef: Desert | null = null;
     const player = new Player(spawn.x, spawn.z, spawn.yaw, vegetation.colliders);
     // (in the desert, the oasis pond is the only water)
-    player.surfaceAt = (x, z) => (inDesert(x, z) ? (desertSurface?.(x, z) ?? -1e3) : ocean.surfaceAt(x, z));
+    // (a pool's water first, wherever it is; in the desert, the oasis pond is the only other water)
+    player.surfaceAt = (x, z) => poolAt?.(x, z) ?? (inDesert(x, z) ? (desertSurface?.(x, z) ?? -1e3) : ocean.surfaceAt(x, z));
+    player.lakeAt = (x, z) => inDesert(x, z) || (poolAt?.(x, z) ?? null) !== null;
     ocean.bindPlayer(player);
 
     const camera = new UniversalCamera("cam", player.eye.clone(), scene);
@@ -524,6 +544,8 @@ async function main() {
     desertSurface = (x, z) => desert.surface(x, z);
     const desert = new Desert(scene, headset || q.name === "low", vegetation.colliders, () => sun.direction, ocean);
     game.under.desert = desert;
+    desertRef = desert;
+    poolAt = (x, z) => game.building.poolWater(x, z);
     game.sand = desert;
     // (digging under a palm or a rock: it settles with the sand)
     desert.works.onGround = (x0, z0, x1, z1) => vegetation.reseat(x0, z0, x1, z1);
@@ -570,6 +592,7 @@ async function main() {
     game.building.onTerrain = (x0, z0, x1, z1) => {
         terrain.refresh(x0, z0, x1, z1);
         vegetation.reseat(x0, z0, x1, z1);
+        desertRef?.terrainChanged(x0, z0, x1, z1);
         game.resources.pickups.reseat(x0, z0, x1, z1, game.building.ground);
         game.structures.reseat(x0, z0, x1, z1, game.building.ground);
         vegetation.update(player.pos.x, player.pos.z, true);
