@@ -1,4 +1,5 @@
 import { Color3, type Material, MirrorTexture, Plane, type Scene, StandardMaterial } from "@babylonjs/core";
+import { MIRROR_X } from "./skyroom";
 
 let MAT: StandardMaterial | null = null;
 
@@ -13,7 +14,7 @@ export function skyMirrorMaterial(scene: Scene): Material {
     m.emissiveColor = new Color3(0.08, 0.1, 0.11);
     const mt = new MirrorTexture("skyMirrorTex", { ratio: 0.5 }, scene, true);
     // the plane of the east wall's inner face, facing into the room (-x)
-    mt.mirrorPlane = new Plane(1, 0, 0, -(4 - 0.075));
+    mt.mirrorPlane = new Plane(1, 0, 0, -MIRROR_X);
     // (only the room and the people in it: drawing the island again for a mirror would be far too slow)
     mt.renderListPredicate = (mesh) => mesh.isEnabled() && mesh.material !== m && (mesh.metadata?.skyroom === true || mesh.metadata?.avatar === true);
     mt.refreshRate = 2;

@@ -415,6 +415,7 @@ async function main() {
     progress(0.85, "Hiding the secret room…");
     await nextFrame();
     const sky = new SkyRoom(game.natureRoot as unknown as THREE.Scene);
+    let skyHidden = false;
     game.under.sky = sky;
     sky.muted = () => game.sfx.muted;
     const dive = new Skydive(game.natureRoot as unknown as THREE.Scene);
@@ -808,6 +809,8 @@ async function main() {
             const sy = sync;
             if (sy) dive.updateRemote(sy.avatars.positions.map((a) => { const st = sy.session.states.get(a.id); return { id: a.id, x: a.x, y: a.y, z: a.z, yaw: st?.yaw ?? 0, flags: st?.flags ?? 0 }; }));
             sky.update(dt, player, (x, z) => heightAt(x, z));
+            // (the secret room is closed all round: nothing outside it is drawn while you are in it)
+            if (sky.active !== skyHidden) { skyHidden = sky.active; caves.hideForRoom(skyHidden); }
             {
                 // the desert: shown while you are in it (no sea, no island grass there; its own pond to swim in, its own haze)
                 const was = desert.active, walkers: { id: number | string; x: number; y: number; z: number; run: boolean }[] = [];
@@ -884,7 +887,7 @@ async function main() {
             ocean.bio = BIO.value;
             if (seaRefl) {
                 // (paused, not drawn at all, where the sea cannot be seen: in a headset, underground, out in the far places)
-                const want = gfxNow.reflect && !vrActive() && !game.under.active && ((Math.abs(player.pos.x) < 2000 && Math.abs(player.pos.z) < 2000) || desert.active);
+                const want = gfxNow.reflect && !vrActive() && !game.under.active && !sky.active && ((Math.abs(player.pos.x) < 2000 && Math.abs(player.pos.z) < 2000) || desert.active);
                 if (want !== seaReflOn) {
                     seaReflOn = want; ocean.reflectOn = want;
                     const list = scene.customRenderTargets, i = list.indexOf(seaRefl);

@@ -148,6 +148,22 @@ export class CaveView {
         }
     }
 
+    private skyStash = new Map<AbstractMesh, number>();
+    /** in the secret room nothing outside it is drawn at all (it is closed all round): not the island, the sea or the sky */
+    hideForRoom(on: boolean) {
+        if (on) {
+            if (this.skyStash.size) return;
+            for (const m of this.scene.meshes) {
+                if (keep(m) || roomMesh(m) || m.metadata?.avatar) continue;
+                this.skyStash.set(m, m.layerMask);
+                m.layerMask = 0;
+            }
+        } else {
+            for (const [m, mask] of this.skyStash) if (!m.isDisposed()) m.layerMask = mask;
+            this.skyStash.clear();
+        }
+    }
+
     /** every frame, after the game has updated */
     update() {
         this.mirror.sync();
@@ -164,6 +180,11 @@ export class CaveView {
 }
 
 const SKY = new Set(["skyBox", "stars", "moonDisc", "clouds", "skyNight", "skyStars", "skyMoon", "skySun", "skyClouds"]);
+
+function roomMesh(m: AbstractMesh) {
+    for (let n: { metadata?: { skyroom?: boolean } | null; parent?: unknown } | null = m; n; n = (n.parent as typeof n) ?? null) if (n.metadata?.skyroom) return true;
+    return false;
+}
 
 function keep(m: AbstractMesh) {
     for (let n: { metadata?: { keepUnderground?: boolean } | null; parent?: unknown; getClassName?: () => string } | null = m; n; n = (n.parent as typeof n) ?? null) {
