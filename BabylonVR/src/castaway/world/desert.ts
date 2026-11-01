@@ -28,7 +28,7 @@ import {
 } from "./desertField";
 import { type SandOp, SandWorks } from "./sandworks";
 import type { Sandstorm } from "./sandstorm";
-import { mulberry32 } from "../core/noise";
+import { mulberry32, Noise2D, smoothstep as sstep } from "../core/noise";
 import type { ColliderGrid } from "./vegetation";
 import type { Ocean } from "../../island/ocean";
 import { heightAt, inCut } from "./island";
@@ -36,6 +36,9 @@ import { POOL_GLSL, POOL_RECTS, poolRectsTexture } from "../game/building";
 
 /** the trodden-sand window (m), its texture size, the fine grid's size (m) and spacing (m) */
 const WIN = 32, DEF_N = 512, FINE = 20, FINE_STEP = 0.125;
+/** the grass map's size (cells across the oasis square) */
+const MASK_N = 512;
+const GN1 = new Noise2D(5151), GN2 = new Noise2D(6262), GN4 = new Noise2D(7373);
 export { DESERT_SPAWN };
 const ARCH = DESERT_ARCH;
 
@@ -145,6 +148,9 @@ export class Desert {
     private digTex!: RawTexture;
     private wetTex!: RawTexture;
     private greenTex!: RawTexture;
+    private maskTex!: RawTexture;
+    /** where grass grows (0..255, 50 cm cells over the oasis square): the ground's green and the grass blades both read it */
+    private mask = new Uint8Array(MASK_N * MASK_N);
     private grassTex!: Texture;
     private def: RenderTargetTexture[] = [];
     private cur = 0;
@@ -159,7 +165,6 @@ export class Desert {
     private puffs!: ParticleSystem;
     private time = 0;
     private lastHour = -1;
-    private greenGrass!: Inst;
     private things: { setEnabled(v: boolean): void }[] = [];
     readonly arch = ARCH;
 
@@ -179,7 +184,9 @@ export class Desert {
         this.digTex = RawTexture.CreateRTexture(d16, EDIT_N, EDIT_N, scene, false, false, Texture.BILINEAR_SAMPLINGMODE, Constants.TEXTURETYPE_HALF_FLOAT);
         this.wetTex = new RawTexture(wet.map((v) => v * 255), EDIT_N, EDIT_N, Constants.TEXTUREFORMAT_R, scene, false, false, Texture.BILINEAR_SAMPLINGMODE, Constants.TEXTURETYPE_UNSIGNED_BYTE);
         this.greenTex = new RawTexture(green.slice(), GREEN_N, GREEN_N, Constants.TEXTUREFORMAT_R, scene, false, false, Texture.BILINEAR_SAMPLINGMODE, Constants.TEXTURETYPE_UNSIGNED_BYTE);
-        for (const t of [this.digTex, this.wetTex, this.greenTex]) t.wrapU = t.wrapV = Texture.CLAMP_ADDRESSMODE;
+        this.maskTex = new RawTexture(this.mask, MASK_N, MASK_N, Constants.TEXTUREFORMAT_R, scene, false, false, Texture.BILINEAR_SAMPLINGMODE, Constants.TEXTURETYPE_UNSIGNED_BYTE);
+        for (const t of [this.digTex, this.wetTex, this.greenTex, this.maskTex]) t.wrapU = t.wrapV = Texture.CLAMP_ADDRESSMODE;
+        this.remask(EDIT_X0, EDIT_Z0, EDIT_X0 + EDIT_HALF * 2, EDIT_Z0 + EDIT_HALF * 2);
         this.works.digDirty = this.works.wetDirty = null; this.works.greenDirty = false;
 
         // ---- the grass texture (the island's)
@@ -212,6 +219,7 @@ export class Desert {
         m.AddUniform("dDig", "sampler2D", null as never);
         m.AddUniform("dWet", "sampler2D", null as never);
         m.AddUniform("dGreen", "sampler2D", null as never);
+        m.AddUniform("dMask", "sampler2D", null as never);
         m.AddUniform("dGrassTex", "sampler2D", null as never);
         m.AddUniform("poolTex", "sampler2D", null as never);
         m.AddUniform("poolN", "float", 0);
@@ -235,6 +243,7 @@ bool dInEdit(vec2 u) { return u.x > 0.0 && u.y > 0.0 && u.x < 1.0 && u.y < 1.0; 
 float dDigAt(vec2 w) { vec2 u = dEditUV(w); return dInEdit(u) ? texture2D(dDig, u).r : 0.0; }
 float dWetAt(vec2 w) { vec2 u = dEditUV(w); return dInEdit(u) ? texture2D(dWet, u).r : 0.0; }
 float dGreenAt(vec2 w) { vec2 u = dEditUV(w); return dInEdit(u) ? texture2D(dGreen, u).r : 0.0; }
+float dMaskAt(vec2 w) { vec2 u = dEditUV(w); return dInEdit(u) ? texture2D(dMask, u).r : 0.0; }
 vec4 dDefAt(vec2 w) {
     vec2 r = (w - dWin.xy) / dWin.z;
     if (r.x < 0.0 || r.y < 0.0 || r.x > 1.0 || r.y > 1.0) return vec4(0.0);
@@ -297,9 +306,8 @@ ${this.lite ? "" : `            wetN = max(wetN, 0.6 * max(max(dWetAt(wp.xz + ve
             float wetK = max(wetN, 1.0 - smoothstep(${OASIS_R.toFixed(1)} - 0.5, ${OASIS_R.toFixed(1)} + 3.0, dO + n2 * 0.8));
             // the green: the oasis's own ring and whatever water has greened since; patchy, sand showing through, olive and
             // dusty rather than lawn-green
-            float g0 = 1.0 - smoothstep(${OASIS_GREEN0.toFixed(1)}, ${OASIS_GREEN1.toFixed(1)}, dO + n1 * 7.0);
-            float gr = max(g0, dGreenAt(wp.xz));
-            float grass = smoothstep(0.4, 0.8, gr * (0.7 + 0.5 * (n4 * 0.5 + 0.5)) + n2 * 0.15 + n3 * 0.05);
+            // (where grass grows: the same map the grass blades grow from, so the two always agree)
+            float grass = dMaskAt(wp.xz);
             vec3 green = mix(vec3(0.30, 0.37, 0.13), vec3(0.18, 0.27, 0.08), n2 * 0.5 + 0.5);
             // (drier, yellower patches here and there, and darker lusher ones where it is greenest)
             green = mix(green, vec3(0.42, 0.38, 0.19), smoothstep(0.35, 0.9, n4 * 0.5 + 0.5) * 0.5);
@@ -355,6 +363,7 @@ ${this.lite ? "" : `            wetN = max(wetN, 0.6 * max(max(dWetAt(wp.xz + ve
             e.setTexture("dDef", this.def[this.cur]);
             e.setTexture("dWet", this.wetTex);
             e.setTexture("dGreen", this.greenTex);
+            e.setTexture("dMask", this.maskTex);
             e.setTexture("dGrassTex", this.grassTex);
             e.setTexture("poolTex", poolRectsTexture(this.scene));
             e.setFloat("poolN", POOL_RECTS.n);
@@ -373,6 +382,8 @@ ${this.lite ? "" : `            wetN = max(wetN, 0.6 * max(max(dWetAt(wp.xz + ve
         const F = Math.round(FINE / FINE_STEP);
         this.fine = this.grid("desertFine", F, (i) => -FINE / 2 + i * FINE_STEP);
         for (const g of [this.coarse, this.fine]) { g.material = m; g.receiveShadows = true; g.isPickable = false; g.alwaysSelectAsActiveMesh = true; g.metadata = { keepUnderground: true, desert: true }; }
+        // ---- the lawn: a dense field of tiny grass blades, all placed on the GPU
+        this.lawn(FIELD_GLSL);
 
         // ---- the pond and the channels: the sea's own water, wherever water stands (rows closer together near you)
         const lm: ShaderMaterial = this.ocean.makeLake("oasisLake", LAKE_VS, ["dInfo", "level"], ["dField", "dDig"], (e) => {
@@ -408,6 +419,116 @@ ${this.lite ? "" : `            wetN = max(wetN, 0.6 * max(max(dWetAt(wp.xz + ve
         this.setVisible(false);
     }
 
+    private lawnNear!: Mesh;
+    private lawnFar!: Mesh;
+    private lawnSpec = { near: { s: 1 / 13, half: 11 }, far: { s: 1 / 6, half: 34 } };
+    /**
+     * The grass: tens of thousands of tiny blades in two fixed lattices (a dense one round you and a sparser, wider-bladed
+     * one out to ~35 m, cross-fading between them), each lattice one mesh that follows the camera in whole metres. Nothing
+     * is placed on the CPU: the vertex shader puts every blade on the ground (the same dunes and digging the sand is drawn
+     * from), jitters, turns, sizes and sways it from its own world position, and shrinks it to nothing wherever the grass
+     * map says there is no grass. Two draw calls for the lot.
+     */
+    private lawn(FIELD_GLSL: string) {
+        if (this.lite) { this.lawnSpec.near = { s: 1 / 9, half: 8 }; this.lawnSpec.far = { s: 1 / 4, half: 24 }; }
+        const blades = (name: string, s: number, half: number) => {
+            const n = Math.round((half * 2) / s), cnt = (n + 1) * (n + 1);
+            const pos = new Float32Array(cnt * 9), nrm = new Float32Array(cnt * 9), idx = new Uint32Array(cnt * 3);
+            let v = 0;
+            for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) {
+                const x = (i - n / 2) * s, z = (j - n / 2) * s;
+                // (y says which corner: -4 the base's left, 4 its right, 1 the tip)
+                for (const y of [-4, 4, 1]) { pos[v * 3] = x; pos[v * 3 + 1] = y; pos[v * 3 + 2] = z; nrm[v * 3 + 1] = 1; idx[v] = v; v++; }
+            }
+            const mesh = new Mesh(name, this.scene), vd = new VertexData();
+            vd.positions = pos; vd.normals = nrm; vd.indices = idx; vd.applyToMesh(mesh);
+            return mesh;
+        };
+        const g = new PBRCustomMaterial("oasisLawn", this.scene);
+        g.metallic = 0; g.roughness = 0.85; g.albedoColor = new Color3(1, 1, 1); g.backFaceCulling = false; g.twoSidedLighting = true;
+        g.AddUniform("dField", "sampler2D", null as never);
+        g.AddUniform("dDig", "sampler2D", null as never);
+        g.AddUniform("dMask", "sampler2D", null as never);
+        g.AddUniform("dInfo", "vec4", null as never);
+        g.AddUniform("dEdit", "vec4", null as never);
+        g.AddUniform("gLat", "vec4", null as never);     // lattice spacing, blade width, far (1) or near (0), time
+        g.AddUniform("gOff", "vec4", null as never);     // this mesh's offset from the oasis (x, z); the near lattice's middle (x, z) from the oasis
+        g.AddUniform("gFade", "vec4", null as never);    // near half size, far half size, eye x, z from the oasis
+        const defs = `
+float dFieldAt(vec2 w) {
+    vec2 g = (w - dInfo.xy + vec2(dInfo.z)) / dInfo.w - 0.5;
+    g = clamp(g, vec2(0.0), vec2(${(FIELD_N - 1.001).toFixed(3)}));
+    ivec2 i = ivec2(floor(g)); vec2 t = g - vec2(i);
+    float a = texelFetch(dField, i, 0).r, b = texelFetch(dField, i + ivec2(1, 0), 0).r;
+    float c = texelFetch(dField, i + ivec2(0, 1), 0).r, d = texelFetch(dField, i + ivec2(1, 1), 0).r;
+    return mix(mix(a, b, t.x), mix(c, d, t.x), t.y);
+}
+vec2 dEditUV(vec2 w) { return (w - dEdit.xy) / dEdit.z; }
+bool dInEdit(vec2 u) { return u.x > 0.0 && u.y > 0.0 && u.x < 1.0 && u.y < 1.0; }
+float dDigAt(vec2 w) { vec2 u = dEditUV(w); return dInEdit(u) ? texture2D(dDig, u).r : 0.0; }
+float dMaskAt(vec2 w) { vec2 u = dEditUV(w); return dInEdit(u) ? texture2D(dMask, u).r : 0.0; }
+float gHash(vec2 p) { p = fract(p * vec2(0.1031, 0.1030)); p += dot(p, p.yx + 33.33); return fract((p.x + p.y) * p.x); }
+varying float vGT;
+varying float vGV;
+`;
+        void FIELD_GLSL;
+        g.Vertex_Definitions(defs);
+        g.Vertex_Before_PositionUpdated(`
+            {
+                vec3 lp = positionUpdated;
+                float corner = lp.y;
+                // this blade's lattice point, in metres from the oasis (small numbers: exact enough to hash)
+                vec2 rel = lp.xz + gOff.xy;
+                vec2 cid = floor(rel / gLat.x + 0.5);
+                float h1 = gHash(cid), h2 = gHash(cid + 17.31), h3 = gHash(cid + 5.17), h4 = gHash(cid + 9.73);
+                rel = cid * gLat.x + (vec2(h1, h2) - 0.5) * gLat.x * 0.95;
+                vec2 w = rel + dInfo.xy;
+                float cov = dMaskAt(w);
+                // the two lattices cross-fade over the last 3 m of the near one
+                vec2 dn = abs(rel - gOff.zw);
+                float cheb = max(dn.x, dn.y);
+                float k = gLat.z > 0.5 ? smoothstep(gFade.x - 3.0, gFade.x, cheb) * (1.0 - smoothstep(gFade.y * 0.7, gFade.y, length(rel - gFade.zw)))
+                                       : 1.0 - smoothstep(gFade.x - 3.0, gFade.x, cheb);
+                float H = (0.08 + 0.14 * h3) * smoothstep(0.1, 0.5, cov) * k * (gLat.z > 0.5 ? 1.25 : 1.0);
+                float Wd = gLat.y * (0.7 + 0.6 * h4) * step(0.004, H);
+                float a = h1 * 6.2832;
+                vec2 across = vec2(cos(a), sin(a));
+                // leaning a little its own way, and swaying in the wind
+                float sway = sin(gLat.w * 1.9 + w.x * 0.55 + w.y * 0.38) * 0.5 + sin(gLat.w * 3.1 + w.x * 1.3) * 0.25;
+                vec2 lean = (vec2(cos(h2 * 6.2832), sin(h2 * 6.2832)) * 0.35 + vec2(0.94, 0.34) * sway * 0.45) * H;
+                float t = abs(corner) < 2.0 ? 1.0 : 0.0, side = corner < -2.0 ? -1.0 : (corner > 2.0 ? 1.0 : 0.0);
+                vec2 p = rel + across * side * Wd * 0.5 + lean * t;
+                float y = dFieldAt(w) + dDigAt(w) + t * H - 0.01;
+                positionUpdated = vec3(p.x - gOff.x, y, p.y - gOff.y);
+                vGT = t; vGV = h3 * 0.6 + h4 * 0.4;
+            }
+        `);
+        g.Vertex_Before_NormalUpdated(`normalUpdated = vec3(0.0, 1.0, 0.0);`);
+        g.Fragment_Definitions("varying float vGT;\nvarying float vGV;\n");
+        g.Fragment_Custom_Albedo(`
+            // dark and lush at the root, lighter and a little sun-bleached at the tips
+            vec3 base = vec3(0.07, 0.15, 0.035), tip = vec3(0.30, 0.46, 0.13);
+            vec3 c = mix(base, tip, vGT) * (0.78 + 0.44 * vGV);
+            c = mix(c, vec3(0.44, 0.42, 0.2), smoothstep(0.7, 1.0, vGV) * 0.45 * vGT);
+            surfaceAlbedo = c * mix(1.0, 0.6, dEdit.w);
+        `);
+        g.onBindObservable.add((mesh) => {
+            const e = g.getEffect(); if (!e) return;
+            const far = mesh === this.lawnFar, sp = far ? this.lawnSpec.far : this.lawnSpec.near;
+            this.bindField(e);
+            e.setTexture("dMask", this.maskTex);
+            e.setFloat4("dEdit", EDIT_X0, EDIT_Z0, EDIT_HALF * 2, this.night);
+            e.setFloat4("gLat", sp.s, far ? 0.07 : 0.045, far ? 1 : 0, this.time);
+            const M = far ? this.lawnFar : this.lawnNear;
+            e.setFloat4("gOff", M.position.x - DESERT_X, M.position.z - DESERT_Z, this.lawnNear.position.x - DESERT_X, this.lawnNear.position.z - DESERT_Z);
+            e.setFloat4("gFade", this.lawnSpec.near.half, this.lawnSpec.far.half, this.lawnEye.x - DESERT_X, this.lawnEye.z - DESERT_Z);
+        });
+        this.lawnNear = blades("oasisLawnNear", this.lawnSpec.near.s, this.lawnSpec.near.half);
+        this.lawnFar = blades("oasisLawnFar", this.lawnSpec.far.s, this.lawnSpec.far.half);
+        for (const l of [this.lawnNear, this.lawnFar]) { l.material = g; l.isPickable = false; l.alwaysSelectAsActiveMesh = true; l.receiveShadows = !this.lite; l.metadata = { keepUnderground: true, desert: true }; this.things.push(l); }
+    }
+    private lawnEye = new Vector3();
+
     private bindField(e: Effect) {
         e.setTexture("dField", this.fieldTex);
         e.setTexture("dDig", this.digTex);
@@ -437,28 +558,14 @@ ${this.lite ? "" : `            wetN = max(wetN, 0.6 * max(max(dWetAt(wp.xz + ve
             const t = { inst, k, x, z, sx, sy, rx: (rnd() - 0.5) * 0.15, ry: rnd() * 6.28, rz: (rnd() - 0.5) * 0.15 };
             this.tufts.push(t); this.setTuft(t);
         };
-        const nat = this.lite ? 1400 : 2600, ring = new Inst("oasisGrass", tuft, mat, nat, this.scene);
-        let k = 0;
-        for (let t = 0; t < nat * 4 && k < nat; t++) {
-            const r = OASIS_R + 1.5 + Math.sqrt(rnd()) * (OASIS_GREEN1 - OASIS_R - 4), a = rnd() * 6.28, x = DESERT_X + Math.cos(a) * r, z = DESERT_Z + Math.sin(a) * r;
-            // (thinning out towards the edge of the green, in clumps)
-            const edge = 1 - Math.max(0, Math.min(1, (r - OASIS_GREEN0) / (OASIS_GREEN1 - OASIS_GREEN0)));
-            if (rnd() > edge * (0.55 + 0.45 * Math.sin(x * 0.31) * Math.cos(z * 0.27))) continue;
-            const s = 0.7 + rnd() * 0.7;
-            put(ring, k++, x, z, s, s);
-        }
-        ring.count = k;
         const nr = this.lite ? 260 : 520, reeds = new Inst("oasisReeds", reed, mat, nr, this.scene);
         for (let i = 0; i < nr; i++) {
             const a = rnd() * 6.28, r = OASIS_R - 1.2 + rnd() * 2.6, x = DESERT_X + Math.cos(a) * r, z = DESERT_Z + Math.sin(a) * r;
             if (Math.sin(a * 5.3) + Math.sin(a * 2.1) < -0.6) { put(reeds, i, x, z, 0, 0); continue; }   // (gaps, so it is clumps)
             put(reeds, i, x, z, 0.8 + rnd() * 0.4, 2.2 + rnd() * 1.4);
         }
-        // the grass that grows where the water has greened the sand (filled in at every dawn)
-        this.greenGrass = new Inst("oasisGreenGrass", tuft, mat, this.lite ? 5000 : 12000, this.scene);
-        this.greenGrass.count = 0;
-        for (const g of [ring, reeds, this.greenGrass]) { g.instanceMatrix.needsUpdate = true; g.mesh.alwaysSelectAsActiveMesh = true; g.mesh.metadata = { keepUnderground: true, desert: true }; this.things.push(g.mesh); }
-        this.regrass();
+        for (const g of [reeds]) { g.instanceMatrix.needsUpdate = true; g.mesh.alwaysSelectAsActiveMesh = true; g.mesh.metadata = { keepUnderground: true, desert: true }; this.things.push(g.mesh); }
+        void tuft;
     }
 
     private tufts: { inst: Inst; k: number; x: number; z: number; sx: number; sy: number; rx: number; ry: number; rz: number }[] = [];
@@ -485,25 +592,35 @@ ${this.lite ? "" : `            wetN = max(wetN, 0.6 * max(max(dWetAt(wp.xz + ve
         const touched = new Set<Inst>();
         for (const t of this.tufts) if (t.x > x0 && t.x < x1 && t.z > z0 && t.z < z1) { this.setTuft(t); touched.add(t.inst); }
         for (const inst of touched) inst.instanceMatrix.needsUpdate = true;
-        this.regrass();
+        this.remask(x0, z0, x1, z1);
     }
 
-    /** tufts on every greened metre (a couple each, jittered the same way every time) */
-    private regrass() {
-        const inst = this.greenGrass, dummy = new THREE.Object3D();
-        let k = 0;
-        const hash = (i: number, j: number, s: number) => { const v = Math.sin(i * 127.1 + j * 311.7 + s * 74.7) * 43758.5453; return v - Math.floor(v); };
-        for (let j = 0; j < GREEN_N && k < inst.cap; j++) for (let i = 0; i < GREEN_N && k < inst.cap; i++) {
-            if (green[j * GREEN_N + i] < 128) continue;
-            for (let t = 0; t < 2 && k < inst.cap; t++) {
-                const x = EDIT_X0 + (i + hash(i, j, t)) * GREEN_CELL, z = EDIT_Z0 + (j + hash(j, i, t + 5)) * GREEN_CELL;
-                if (wetAt(x, z) || Math.hypot(x - DESERT_X, z - DESERT_Z) < OASIS_GREEN0 || inCut(x, z, 0.35)) continue;
-                const s = 0.65 + hash(i, j, t + 9) * 0.7;
-                dummy.position.set(x, heightAt(x, z) - 0.03, z); dummy.rotation.set(0, hash(i, j, t + 3) * 6.28, 0); dummy.scale.setScalar(s); dummy.updateMatrix();
-                inst.setMatrixAt(k++, dummy.matrix);
-            }
+    /** how thick the grass is at a point (0..1): the oasis's own green ring and whatever water has greened, in patches,
+     *  none in water, at the water's very edge, or under a building */
+    private coverAt(x: number, z: number): number {
+        const d = Math.hypot(x - DESERT_X, z - DESERT_Z);
+        if (d < OASIS_R - 0.3 || wetAt(x, z) || inCut(x, z, 0.15)) return 0;
+        if (wetAt(x + 0.5, z) || wetAt(x - 0.5, z) || wetAt(x, z + 0.5) || wetAt(x, z - 0.5)) return 0;
+        const n1 = GN1.get(x * 0.045, z * 0.045), n2 = GN2.get(x * 0.6, z * 0.6), n4 = GN4.get(x * 0.21, z * 0.21);
+        const g0 = 1 - sstep(OASIS_GREEN0, OASIS_GREEN1, d + n1 * 7);
+        const gi = Math.floor((x - EDIT_X0) / GREEN_CELL), gj = Math.floor((z - EDIT_Z0) / GREEN_CELL);
+        const gg = gi >= 0 && gj >= 0 && gi < GREEN_N && gj < GREEN_N ? green[gj * GREEN_N + gi] / 255 : 0;
+        const gr = Math.max(g0, gg);
+        return sstep(0.4, 0.8, gr * (0.72 + 0.5 * (n4 * 0.5 + 0.5)) + n2 * 0.12);
+    }
+    /** work the grass map out again here (and send it to the GPU) */
+    private remask(x0: number, z0: number, x1: number, z1: number) {
+        const c = (EDIT_HALF * 2) / MASK_N;
+        const i0 = Math.max(0, Math.floor((x0 - EDIT_X0) / c) & ~3), i1 = Math.min(MASK_N - 1, Math.ceil((x1 - EDIT_X0) / c) | 3);
+        const j0 = Math.max(0, Math.floor((z0 - EDIT_Z0) / c)), j1 = Math.min(MASK_N - 1, Math.ceil((z1 - EDIT_Z0) / c));
+        if (i0 > i1 || j0 > j1) return;
+        const W = i1 - i0 + 1, H = j1 - j0 + 1, sub = new Uint8Array(W * H);
+        for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+            const v = Math.round(this.coverAt(EDIT_X0 + (i + 0.5) * c, EDIT_Z0 + (j + 0.5) * c) * 255);
+            this.mask[j * MASK_N + i] = v; sub[(j - j0) * W + (i - i0)] = v;
         }
-        inst.count = k; inst.instanceMatrix.needsUpdate = true;
+        const it = this.maskTex?.getInternalTexture();
+        if (it) (this.scene.getEngine() as unknown as { updateTextureData(t: unknown, d: ArrayBufferView, x: number, y: number, w: number, h: number): void }).updateTextureData(it, sub, i0, j0, W, H);
     }
 
     private buildArch() {
@@ -595,6 +712,10 @@ ${this.lite ? "" : `            wetN = max(wetN, 0.6 * max(max(dWetAt(wp.xz + ve
         this.fine.position.set(Math.round(cam.x / fs) * fs, 0, Math.round(cam.z / fs) * fs);
         const ls = 1;
         this.lake.position.set(Math.round(cam.x / ls) * ls, 0, Math.round(cam.z / ls) * ls);
+        // (the lawns follow you in whole metres: their blades stay put on the ground; none when far from the oasis)
+        this.lawnEye.copyFrom(cam);
+        const nearOasis = Math.abs(cam.x - DESERT_X) < EDIT_HALF + 40 && Math.abs(cam.z - DESERT_Z) < EDIT_HALF + 40;
+        for (const l of [this.lawnNear, this.lawnFar]) { l.position.set(Math.round(cam.x), 0, Math.round(cam.z)); l.setEnabled(nearOasis); }
         this.lake.setEnabled(Math.abs(cam.x - DESERT_X) < EDIT_HALF + 250 && Math.abs(cam.z - DESERT_Z) < EDIT_HALF + 250);
         // footprints: a print every stride, left and right in turn
         this.brushes.length = 0; this.brushDirs.length = 0;
@@ -645,8 +766,12 @@ ${this.lite ? "" : `            wetN = max(wetN, 0.6 * max(max(dWetAt(wp.xz + ve
             eng.updateTextureData(it, data, i0, j0, W, H);
         };
         if (w.digDirty) { sub(this.digTex, w.digDirty, (k) => ToHalfFloat(this.offsetAt(k)), true); w.digDirty = null; }
-        if (w.wetDirty) { sub(this.wetTex, w.wetDirty, (k) => wet[k] * 255, false); w.wetDirty = null; }
-        if (w.greenDirty) { this.greenTex.update(green); w.greenDirty = false; this.regrass(); }
+        if (w.wetDirty) {
+            const r = w.wetDirty, c = EDIT_HALF * 2 / EDIT_N;
+            sub(this.wetTex, r, (k) => wet[k] * 255, false); w.wetDirty = null;
+            this.remask(EDIT_X0 + r.i0 * c - 1, EDIT_Z0 + r.j0 * c - 1, EDIT_X0 + (r.i1 + 1) * c + 1, EDIT_Z0 + (r.j1 + 1) * c + 1);
+        }
+        if (w.greenDirty) { this.greenTex.update(green); w.greenDirty = false; this.remask(EDIT_X0, EDIT_Z0, EDIT_X0 + EDIT_HALF * 2, EDIT_Z0 + EDIT_HALF * 2); }
     }
 
     /** the water's surface here (the pond and the channels), or null (no water) */
