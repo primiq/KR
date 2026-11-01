@@ -1,3 +1,4 @@
+import { inDesert, OASIS_WATER, wetAt } from "../world/desertField";
 import { Color3, Mesh, MeshBuilder, PBRMaterial, Quaternion, type Scene, StandardMaterial, Vector3 } from "@babylonjs/core";
 import type { Flowers, FlowerHit } from "../world/flowers";
 import * as THREE from "three";
@@ -580,6 +581,14 @@ export class Resources {
             if (t > 0 && t <= reach + 0.6) {
                 const hx = ox + dx * t, hz = oz + dz * t;
                 if (heightAt(hx, hz) < -0.12) best = { type: "sea", dist: t, point: new Vector3(hx, 0, hz) };
+            }
+        }
+        // the desert's oasis: its pond and every channel it has run into are fresh water
+        if (!best && dy < -0.03 && inDesert(ox, oz)) {
+            const t = (OASIS_WATER - oy) / dy;
+            if (t > 0 && t <= reach + 0.6) {
+                const hx = ox + dx * t, hz = oz + dz * t;
+                if (wetAt(hx, hz)) best = { type: "spring", spring: { x: hx, y: OASIS_WATER, z: hz } as unknown as Spring, dist: t, point: new Vector3(hx, OASIS_WATER, hz) };
             }
         }
         return best;

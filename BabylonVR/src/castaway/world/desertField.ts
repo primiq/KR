@@ -13,8 +13,11 @@ import { Noise2D, smoothstep } from "../core/noise";
 export const DESERT_X = 0, DESERT_Z = 20000, DESERT_FROM_Z = 15000;
 /** the oasis pond's water level and radius (m); how far you may wander from the oasis (m) */
 export const OASIS_WATER = 10, OASIS_R = 22, DESERT_LIMIT = 1400;
-/** where you arrive (just off the pond's edge, facing it) */
-export const DESERT_SPAWN = { x: DESERT_X, z: DESERT_Z + OASIS_R + 9, yaw: 0 };
+/** where you arrive: on a dune crest 120 m out, the oasis in sight below (you walk over to it) */
+const SPAWN_A = 1.55, SPAWN_R = 120;
+export const DESERT_SPAWN = { x: DESERT_X + Math.cos(SPAWN_A) * SPAWN_R, z: DESERT_Z + Math.sin(SPAWN_A) * SPAWN_R, yaw: Math.atan2(Math.cos(SPAWN_A), Math.sin(SPAWN_A)) };
+/** the stone arch back to the secret room, just behind where you arrive */
+export const DESERT_ARCH = { x: DESERT_X + Math.cos(SPAWN_A) * (SPAWN_R + 6), z: DESERT_Z + Math.sin(SPAWN_A) * (SPAWN_R + 6) };
 /** the grid: N x N samples, CELL metres apart, centred on the oasis */
 export const FIELD_N = 1024, FIELD_CELL = 4;
 const HALF = (FIELD_N * FIELD_CELL) / 2;

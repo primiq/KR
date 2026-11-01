@@ -337,7 +337,7 @@ export class Underground {
       case 'campdoor': if (this.sky && this.camp) { this.sky.depart(); this.camp.enter(); this.h.sfx.creak(); } break;
       case 'camp': { if (this.camp?.interact(t.t) === 'exit' && this.sky) { this.camp.leave(); this.sky.enter(this.h.player, 'camp'); this.h.message('Back in the secret room.'); this.h.sfx.creak(); } break; }
       case 'hidedoor': if (this.sky && this.hide) { this.sky.depart(); this.hide.enter(this.h.player); this.h.sfx.creak(); } break;
-      case 'desertdoor': if (this.sky) { this.sky.leave(this.h.player, { x: DESERT_SPAWN.x, y: desertHeight(DESERT_SPAWN.x, DESERT_SPAWN.z), z: DESERT_SPAWN.z, yaw: DESERT_SPAWN.yaw }); this.h.message('The door opens onto hot sand... an oasis among the dunes.'); this.h.sfx.creak(); } break;
+      case 'desertdoor': if (this.sky) { this.sky.leave(this.h.player, { x: DESERT_SPAWN.x, y: desertHeight(DESERT_SPAWN.x, DESERT_SPAWN.z), z: DESERT_SPAWN.z, yaw: DESERT_SPAWN.yaw }); this.h.message('The door opens onto hot sand. Down in the dunes ahead, an oasis...'); this.h.sfx.creak(); } break;
       case 'desertexit': if (this.sky) { this.sky.enter(this.h.player, 'desert'); this.h.message('Back in the secret room.'); this.h.sfx.creak(); } break;
       case 'trialdoor': if (this.sky && this.trial) { this.sky.depart(); this.trial.enter(this.h.player); this.h.sfx.creak(); } break;
       case 'trial': { if (this.trial?.interact(t.t) === 'exit' && this.sky) { this.trial.leave(this.h.player); this.sky.enter(this.h.player, 'trial'); this.h.message('Back in the secret room.'); this.h.sfx.creak(); } break; }

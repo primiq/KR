@@ -22,7 +22,7 @@ import { NOISE_GLSL, foliageMaterial } from "../render/materials";
 import { Inst } from "../render/inst";
 import { buildGrassTuft } from "./plants";
 import {
-    bake, DESERT_SPAWN, DESERT_X, DESERT_Z, desertHeight, dig, EDIT_HALF, EDIT_N, EDIT_X0, EDIT_Z0, FIELD_CELL, FIELD_N,
+    bake, DESERT_ARCH, DESERT_SPAWN, DESERT_X, DESERT_Z, desertHeight, dig, EDIT_HALF, EDIT_N, EDIT_X0, EDIT_Z0, FIELD_CELL, FIELD_N,
     green, GREEN_CELL, GREEN_N, groundAt, inDesert, OASIS_GREEN0, OASIS_GREEN1, OASIS_R, OASIS_WATER, wet, wetAt,
 } from "./desertField";
 import { type SandOp, SandWorks } from "./sandworks";
@@ -33,7 +33,7 @@ import type { Ocean } from "../../island/ocean";
 /** the trodden-sand window (m), its texture size, the fine grid's size (m) and spacing (m) */
 const WIN = 32, DEF_N = 512, FINE = 20, FINE_STEP = 0.125;
 export { DESERT_SPAWN };
-const ARCH = { x: DESERT_X, z: DESERT_Z + OASIS_R + 15 };
+const ARCH = DESERT_ARCH;
 
 const DEFORM_FS = `
 precision highp float;
@@ -278,7 +278,7 @@ float dOffset(vec2 w) { vec4 s = dDefAt(w); return s.g - s.r; }
             sand *= 1.0 - 0.28 * smoothstep(0.02, 0.45, -dg);
             // water: wet sand beside it (the pond's shore and every channel's banks)
             float wetN = max(max(dWetAt(wp.xz + vec2(0.55, 0.0)), dWetAt(wp.xz - vec2(0.55, 0.0))), max(dWetAt(wp.xz + vec2(0.0, 0.55)), dWetAt(wp.xz - vec2(0.0, 0.55))));
-            wetN = max(wetN, 0.6 * max(max(dWetAt(wp.xz + vec2(1.3, 0.0)), dWetAt(wp.xz - vec2(1.3, 0.0))), max(dWetAt(wp.xz + vec2(0.0, 1.3)), dWetAt(wp.xz - vec2(0.0, 1.3)))));
+${this.lite ? "" : `            wetN = max(wetN, 0.6 * max(max(dWetAt(wp.xz + vec2(1.3, 0.0)), dWetAt(wp.xz - vec2(1.3, 0.0))), max(dWetAt(wp.xz + vec2(0.0, 1.3)), dWetAt(wp.xz - vec2(0.0, 1.3)))));`}
             float wetK = max(wetN, 1.0 - smoothstep(${OASIS_R.toFixed(1)} - 0.5, ${OASIS_R.toFixed(1)} + 3.0, dO + n2 * 0.8));
             // the green: the oasis's own ring and whatever water has greened since; patchy, sand showing through, olive and
             // dusty rather than lawn-green
@@ -303,7 +303,8 @@ float dOffset(vec2 w) { vec4 s = dDefAt(w); return s.g - s.r; }
         m.Fragment_Custom_MetallicRoughness(`
             metallicRoughness.g = mix(metallicRoughness.g, 0.45, 1.0 - smoothstep(${OASIS_R.toFixed(1)}, ${OASIS_R.toFixed(1)} + 3.0, length(vPositionW.xz - dInfo.xy)));
         `);
-        m.Fragment_Before_FragColor(`
+        // (the glinting grains: not in a headset, where every fragment counts)
+        if (!this.lite) m.Fragment_Before_FragColor(`
             {
                 // grains that catch the sun: a pin-prick of light that comes and goes as you move, mostly facing the sun
                 vec3 cp = floor(vPositionW * 26.0);

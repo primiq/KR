@@ -10,7 +10,7 @@ import { foliageMaterial, rockMaterial } from "../render/materials";
 import { GrassLodPlugin, GrassMode } from "../render/grassLod";
 import { leafTexture } from "../render/leaves";
 import { hash3 } from "./geo";
-import { DESERT_SPAWN, DESERT_X, DESERT_Z, OASIS_R } from "./desertField";
+import { DESERT_X, DESERT_Z, OASIS_R } from "./desertField";
 import { heightAt, inCut, riverDist, rockiness, slopeAt } from "./island";
 import { buildBush, buildDryFrond, buildGrassTuft, buildJungleTree, buildPalm, buildStump } from "./plants";
 
@@ -170,7 +170,8 @@ interface GrassMemo { idx: Map<number, number>; data: Float64Array; n: number }
  *  shore and stones out in the sand (the same every time: their node numbers are saved). */
 function planOasis() {
     const rnd = mulberry32(31337), out: Placement[] = [];
-    const clearOf = [{ x: DESERT_SPAWN.x, z: DESERT_SPAWN.z, r: 4 }, { x: DESERT_SPAWN.x, z: DESERT_SPAWN.z + 6, r: 3.5 }];
+    // (where the way in used to be, by the pond: kept, so the oasis's plants stay where they were in saved worlds)
+    const clearOf = [{ x: DESERT_X, z: DESERT_Z + OASIS_R + 9, r: 4 }, { x: DESERT_X, z: DESERT_Z + OASIS_R + 15, r: 3.5 }];
     const ok = (x: number, z: number, gap: number) => !clearOf.some((c) => Math.hypot(c.x - x, c.z - z) < c.r) && !out.some((p) => Math.hypot(p.x - x, p.z - z) < gap);
     /** n placements at polar points (r, angle) round the pond, at least `gap` apart */
     const take = (n: number, at: () => [number, number], gap: number, s0: number, s1: number) => {
