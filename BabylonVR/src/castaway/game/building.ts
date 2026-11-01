@@ -122,7 +122,9 @@ function fillKit(kit: Kit, kind: PieceKind, depth = 0.6, pile?: (lx: number, lz:
     const WALL: MatKey = stone ? "swall" : "wall";
     const SLAB: MatKey = stone ? (kind === "foundation" ? "swall" : "sslab") : "slab";
     const box = (w: number, h: number, d: number, x: number, y: number, z: number, k: MatKey) => kit.box(w, h, d, x, y, z, k);
-    const post = (x: number) => box(0.22, WALL_H + 0.05, 0.3, x, WALL_H / 2 + 0.025 - 0.02, 0, "beam");
+    // (the dark wood stands well proud of the planks, and stops short of its neighbours': nothing dark lies in the same plane
+    //  as anything else, so nothing flickers)
+    const post = (x: number) => box(0.22, WALL_H - 0.1, THICK + 0.14, x, (WALL_H - 0.1) / 2, 0, "beam");
     switch (kind) {
         case "pool": {
             const h = CELL / 2, r = POOL_RIM, rimH = 0.3;
@@ -138,8 +140,8 @@ function fillKit(kit: Kit, kind: PieceKind, depth = 0.6, pile?: (lx: number, lz:
                 if (!bit(mask, a) || !bit(mask, b2) || bit(mask, k)) continue;
                 box(r, rimH, r, sx * (h - r / 2), -rimH / 2, sz * (h - r / 2), "slab");
             }
-            if (N) box(CELL + 0.03, 0.14, 0.2, 0, -rimH - 0.02, -h + 0.09, "beam");
-            if (S) box(CELL + 0.03, 0.14, 0.2, 0, -rimH - 0.02, h - 0.09, "beam");
+            if (N) box(CELL - 0.004, 0.14, 0.2, 0, -rimH - 0.02, -h + 0.1, "beam");
+            if (S) box(CELL - 0.004, 0.14, 0.2, 0, -rimH - 0.02, h - 0.1, "beam");
             if (W) box(0.2, 0.14, CELL - 0.4, -h + 0.09, -rimH - 0.02, 0, "beam");
             if (E) box(0.2, 0.14, CELL - 0.4, h - 0.09, -rimH - 0.02, 0, "beam");
             for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
@@ -152,20 +154,20 @@ function fillKit(kit: Kit, kind: PieceKind, depth = 0.6, pile?: (lx: number, lz:
             break;
         }
         case "foundation": {
-            box(CELL, 0.3, CELL, 0, -0.15, 0, SLAB);
+            box(CELL - 0.06, 0.3, CELL - 0.06, 0, -0.15, 0, SLAB);
             for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1], [0, -1], [0, 1], [-1, 0], [1, 0]]) {
                 const lx = x * (CELL / 2 - 0.2), lz = z * (CELL / 2 - 0.2), dd = pile ? pile(lx, lz) : depth;
                 box(0.28, dd, 0.28, lx, -0.3 - dd / 2, lz, "pile");
             }
             for (const s of [-1, 1]) {
-                box(CELL + 0.03, 0.14, 0.2, 0, -0.05, s * (CELL / 2 - 0.09), "beam");
-                box(0.2, 0.15, CELL - 0.4, s * (CELL / 2 - 0.09), -0.052, 0, "beam");
+                box(CELL - 0.004, 0.16, 0.2, 0, -0.04, s * (CELL / 2 - 0.1 - 0.001), "beam");
+                box(0.2, 0.16, CELL - 0.404, s * (CELL / 2 - 0.1 - 0.001), -0.04, 0, "beam");
             }
             break;
         }
         case "floor":
             box(CELL, 0.16, CELL, 0, -0.08, 0, SLAB);
-            for (const x of [-1, 0, 1]) box(0.16, 0.2, CELL - 0.06, x * 1.2, -0.26, 0, "beam");
+            for (const x of [-1, 0, 1]) box(0.16, 0.2, CELL - 0.06, x * 1.2, -0.275, 0, "beam");
             break;
         case "stairs": {
             for (let k = 0; k < STEPS; k++) {
@@ -182,8 +184,8 @@ function fillKit(kit: Kit, kind: PieceKind, depth = 0.6, pile?: (lx: number, lz:
             box(CELL - 0.03, WALL_H, THICK, 0, WALL_H / 2, 0, WALL);
             post(-CELL / 2 + 0.11);
             post(CELL / 2 - 0.11);
-            box(CELL + 0.02, 0.2, 0.31, 0, WALL_H - 0.085, 0, "beam");
-            if (stone) { box(CELL - 0.2, 0.16, 0.26, 0, 1.45, 0, "beam"); box(CELL + 0.02, 0.14, 0.26, 0, 0.07, 0, "beam"); }
+            box(CELL - 0.004, 0.2, THICK + 0.18, 0, WALL_H - 0.1, 0, "beam");
+            if (stone) { box(CELL - 0.46, 0.16, THICK + 0.1, 0, 1.45, 0, "beam"); box(CELL - 0.004, 0.14, THICK + 0.1, 0, 0.07, 0, "beam"); }
             break;
         case "doorway": {
             const sw = (CELL - 1.2) / 2;
@@ -191,8 +193,8 @@ function fillKit(kit: Kit, kind: PieceKind, depth = 0.6, pile?: (lx: number, lz:
             box(sw - 0.015, WALL_H, THICK, CELL / 2 - 0.015 - (sw - 0.015) / 2, WALL_H / 2, 0, WALL);
             box(1.2, WALL_H - 2.3, THICK, 0, (WALL_H + 2.3) / 2, 0, WALL);
             post(-CELL / 2 + 0.11); post(CELL / 2 - 0.11); post(-0.62); post(0.62);
-            box(1.34, 0.16, 0.3, 0, 2.3, 0, "beam");
-            box(CELL + 0.02, 0.2, 0.31, 0, WALL_H - 0.085, 0, "beam");
+            box(1.02, 0.16, THICK + 0.12, 0, 2.3, 0, "beam");
+            box(CELL - 0.004, 0.2, THICK + 0.18, 0, WALL_H - 0.1, 0, "beam");
             if (stone) for (const s of [-1, 1]) { box(0.9, 0.14, 0.26, s * 1.05, 0.07, 0, "beam"); box(0.9, 0.14, 0.26, s * 1.05, 1.45, 0, "beam"); }
             break;
         }
@@ -203,10 +205,10 @@ function fillKit(kit: Kit, kind: PieceKind, depth = 0.6, pile?: (lx: number, lz:
             box(1.3, 1.0, THICK, 0, 0.5, 0, WALL);
             box(1.3, WALL_H - 2.0, THICK, 0, (WALL_H + 2.0) / 2, 0, WALL);
             post(-CELL / 2 + 0.11); post(CELL / 2 - 0.11);
-            box(1.46, 0.12, 0.3, 0, 1.0, 0, "beam"); box(1.46, 0.12, 0.3, 0, 2.0, 0, "beam");
-            box(0.1, 1.0, 0.26, -0.7, 1.5, 0, "beam"); box(0.1, 1.0, 0.26, 0.7, 1.5, 0, "beam");
-            box(CELL + 0.02, 0.2, 0.31, 0, WALL_H - 0.085, 0, "beam");
-            if (stone) box(CELL + 0.02, 0.14, 0.26, 0, 0.07, 0, "beam");
+            box(1.5, 0.12, THICK + 0.12, 0, 1.0, 0, "beam"); box(1.5, 0.12, THICK + 0.12, 0, 2.0, 0, "beam");
+            box(0.1, 0.88, THICK + 0.08, -0.7, 1.5, 0, "beam"); box(0.1, 0.88, THICK + 0.08, 0.7, 1.5, 0, "beam");
+            box(CELL - 0.004, 0.2, THICK + 0.18, 0, WALL_H - 0.1, 0, "beam");
+            if (stone) box(CELL - 0.004, 0.14, THICK + 0.1, 0, 0.07, 0, "beam");
             // the two glazed casements, each hinged on its outer side
             const Wd = 0.65, Hh = 0.88, y0 = 1.06, F = 0.05;
             for (const s of [-1, 1]) {
@@ -236,7 +238,7 @@ function fillKit(kit: Kit, kind: PieceKind, depth = 0.6, pile?: (lx: number, lz:
         }
         case "roof":
             box(CELL, 0.16, CELL, 0, 0.08, 0, SLAB);
-            for (const x of [-1, 0, 1]) box(0.16, 0.2, CELL - 0.06, x * 1.2, -0.1, 0, "beam");
+            for (const x of [-1, 0, 1]) box(0.16, 0.2, CELL - 0.06, x * 1.2, -0.115, 0, "beam");
             break;
     }
 }
@@ -248,7 +250,7 @@ function matFor(k: MatKey): Material {
     switch (k) {
         case "wall": return W.wall;
         case "slab": return W.slab;
-        case "beam": return W.beam;
+        case "beam": { const b = W.beam; if (b.zOffset === 0) b.zOffset = -1; return b; }
         case "pile": return W.pile;
         case "glass": return glassMaterial(s);
         case "pool": return poolMaterial(s);

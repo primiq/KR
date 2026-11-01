@@ -673,6 +673,23 @@ async function main() {
     let mirrorAv: Avatars | null = null;
     // ---- frame loop
     let last = performance.now();
+    // ---- the flat-screen camera's orientation: rebuilt from where you look (yaw, then pitch) and nothing else, just before
+    //      every frame is drawn, so it can never pick up a roll (the horizon always level). The headset's camera is its own.
+    const lookQ = new Quaternion(), upY = new Vector3(0, 1, 0);
+    const flatLook = () => {
+        if (!Number.isFinite(player.pitch)) player.pitch = 0;
+        if (!Number.isFinite(player.yaw)) player.yaw = 0;
+        player.pitch = Math.max(-1.52, Math.min(1.52, player.pitch));
+        const sr = player.shakeRot;
+        Quaternion.RotationYawPitchRollToRef(player.yaw + sr.y, player.pitch + sr.x, Math.max(-0.03, Math.min(0.03, sr.z)), lookQ);
+        if (!camera.rotationQuaternion) camera.rotationQuaternion = lookQ.clone(); else camera.rotationQuaternion.copyFrom(lookQ);
+        camera.rotation.set(0, 0, 0);
+        camera.cameraRotation.set(0, 0);
+        if (!camera.upVector.equals(upY)) camera.upVector.copyFrom(upY);
+    };
+    scene.onBeforeCameraRenderObservable.add((cam) => {
+        if (cam === camera && started && !vrActive() && !air.driving) flatLook();
+    });
     scene.onBeforeRenderObservable.add(() => {
         const now = performance.now();
         const dt = Math.min(0.05, (now - last) / 1000);
@@ -712,9 +729,8 @@ async function main() {
                 camera.position.set(carCam.position.x, carCam.position.y, carCam.position.z);
                 camera.rotationQuaternion = new Quaternion(carCam.quaternion.x, carCam.quaternion.y, carCam.quaternion.z, carCam.quaternion.w);
             } else if (!vrActive()) {
-                camera.rotationQuaternion = null;
                 camera.position.set(player.eye.x, player.eye.y + player.shakeY, player.eye.z);
-                camera.rotation.set(player.pitch + player.shakeRot.x, player.yaw + player.shakeRot.y, player.shakeRot.z);
+                flatLook();
                 const cp = Math.cos(player.pitch);
                 player.look.set(-Math.sin(player.yaw) * cp, Math.sin(player.pitch), -Math.cos(player.yaw) * cp);
             }
@@ -816,6 +832,7 @@ async function main() {
             // the menu: a slow look along the beach
             const t = now / 1000;
             camera.position.set(spawn.x, heightAt(spawn.x, spawn.z) + 2.2, spawn.z);
+            camera.rotationQuaternion = null;
             camera.rotation.set(-0.05, spawn.yaw + Math.sin(t * 0.05) * 0.6, 0);
         }
         caves.update();

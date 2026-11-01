@@ -1,7 +1,7 @@
 // Pictures in frames, hung on the walls players build. A new one is a blank canvas; open it (E) to paint on it.
 // The picture is kept as a small PNG (data URL): that is what is saved with the world and sent to the other players.
 // Ported from Castaway: the same logic, drawn with Babylon (the picture is a DynamicTexture over the canvas).
-import { Color3, DynamicTexture, Matrix, type Mesh, MeshBuilder, PBRMaterial, type Scene, TransformNode, Vector3 } from "@babylonjs/core";
+import { Color3, DynamicTexture, Matrix, type Mesh, MeshBuilder, PBRMaterial, type Scene, Texture, TransformNode, Vector3 } from "@babylonjs/core";
 import * as THREE from "three";
 import { meshFromThree } from "../render/geometry";
 import { shadowCasters } from "../render/inst";
@@ -11,6 +11,8 @@ import type { Piece } from "./building";
 export const CANVAS_W = 256, CANVAS_H = 192; // pixels (4:3)
 export const PAPER = "#f3eee2"; // the colour of an empty canvas (and of the eraser)
 const FW = 1.0, FH = 0.78, BORDER = 0.07, DEPTH = 0.045; // frame size in metres
+/** how far out from the wall the picture is (just inside the frame's front edge) */
+const PIC_Z = DEPTH - 0.012;
 const MAX_DATA = 160_000; // a sanity limit on one picture (PNG, or JPEG for very busy ones)
 
 interface V3 { x: number; y: number; z: number }
@@ -124,6 +126,8 @@ export class Paintings {
         const canvas = blankCanvas();
         const tex = new DynamicTexture("painting", canvas, s, true);
         tex.anisotropicFilteringLevel = 4;
+        // (the plane is turned round to face out: mirror the picture back so it reads the right way)
+        tex.wrapU = Texture.WRAP_ADDRESSMODE; tex.uScale = -1;
         tex.update();
         const g = new TransformNode("painting", s);
         const frame = meshFromThree("frame", frameGeometry(), s);
@@ -133,11 +137,14 @@ export class Paintings {
         if (this.shadows) shadowCasters.add(frame);
         const pic = MeshBuilder.CreatePlane("picture", { width: FW - BORDER * 2 + 0.01, height: FH - BORDER * 2 + 0.01, sideOrientation: 0 }, s);
         pic.parent = g;
-        pic.position.z = 0.012;
+        // (just behind the front of the frame, facing out of the wall: a plane faces -z as built, so it is turned round)
+        pic.position.z = PIC_Z;
+        pic.rotation.y = Math.PI;
         const m = new PBRMaterial("pictureMat", s);
         m.albedoTexture = tex;
         m.emissiveTexture = tex;
-        m.emissiveColor = new Color3(0.45, 0.45, 0.45);
+        // (lit like everything else, plus a little of its own colour so the paper reads as white indoors)
+        m.emissiveColor = new Color3(0.35, 0.35, 0.35);
         m.roughness = 0.9;
         m.metallic = 0;
         m.backFaceCulling = false;
@@ -211,7 +218,7 @@ export class Paintings {
     canvasHit(p: Painting, o: V3, d: V3): { px: number; py: number; t: number; point: Vector3; inside: boolean } | null {
         const nx = Math.sin(p.yaw), nz = Math.cos(p.yaw), den = d.x * nx + d.z * nz;
         if (den > -1e-4) return null;
-        const t = ((p.x + nx * 0.012 - o.x) * nx + (p.z + nz * 0.012 - o.z) * nz) / den;
+        const t = ((p.x + nx * PIC_Z - o.x) * nx + (p.z + nz * PIC_Z - o.z) * nz) / den;
         if (t < 0) return null;
         const point = new Vector3(o.x + d.x * t, o.y + d.y * t, o.z + d.z * t);
         const hx = point.x - p.x, hy = point.y - p.y, hz = point.z - p.z;
