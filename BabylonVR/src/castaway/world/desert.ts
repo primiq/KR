@@ -24,7 +24,7 @@ import { Inst } from "../render/inst";
 import { buildGrassTuft } from "./plants";
 import {
     bake, DESERT_ARCH, DESERT_SPAWN, DESERT_X, DESERT_Z, desertHeight, dig, EDIT_HALF, EDIT_N, EDIT_X0, EDIT_Z0, FIELD_CELL, FIELD_N,
-    green, GREEN_CELL, GREEN_N, groundAt, inDesert, OASIS_GREEN0, OASIS_GREEN1, OASIS_R, OASIS_WATER, wet, wetAt,
+    digAt, green, GREEN_CELL, GREEN_N, groundAt, inDesert, OASIS_GREEN0, OASIS_GREEN1, OASIS_R, OASIS_WATER, wet, wetAt,
 } from "./desertField";
 import { type SandOp, SandWorks } from "./sandworks";
 import type { Sandstorm } from "./sandstorm";
@@ -600,6 +600,8 @@ varying float vGV;
     private coverAt(x: number, z: number): number {
         const d = Math.hypot(x - DESERT_X, z - DESERT_Z);
         if (d < OASIS_R - 0.3 || wetAt(x, z) || inCut(x, z, 0.15)) return 0;
+        // (freshly dug ground is bare sand)
+        if (digAt(x, z) < -0.12) return 0;
         if (wetAt(x + 0.5, z) || wetAt(x - 0.5, z) || wetAt(x, z + 0.5) || wetAt(x, z - 0.5)) return 0;
         const n1 = GN1.get(x * 0.045, z * 0.045), n2 = GN2.get(x * 0.6, z * 0.6), n4 = GN4.get(x * 0.21, z * 0.21);
         const g0 = 1 - sstep(OASIS_GREEN0, OASIS_GREEN1, d + n1 * 7);
@@ -765,7 +767,11 @@ varying float vGV;
             for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) data[j * W + i] = fill((j0 + j) * EDIT_N + i0 + i);
             eng.updateTextureData(it, data, i0, j0, W, H);
         };
-        if (w.digDirty) { sub(this.digTex, w.digDirty, (k) => ToHalfFloat(this.offsetAt(k)), true); w.digDirty = null; }
+        if (w.digDirty) {
+            const r = w.digDirty, c = EDIT_HALF * 2 / EDIT_N;
+            sub(this.digTex, r, (k) => ToHalfFloat(this.offsetAt(k)), true); w.digDirty = null;
+            this.remask(EDIT_X0 + r.i0 * c - 0.5, EDIT_Z0 + r.j0 * c - 0.5, EDIT_X0 + (r.i1 + 1) * c + 0.5, EDIT_Z0 + (r.j1 + 1) * c + 0.5);
+        }
         if (w.wetDirty) {
             const r = w.wetDirty, c = EDIT_HALF * 2 / EDIT_N;
             sub(this.wetTex, r, (k) => wet[k] * 255, false); w.wetDirty = null;

@@ -11,7 +11,7 @@ import { DESERT_X, DESERT_Z, EDIT_CELL, EDIT_N, GREEN_CELL, GREEN_N, OASIS_R, OA
 
 export interface SandOp { x: number; z: number; r: number; d: number }
 export interface Rect { i0: number; j0: number; i1: number; j1: number }
-const MAX_DIG = -3, MAX_HEAP = 2.5;
+const MAX_DIG = -4, MAX_HEAP = 2.5;
 /** how fast the water runs along a channel: one cell per this many seconds */
 const RUN = 0.05;
 

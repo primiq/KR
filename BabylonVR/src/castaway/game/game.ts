@@ -67,6 +67,9 @@ const HOLD_TIME = 0.9;
 const STEP = Math.PI / 8;
 
 /** Survival gameplay, ported from Castaway: gathering, crafting, building, stations, eating, drinking, inventory, death. */
+/** how much dug sand (m³) makes one Sand in your pockets */
+const SAND_PER = 0.06;
+
 export class Game {
     readonly inv = new Inventory();
     readonly stats = new Stats();
@@ -1508,8 +1511,8 @@ export class Game {
         // a pickaxe bites deepest, then an axe, a rock, a spear; hands scoop a little
         const tool = id ? ITEMS[id].tool : null;
         const pick = id?.includes("pickaxe"), axe = id?.includes("hatchet");
-        const r = pick ? 0.5 : axe ? 0.45 : tool?.model === "rock" ? 0.4 : tool ? 0.32 : 0.3;
-        const d = pick ? 0.24 : axe ? 0.16 : tool?.model === "rock" ? 0.13 : tool ? 0.09 : 0.08;
+        const r = pick ? 1.0 : axe ? 0.9 : tool?.model === "rock" ? 0.8 : tool ? 0.65 : 0.5;
+        const d = pick ? 0.5 : axe ? 0.38 : tool?.model === "rock" ? 0.3 : tool ? 0.22 : 0.15;
         return this.scoop(hit.x, hit.z, r, d, 0.6);
     }
     /** take sand out here (r: radius, d: depth); it goes into your pockets */
@@ -1517,9 +1520,9 @@ export class Game {
         const v = this.sand!.dig({ x, z, r, d: -d });
         if (v <= 0) { this.hud.message("You can't dig any deeper here"); return true; }
         this.sandAcc += v;
-        const n = Math.floor(this.sandAcc / 0.012);
+        const n = Math.floor(this.sandAcc / SAND_PER);
         if (n > 0) {
-            this.sandAcc -= n * 0.012;
+            this.sandAcc -= n * SAND_PER;
             const fit = this.inv.canFit("sand", n);
             if (fit > 0) { this.inv.add("sand", fit); this.hud.gain("sand", fit); }
         }
@@ -1531,7 +1534,7 @@ export class Game {
     private pourSand(eye: Vector3, dir: Vector3) {
         const sd = this.sand!, hit = sd.ray(eye, dir, 3.4);
         if (!hit) { this.hud.message("Aim at the sand"); this.sfx.denied(); return; }
-        const v = sd.dig({ x: hit.x, z: hit.z, r: 0.55, d: 0.2 });
+        const v = sd.dig({ x: hit.x, z: hit.z, r: 0.65, d: 0.3 });
         if (v <= 0) { this.hud.message(sd.diggable(hit.x, hit.z) ? "It won't heap any higher" : "Pour it nearer the oasis"); this.sfx.denied(); return; }
         this.inv.takeAt(this.hud.selected, 1);
         this.sfx.place(); this.view.place();
@@ -1552,7 +1555,7 @@ export class Game {
             if (p.y > g + 0.03) continue;
             s.cd = tool ? 0.1 : 0.14;
             const id = this.equipped?.id ?? null, pick = !!id?.includes("pickaxe");
-            this.scoop(p.x, p.z, tool ? (pick ? 0.34 : 0.28) : 0.2, Math.min(tool ? (pick ? 0.16 : 0.12) : 0.09, g - p.y + 0.05), tool ? 0.35 : 0.2);
+            this.scoop(p.x, p.z, tool ? (pick ? 0.6 : 0.48) : 0.32, Math.min(tool ? (pick ? 0.3 : 0.22) : 0.14, g - p.y + 0.08), tool ? 0.35 : 0.2);
         }
     }
 

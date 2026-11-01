@@ -5,7 +5,7 @@
 // its doors are not ported yet, so their targets are left out for now.
 import type { Desert } from "../world/desert";
 import { DESERT_SPAWN } from "../world/desert";
-import { desertHeight } from "../world/desertField";
+import { desertHeight, inDesert } from "../world/desertField";
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { CaveWorld, CAVE_Y, type Ore, type Chest } from '../world/cave';
@@ -381,6 +381,8 @@ export class Underground {
     if (tool.model !== 'pickaxe' || dir.y > -0.2) return false;
     const g = rayGround(eye, dir, tool.reach + 0.4, heightAt);
     if (!g.hit || g.t > nodeDist) return false;
+    // (in the desert a pickaxe digs the sand: game.ts digWith)
+    if (inDesert(g.x, g.z)) return false;
     if (heightAt(g.x, g.z) < 1.2) return false;
     let idx = -1;
     this.world.net.entrances.forEach((e, i) => { if (Math.hypot(e.x - g.x, e.z - g.z) < 2.4) idx = i; });

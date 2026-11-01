@@ -209,6 +209,8 @@ export class Vegetation {
     private grassNoise = new Noise2D(77);
     private tiers: { mesh: Inst; keep: Inst | null; cap: number; cell: number; level: number; r0: number; r1: number; at: { x: number; z: number }; step: number; memo?: GrassMemo }[] = [];
     readonly nodes: ResNode[] = [];
+    /** the ground under each tree and rock when it was last placed (so digging under it moves what you hit) */
+    private nodeG0 = new Map<ResNode, number>();
     readonly palmPlacements: Placement[] = [];
     readonly perches: { x: number; y: number; z: number; node: ResNode; palm: boolean }[] = [];
     /** planted trees (saplings): a pool of hidden instances and their nodes, added last so the canonical node indices never shift */
@@ -227,6 +229,13 @@ export class Vegetation {
 
     /** The ground inside this rectangle changed (foundation cut / restored): lift or sink what stands on it, hide loose scenery under slabs. */
     reseat(x0: number, z0: number, x1: number, z1: number) {
+        // (the trees and rocks themselves: what you hit goes up or down with the ground, as they are drawn)
+        for (const n of this.nodes) {
+            if (n.x < x0 || n.x > x1 || n.z < z0 || n.z > z1 || n.pool !== undefined) continue;
+            const g = heightAt(n.x, n.z), o = this.nodeG0.get(n);
+            if (o === undefined) continue;
+            n.y += g - o; this.nodeG0.set(n, g);
+        }
         const T = new THREE.Matrix4();
         const zero = new THREE.Matrix4().makeScale(0, 0, 0);
         const dirty = new Set<Inst>();
@@ -717,6 +726,7 @@ export class Vegetation {
             pm.instanceMatrix.needsUpdate = true; pm.refreshBounds();
             this.cullable.push({ mesh: pm, c: new THREE.Vector3(DESERT_X, 0, DESERT_Z), r: 160, far: false, lod: 0 });
         }
+        for (const n of this.nodes) if (n.pool === undefined) this.nodeG0.set(n, heightAt(n.x, n.z));
     }
 
     /** frame-time governor (headset): 0 = everything, 1 = no far grass, 2 = near grass only, 3 = no grass */
