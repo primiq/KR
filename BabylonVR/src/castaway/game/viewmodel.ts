@@ -8,7 +8,7 @@ import { ITEMS, type ItemId } from "./items";
 const T = {
     handle: tok("handle"), steel: tok("steel"), stone: tok("stoneTool"), diamond: tok("diamond"), skin: tok("skin"), sleeve: tok("sleeve"),
     guitar: tok("guitarBody"), rope: tok("rope"), paper: tok("paper"), soot: tok("soot"), flame: tok("flame"), item: tok("item"),
-    bark: tok("bark"), woodEnd: tok("woodEnd"), leaf: tok("leaf"), straw: tok("straw"), white: tok("white"), orange: tok("orange"), red: tok("red"),
+    bark: tok("bark"), woodEnd: tok("woodEnd"), bronze: tok("bronze"), leaf: tok("leaf"), straw: tok("straw"), white: tok("white"), orange: tok("orange"), red: tok("red"),
 };
 /** your skin tone, for the first-person hands */
 export function setViewSkin(hex: string) { setHandSkin(hex); }
@@ -51,8 +51,25 @@ export function heldModel(id: ItemId): THREE.Group {
         g.add(bout(0.165, -0.68), bout(0.125, -0.45));
         g.add(m(new THREE.CylinderGeometry(0.042, 0.042, 0.004, 16).rotateX(Math.PI / 2), T.soot, 0, -0.5, -0.037));
         g.add(m(new THREE.BoxGeometry(0.046, 0.5, 0.026), T.handle, 0, -0.1, -0.022));
-        g.add(m(new THREE.BoxGeometry(0.06, 0.13, 0.016), T.soot, 0, 0.215, -0.02));
-        g.add(m(new THREE.BoxGeometry(0.04, 0.88, 0.003), T.steel, 0, -0.29, -0.047));
+        g.add(m(new THREE.BoxGeometry(0.06, 0.13, 0.016), T.soot, 0, 0.27, -0.02));
+        // the fretboard and its frets, the nut, the bridge and saddle, a rosette round the sound hole, tuning pegs
+        g.add(m(new THREE.BoxGeometry(0.05, 0.43, 0.006), T.soot, 0, -0.01, -0.037));
+        for (let k = 0; k < 11; k++) { const y = 0.19 - 0.035 * k * (1 - k * 0.025); g.add(m(new THREE.BoxGeometry(0.05, 0.003, 0.004), T.steel, 0, y, -0.041)); }
+        g.add(m(new THREE.BoxGeometry(0.05, 0.008, 0.007), T.white, 0, 0.198, -0.042));
+        g.add(m(new THREE.BoxGeometry(0.17, 0.035, 0.01), T.soot, 0, -0.63, -0.04));
+        g.add(m(new THREE.BoxGeometry(0.15, 0.006, 0.006), T.white, 0, -0.62, -0.046));
+        g.add(m(new THREE.TorusGeometry(0.05, 0.005, 6, 24), T.woodEnd, 0, -0.5, -0.037));
+        for (let k = 0; k < 6; k++) { const sd = k < 3 ? -1 : 1; g.add(m(new THREE.CylinderGeometry(0.006, 0.006, 0.03, 6).rotateZ(Math.PI / 2), T.steel, sd * 0.042, 0.23 + (k % 3) * 0.035, -0.02)); }
+        // six real strings, fanning out from the nut to the bridge (the low ones bronze and thicker), each where the
+        // strumming hand finds it (game/guitar.ts STR_X, across the sound hole)
+        for (let i = 0; i < 6; i++) {
+            const a = new THREE.Vector3((i - 2.5) * 0.0075, 0.198, -0.046), b = new THREE.Vector3((i - 2.5) * 0.024, -0.62, -0.05);
+            const len = a.distanceTo(b), r = 0.0019 - i * 0.00018;
+            const str = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 5), i < 3 ? T.bronze : T.steel);
+            str.position.copy(a).add(b).multiplyScalar(0.5);
+            str.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+            g.add(str);
+        }
     } else if (id === "building_plan") {
         g.add(m(new THREE.CylinderGeometry(0.035, 0.035, 0.3, 10).rotateZ(Math.PI / 2), T.paper, 0, 0.02, 0));
     } else if (id === "wood") {

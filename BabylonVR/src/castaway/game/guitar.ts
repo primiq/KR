@@ -21,9 +21,10 @@ export const CHORDS: { name: string; notes: (number | null)[] }[] = [
 export interface StrumEvent { c: number; s: number[]; v: number; x: number; y: number; z: number }
 
 // the strum zone, in the guitar's own frame around the sound hole: strings run along y, lie across x, face -z
-const ZONE_Y = 0.16, ZONE_Z0 = -0.1, ZONE_Z1 = 0.05;
-/** where the hand crosses each string (spread wider than the real strings so a natural sweep catches them all) */
-const STR_X = [0, 1, 2, 3, 4, 5].map((i) => (i - 2.5) * 0.024);
+// (generous: a hand sweeping across them anywhere over the body, from a hand's breadth above them to just behind)
+const ZONE_Y = 0.24, ZONE_Z0 = -0.17, ZONE_Z1 = 0.07;
+/** where each string is, across the sound hole (the model's strings fan out to this from the nut: viewmodel.ts) */
+const STR_X = [0, 1, 2, 3, 4, 5].map((i) => (i - 2.5) * 0.0222);
 const HEAR = 45;
 
 const _l = new THREE.Vector3();

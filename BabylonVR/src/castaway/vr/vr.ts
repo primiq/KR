@@ -509,7 +509,7 @@ export class CastawayVR {
             this.zone3.matrix.fromArray(this.strumZone.getWorldMatrix().m as unknown as number[]);
             const g = R.src.grip ?? R.src.pointer, fwd = g.getDirection(Vector3.Forward(true));
             // (a little out along the fingers)
-            const at = g.absolutePosition.add(fwd.scale(0.07));
+            const at = g.absolutePosition.add(fwd.scale(0.09));
             const hit = game.guitar.track(dt, this.zone3, _v.set(at.x, at.y, at.z), new THREE.Vector3(player.pos.x, player.pos.y, player.pos.z));
             if (hit > 0) this.pulse("right", 0.12 + 0.3 * hit);
         } else if (heldId === "guitar") game.guitar.reset();
@@ -575,7 +575,7 @@ export class CastawayVR {
         if (!L) { if (this.guitar) { disposeBaked(this.guitar); this.guitar = null; this.strumZone = null; } return; }
         if (this.guitar?.parent) return;
         const b = bakeGroup("vrGuitar", heldModel("guitar"), this.scene, (k) => {
-            const map: Record<string, [string, number, number]> = { handle: ["#8b5e34", 0.85, 0], steel: ["#d8d2c4", 0.3, 0.6], soot: ["#0d0b0a", 1, 0] };
+            const map: Record<string, [string, number, number]> = { handle: ["#8b5e34", 0.85, 0], steel: ["#e8e4dc", 0.25, 0.8], soot: ["#0d0b0a", 1, 0], bronze: ["#c89a52", 0.3, 0.8], white: ["#efe9dc", 0.6, 0], woodEnd: ["#6b3e1e", 0.7, 0] };
             const m = map[k] ?? [ITEM_COLOR.guitar ?? "#b5763a", 0.6, 0];
             return solid(this.scene, m[0], m[1], m[2]);
         }, false);
