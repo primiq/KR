@@ -27,6 +27,7 @@ import {
     green, GREEN_CELL, GREEN_N, groundAt, inDesert, OASIS_GREEN0, OASIS_GREEN1, OASIS_R, OASIS_WATER, wet, wetAt,
 } from "./desertField";
 import { type SandOp, SandWorks } from "./sandworks";
+import type { Sandstorm } from "./sandstorm";
 import { mulberry32 } from "../core/noise";
 import type { ColliderGrid } from "./vegetation";
 import type { Ocean } from "../../island/ocean";
@@ -126,6 +127,8 @@ void main(void) {
 
 export class Desert {
     active = false;
+    /** the sandstorms (main makes it) */
+    storm: Sandstorm | null = null;
     /** 0 by day .. 1 at night (main sets it): the sand is darker by moonlight */
     night = 0;
     /** digging and heaping, the water and the green (the world's state: saved and shared) */

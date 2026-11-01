@@ -146,6 +146,9 @@ export class Atmosphere {
 
     /** 0..1: how much the desert's haze replaces the sea's (main sets it while you are in the desert) */
     desert = 0;
+    /** 0..1: a sandstorm (main sets it), and how thick its dust is where you are (fog density) */
+    dust = 0;
+    dustDensity = 0.3;
 
     update(dt: number) {
         const night = this.hour >= 19.5 || this.hour < 5.5;
@@ -217,6 +220,9 @@ export class Atmosphere {
         // ---- the weather: a grey sky lets less sun and sky light through; lightning lights everything up for a moment
         const ov = this.overcast;
         this.sun.intensity *= 1 - 0.85 * ov;
+        // (a sandstorm hides the sun behind the dust)
+        this.sun.intensity *= 1 - 0.6 * this.dust;
+        this.scene.environmentIntensity *= 1 - 0.3 * this.dust;
         this.moon.intensity *= 1 - ov;
         this.scene.environmentIntensity *= 1 - 0.5 * ov;
         // under a storm the sky fill grows a little greyer and stronger: overcast light is soft and even
@@ -278,6 +284,12 @@ export class Atmosphere {
             if (this.scene.fogMode !== Scene.FOGMODE_EXP2) this.scene.fogMode = Scene.FOGMODE_EXP2;
             this.scene.fogDensity = 0.0008 + 0.0017 * ov + 0.0008 * this.desert;
             this.scene.fogColor = Color3.Lerp(this.hzAway, this.hzSun, 0.35);
+            // a sandstorm: thick ochre dust, lit by what daylight gets through it
+            if (this.dust > 0.001) {
+                const lit = 0.12 + 0.88 * day, dc = new Color3(0.66 * lit, 0.53 * lit, 0.38 * lit);
+                this.scene.fogDensity += (this.dustDensity - this.scene.fogDensity) * this.dust;
+                this.scene.fogColor = Color3.Lerp(this.scene.fogColor, dc, this.dust);
+            }
             // under the sea: thick blue-green water that swallows everything past 20-odd metres (the open sea's empty
             // depths with it), lit from above by the day
             if (this.underwater > 0.001) {

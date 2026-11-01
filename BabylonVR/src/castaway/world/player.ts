@@ -75,6 +75,8 @@ export class Player {
     readonly pull = new Vector3();
     /** sea surface height (waves) at a point */
     surfaceAt: (x: number, z: number) => number = () => 0;
+    /** 0..1: wading against a sandstorm (main sets it): up to half speed */
+    slow = 0;
     /** is the water here a lake or a pool (its own level), not the sea (level 0)? */
     lakeAt: (x: number, z: number) => boolean = (x, z) => inDesert(x, z);
     /** camera shake output (radians / metres), read by the camera rig */
@@ -270,7 +272,7 @@ export class Player {
             } else {
                 const wading = smoothstep(0.1, 1.2, this.waterDepth);
                 const base = sprintNow ? this.body.run : this.body.walk;
-                const sp = base * (1 - 0.3 * wading);
+                const sp = base * (1 - 0.3 * wading) * (1 - 0.5 * this.slow);
                 const accel = this.onGround ? (this.body.cat ? 22 : 14) : (this.body.cat ? 9 : 4);
                 this.vel.x += (wishX * sp - this.vel.x) * Math.min(1, accel * dt);
                 this.vel.z += (wishZ * sp - this.vel.z) * Math.min(1, accel * dt);

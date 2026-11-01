@@ -363,6 +363,7 @@ export class WorldSync {
             case "dr": if (typeof e.x === "number" && typeof e.v === "number") g.drum.remote({ x: e.x, y: e.y, z: e.z, v: Math.max(0, Math.min(1, e.v)) }, g.player.pos, g.structures.list); break;
             case "sd": if (typeof e.x === "number" && typeof e.z === "number" && typeof e.r === "number" && typeof e.d === "number") g.under.desert?.remote({ x: e.x, z: e.z, r: Math.min(1.5, Math.abs(e.r)), d: Math.max(-0.6, Math.min(0.6, e.d)) }); break;
             case "sg": if (from === 0) g.under.desert?.green(); break;
+            case "sx": if (from === 0) g.under.desert?.storm?.remote(!!e.on, +e.l || 0); break;
             case "gs": if (typeof e.x === "number" && Array.isArray(e.s)) g.guitar.remote(e, Math.hypot(g.player.pos.x - e.x, g.player.pos.y - e.y, g.player.pos.z - e.z)); break;
             case "bo": if (e.op === "calm") { if (this.session.isHost && g.weather && g.weather.kind !== 0) g.weather.set(0); } else g.boats.net(e, from); break;
             case "cr": if (e.on) { const c = g.under.air?.cars[e.i]; if (c && c !== g.under.air?.driving) { g.under.air?.remote.set(e.i, from); c.driver = from; } } else g.under.air?.remoteLeave(e.i); break;

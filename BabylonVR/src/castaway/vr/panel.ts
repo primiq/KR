@@ -114,7 +114,7 @@ export class VRPanel {
         pingAt?(x: number, z: number): void;
         players?(): string | null;
         /** Settings > Developer (the cheats: no keys for them) */
-        dev?: { flying(): boolean; fly(): void; time(h: number): void };
+        dev?: { flying(): boolean; fly(): void; time(h: number): void; storm(): boolean };
     } | null = null;
     private craftKey = "";
     private jcWas = false;
@@ -427,9 +427,10 @@ export class VRPanel {
         text("Most changes apply straight away. A new preset or grass range rebuilds the island (saved first): you come straight back to it.", 110, 30);
         text("Developer", 70, 34);
         const r5 = row();
-        btn(r5, 520, () => `Flying: ${this.menuActions?.dev?.flying() ? "on" : "off"}`, () => this.menuActions?.dev?.fly(), () => !!this.menuActions?.dev?.flying());
-        btn(r5, 400, () => "Time -1 h", () => this.menuActions?.dev?.time(-1));
-        btn(r5, 400, () => "Time +1 h", () => this.menuActions?.dev?.time(1));
+        btn(r5, 400, () => `Flying: ${this.menuActions?.dev?.flying() ? "on" : "off"}`, () => this.menuActions?.dev?.fly(), () => !!this.menuActions?.dev?.flying());
+        btn(r5, 340, () => "Time -1 h", () => this.menuActions?.dev?.time(-1));
+        btn(r5, 340, () => "Time +1 h", () => this.menuActions?.dev?.time(1));
+        btn(r5, 420, () => "Sandstorm", () => { this.menuActions?.dev?.storm(); });
         pane.isVisible = false;
     }
 

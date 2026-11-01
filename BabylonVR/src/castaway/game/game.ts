@@ -1444,6 +1444,27 @@ export class Game {
         this.wearHeld();
     }
 
+    // ------------------------------------------------------------ shelter (from a sandstorm)
+    private shelterT = 0;
+    private shelterNow = false;
+    /** are you inside a building: walls most of the way round you, or a roof over you and walls on a good few sides */
+    sheltered(dt: number): boolean {
+        this.shelterT -= dt;
+        if (this.shelterT > 0) return this.shelterNow;
+        this.shelterT = 0.25;
+        const p = this.player, e = new Vector3(p.pos.x, p.pos.y + 1.1, p.pos.z), d = new Vector3();
+        let walls = 0;
+        for (let k = 0; k < 8; k++) {
+            const a = (k / 8) * Math.PI * 2;
+            d.set(Math.cos(a), 0, Math.sin(a));
+            const h = this.building.findPiece(e, d, 7);
+            if (h && (h.piece.kind === "wall" || h.piece.kind === "doorway" || h.piece.kind === "window")) walls++;
+        }
+        const roof = this.structures.ceilingAt?.(p.pos.x, p.pos.y, p.pos.z) != null;
+        this.shelterNow = !p.cave && (walls >= 6 || (roof && walls >= 4));
+        return this.shelterNow;
+    }
+
     // ------------------------------------------------------------ pools
     private poolHint = false;
     /** swimming in a pool: jump at the edge to pull yourself up onto the deck (it is 2 m deep) */

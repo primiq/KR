@@ -81,6 +81,7 @@ import { CLASSIC, cutBounds, findSpawn, heightAt, SPAWN_THETA, TERRAIN_SIZE } fr
 import { Waterfall } from "./world/waterfall";
 import { Seabed } from "./world/seabed";
 import { Desert } from "./world/desert";
+import { Sandstorm } from "./world/sandstorm";
 import { inDesert, OASIS_WATER } from "./world/desertField";
 import { Player } from "./world/player";
 import { Terrain } from "./world/terrain";
@@ -379,7 +380,9 @@ async function main() {
     sunMesh.setEnabled(false);
     const clock = new Atmosphere(scene, sun, skybox, env, ocean, null, q.name !== "high");
     // ---- Settings > Developer: flying and the time of day (no keys for them any more)
+    let devStorm: (() => boolean) | null = null;
     const devTools = {
+        storm: () => devStorm?.() ?? false,
         flying: () => (player.mode === "fly") !== input.flyToggle,
         fly: () => { input.flyToggle = !input.flyToggle; devLabel(); },
         time: (h: number) => { input.timeDelta += h; },
@@ -388,6 +391,7 @@ async function main() {
     $("dev-fly").addEventListener("click", () => devTools.fly());
     $("dev-time-back").addEventListener("click", () => { devTools.time(-1); $("dev-note").textContent = "Time moved back an hour."; });
     $("dev-time-fwd").addEventListener("click", () => { devTools.time(1); $("dev-note").textContent = "Time moved on an hour."; });
+    $("dev-storm").addEventListener("click", () => { $("dev-note").textContent = devTools.storm() ? "A sandstorm is blowing over the desert." : "No sandstorm now."; });
     $("settings-open").addEventListener("click", devLabel);
     if (headset) clock.beLean();
     if (params.has("hour")) clock.hour = parseFloat(params.get("hour")!);
@@ -545,6 +549,18 @@ async function main() {
     const desert = new Desert(scene, headset || q.name === "low", vegetation.colliders, () => sun.direction, ocean);
     game.under.desert = desert;
     desertRef = desert;
+    // the desert's sandstorms: the host says when; out in one you see a few metres and wade against it; a building shelters you
+    const storm = new Sandstorm(scene, headset || q.name === "low");
+    desert.storm = storm;
+    storm.onChange = (on, left) => sync?.session.sendEvent({ k: "sx", on: on ? 1 : 0, l: +left.toFixed(2) });
+    storm.onTurn = (on) => { if (desert.active) game.hud.message(on ? "A sandstorm is blowing in! Get inside a building." : "The sandstorm has passed."); };
+    let stormWind = 0;
+    // (Settings > Developer: start or stop one now; the host's word, as always)
+    devStorm = () => {
+        if (sync && !sync.session.isHost) { game.hud.message("Only the host can call up a sandstorm"); return storm.on; }
+        const on = !storm.on; storm.remote(on, on ? 4 : 0); storm.onChange?.(on, storm.left);
+        return on;
+    };
     poolAt = (x, z) => game.building.poolWater(x, z);
     game.sand = desert;
     // (digging under a palm or a rock: it settles with the sand)
@@ -790,6 +806,16 @@ async function main() {
                 if (sync) for (const a of sync.avatars.positions) { const st = sync.session.states.get(a.id); walkers.push({ id: a.id, x: a.x, y: a.y, z: a.z, run: !!st && (st.flags & 1) !== 0 }); }
                 desert.night = 1 - clock.day;
                 desert.update(dt, player.pos, walkers, camera.globalPosition, clock.hour);
+                {
+                    const eye = scene.activeCamera?.globalPosition ?? camera.globalPosition;
+                    const sh = desert.active && game.sheltered(dt);
+                    const dk = storm.update(dt, clock.hour, !sync || sync.session.isHost, desert.active && !player.cave, sh, eye, clock.day);
+                    clock.dust = dk;
+                    clock.dustDensity = 0.3 * (1 - storm.shelter) + 0.035 * storm.shelter;
+                    player.slow = dk * (1 - storm.shelter);
+                    const w = dk * (0.9 - 0.65 * storm.shelter);
+                    if (Math.abs(w - stormWind) > 0.01) { stormWind = w; game.sfx.setWind(w); }
+                }
                 if (desert.active !== was) { ocean.mesh.setEnabled(!desert.active); vegetation.setGrassDetail(desert.active ? 3 : 0); ocean.setMirrorLevel(desert.active ? OASIS_WATER : 0); }
                 clock.desert += ((desert.active ? 1 : 0) - clock.desert) * Math.min(1, dt * 2);
                 if (!desert.active && clock.desert < 1e-3) clock.desert = 0;
