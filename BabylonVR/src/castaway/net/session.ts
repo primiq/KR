@@ -29,7 +29,7 @@ export const MAX_PLAYERS = 8;
 /** bump when messages change incompatibly, so mismatched versions get a clear error instead of weirdness */
 /** Babylon port: its own protocol line (the three.js and Babylon builds cannot share a room) */
 export const PROTOCOL = CLASSIC ? 1001 : 1000;
-const TIMEOUT_CLIENT = 12000, TIMEOUT_HOST = 15000, KEEPALIVE = 1500;
+const TIMEOUT_CLIENT = 8000, TIMEOUT_HOST = 6000, KEEPALIVE = 1500;
 const now = () => performance.now();
 
 const r2 = (n: number) => +n.toFixed(2), r3 = (n: number) => +n.toFixed(3);
@@ -129,9 +129,13 @@ export class Session {
     l.onMessage = (m) => {
       if (m.t === 'hi' && id < 0) {
         if (m.v !== PROTOCOL) { l.send({ t: 'bad', why: 'This game is a different version. Everyone should reload the page, then try again.' }); l.close(); return; }
+        // somebody coming back (they closed the page, or dropped): whoever still has their name is their old self, a ghost
+        // now; it goes, so there are never two of them
+        const nm = String(m.name || 'Castaway').slice(0, 14);
+        for (const [pid, p] of this.players) if (pid !== 0 && p.name === nm) { this.links.get(pid)?.close(); this.drop(pid); }
         if (this.players.size >= MAX_PLAYERS) { l.send({ t: 'full' }); l.close(); return; }
         id = this.nextId++;
-        const info: PlayerInfo = { id, name: this.uniqueName(String(m.name || 'Castaway').slice(0, 14)), look: parseOutfit(m.look) ?? undefined };
+        const info: PlayerInfo = { id, name: this.uniqueName(nm), look: parseOutfit(m.look) ?? undefined };
         this.players.set(id, info);
         this.links.set(id, l);
         this.rx.set(id, now());
@@ -173,6 +177,7 @@ export class Session {
   }
 
   private fromClient(id: number, m: any) {
+    if (m.t === 'bye') { this.links.get(id)?.close(); this.drop(id); return; }
     if (m.t === 'me') this.states.set(id, unpack(m.s));
     else if (m.t === 'ev') {
       this.safeEvent(id, m.e);
@@ -205,6 +210,7 @@ export class Session {
         break;
       case 'ev': this.safeEvent(m.from, m.e); break;
       case 'pn': this.pings.set(this.myId, Math.round(now() - m.ts)); break;
+      case 'bye': this.lost('The host left the game'); break;
       case 'kick': this.kicked = true; this.lost('You were removed from the game by the host', true); break;
       case 'join': this.players.set(m.p.id, m.p); this.onJoin?.(m.p); break;
       case 'left': {
@@ -271,6 +277,13 @@ export class Session {
       if (this.hourT >= HOUR_EVERY) { this.hourT = 0; if (this.links.size) this.broadcast({ t: 'hour', h: this.getHour?.() ?? 12, pg: Object.fromEntries(this.pings) }); }
       if (this.stT >= STATIONS_EVERY) { this.stT = 0; if (this.links.size) this.onPeriodic?.(); }
     }
+  }
+
+  /** the page is closing: say so, so the others drop you at once (and a guest can come straight back) */
+  bye() {
+    if (this.closed) return;
+    try { if (this.isHost) this.broadcast({ t: 'bye' }); else this.up?.send({ t: 'bye' }); } catch { /* closing anyway */ }
+    this.close();
   }
 
   close() {

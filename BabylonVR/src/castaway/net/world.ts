@@ -61,6 +61,8 @@ export function applyWorld(g: Game, snap: any) {
     // (the desert's dug sand first: what stands on it is placed on the ground as it is)
     g.under.desert?.restore(snap.sand);
     for (const [t, i, j, a, H, L, d] of snap.pieces ?? []) g.building.placeRemote(t as PieceKind, i, j, a, H, L ?? 0, d ?? 0);
+    // (boats first: whatever stands on their decks is placed on them)
+    if (snap.boats) g.boats.restore(snap.boats);
     for (const s of [...g.structures.list]) g.structures.remove(s, true);
     for (const row of snap.structs ?? []) placeStruct(g, row);
     if (snap.build) g.building.restoreExtras(snap.build);
@@ -70,7 +72,6 @@ export function applyWorld(g: Game, snap: any) {
     if (snap.plants) g.saplings.restore(snap.plants);
     if (snap.doors) g.doors.restore(snap.doors);
     if (snap.paintings) g.paintings.restore(snap.paintings);
-    if (snap.boats) g.boats.restore(snap.boats);
     if (snap.camp) g.under.camp?.importProgress(snap.camp);
 }
 

@@ -372,7 +372,7 @@ function toWorld<T extends PV>(p: Pose, lx: number, ly: number, lz: number, out:
   out.set(w.x, w.y, w.z);
   return out;
 }
-const _tw = new THREE.Vector3();
+const _tw = new THREE.Vector3(), _yq = new THREE.Quaternion(), _up = new THREE.Vector3(0, 1, 0);
 /** and back (the exact inverse) */
 function toLocal(p: Pose, x: number, y: number, z: number, out: THREE.Vector3) {
   tmpE.set(p.pitch, p.yaw, p.roll); tmpQ.setFromEuler(tmpE).invert();
@@ -489,6 +489,23 @@ export class Boats {
     if (!remote) this.onEvent?.({ op: 'del', n: b.nid });
   }
   byId(nid: string) { return this.list.find((b) => b.nid === nid) ?? null; }
+  /** something set down at (x, y, z): on which boat's deck, and where on it (boat-space) and turned how, or null */
+  deckSpot(x: number, y: number, z: number, yaw: number): { n: string; l: [number, number, number, number] } | null {
+    for (const b of this.list) {
+      if (Math.abs(b.x - x) > LEN || Math.abs(b.z - z) > LEN) continue;
+      const l = toLocal(pose(b), x, y, z, L1);
+      if (Math.abs(l.x) < HB + 0.3 && Math.abs(l.z) < LEN / 2 + 0.3 && l.y > DECK - 0.6 && l.y < DECK + 3) return { n: b.nid, l: [+l.x.toFixed(3), +l.y.toFixed(3), +l.z.toFixed(3), +(yaw - b.yaw).toFixed(3)] };
+    }
+    return null;
+  }
+  /** where a spot on a boat's deck is now (and how it is turned, tilted with the boat), or null if that boat is gone */
+  deckWorld(n: string, l: [number, number, number, number], out: { x: number; y: number; z: number; yaw: number; q: THREE.Quaternion }): boolean {
+    const b = this.byId(n); if (!b) return false;
+    const p = pose(b), w = toWorld(p, l[0], l[1], l[2], L2);
+    out.x = w.x; out.y = w.y; out.z = w.z; out.yaw = b.yaw + l[3];
+    tmpE.set(p.pitch, p.yaw, p.roll); out.q.setFromEuler(tmpE).multiply(_yq.setFromAxisAngle(_up, l[3]));
+    return true;
+  }
   /** somebody aboard? (me, or anyone whose deck position we heard lately) */
   aboard(b: Boat) { return this.on === b || [...this.riders.values()].some((r) => r.b === b && this.clock - r.t < 2); }
 

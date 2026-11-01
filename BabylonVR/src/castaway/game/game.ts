@@ -252,7 +252,8 @@ export class Game {
             const e = new Vector3(x, y + 0.4, z), hit = this.building.findPiece(e, new Vector3(0, 1, 0), 4.5);
             return hit && (hit.piece.kind === "roof" || hit.piece.kind === "floor" || hit.piece.kind === "foundation") ? e.y + hit.dist : null;
         };
-        this.structures.ground = this.building.ground;
+        // (boats' decks count as ground for setting things down: a drum on deck)
+        this.structures.ground = (x, z, y) => Math.max(this.building.ground(x, z, y), this.boats ? this.boats.ground(x, z, y ?? 1e9) : -1e9);
         this.structures.touchesBuilding = (x, z, r, y) => this.building.touches(x, z, r, y);
         this.structures.railPosts = () => this.building.railPosts();
         this.structures.railPostAt = (x, z, y) => this.building.railPostAt(x, z, y);
@@ -317,6 +318,9 @@ export class Game {
         this.slide.sound = (k, v) => { if (k === "splash") this.sfx.splash(v); else if (k === "land") this.sfx.splash(0.6); else this.sfx.whoosh(); };
         this.boats = new Boats(this.natureRoot, !!o.shadows);
         this.player.roam = (x, z) => this.boats.list.some((b) => Math.hypot(b.x - x, b.z - z) < 30);
+        // things set down on a deck (a drum, a torch, a box...) sail with the boat
+        this.structures.deckSpot = (x, y, z, yaw) => this.boats.deckSpot(x, y, z, yaw);
+        this.structures.deckWorld = (n, l, out) => this.boats.deckWorld(n, l, out);
         this.boats.surface = (x, z) => this.player.surfaceAt(x, z);
         this.boats.say = (t) => this.hud.message(t);
         this.boats.sfx = this.sfx as never;
@@ -1583,6 +1587,7 @@ export class Game {
     }
     private pickupBoat(b: Boat) {
         if (this.boats.aboard(b)) { this.hud.message("Somebody is aboard"); this.sfx.denied(); return; }
+        if (this.structures.list.some((s) => s.deck?.n === b.nid)) { this.hud.message("Take everything off the deck first"); this.sfx.denied(); return; }
         if (this.inv.add("boat", 1) > 0) { this.hud.message("No room in your pockets"); this.sfx.denied(); return; }
         this.boats.remove(b); this.sfx.pickup(); this.hud.message("Boat picked up");
     }

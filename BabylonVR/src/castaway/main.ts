@@ -1169,7 +1169,9 @@ async function main() {
         if (fatal || old.kicked) { game.hud.message(why); sync = null; return; }
         const ids = [...old.players.keys()].filter((i) => i !== 0).sort((a, b) => a - b);
         game.hud.message("Connection lost. Trying to reconnect…");
-        for (let i = 0; i < 2; i++) {
+        // (the host said goodbye: no point trying their room again, straight to who takes over)
+        const hostGone = /host left/i.test(why);
+        for (let i = 0; i < (hostGone ? 0 : 2); i++) {
             try {
                 const { session, snap, hour } = await Session.join(netKind, old.code, old.name, true);
                 clock.hour = hour;
@@ -1181,7 +1183,9 @@ async function main() {
                 await sleep(800);
             }
         }
-        if (ids.length <= 1) { game.hud.message(`${why}. You are playing solo now.`); sync = null; return; }
+        // (the room lives on with whoever is left, under the same code, so the one who dropped can come straight back;
+        //  only with nobody else ever here does it close)
+        if (!ids.length) { game.hud.message(`${why}. You are playing solo now.`); sync = null; return; }
         if (ids[0] === old.myId) {
             game.hud.message("The host left. You are the new host…");
             for (let i = 0; i < 10; i++) {
@@ -1206,6 +1210,8 @@ async function main() {
         game.hud.message("Could not reconnect. You are playing solo now.");
         sync = null;
     };
+    // closing the page (or the browser): tell the room at once, rather than leaving a ghost standing there for a while
+    window.addEventListener("pagehide", () => { sync?.session.bye(); });
     const doHost = async (wantVR = false) => {
         const b = $<HTMLButtonElement>("mp-host");
         b.disabled = true;

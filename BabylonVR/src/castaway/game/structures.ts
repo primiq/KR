@@ -1,4 +1,4 @@
-import { type AbstractMesh, Color3, Constants, DynamicTexture, type Material, PBRMaterial, PointLight, type Scene, StandardMaterial, TransformNode, Vector3 } from "@babylonjs/core";
+import { type AbstractMesh, Color3, Quaternion, Constants, DynamicTexture, type Material, PBRMaterial, PointLight, type Scene, StandardMaterial, TransformNode, Vector3 } from "@babylonjs/core";
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { bakeGroup, disposeBaked, tok } from "../render/bake";
@@ -429,6 +429,8 @@ export interface Structure {
   lamp: THREE.Vector3 | null;
   phase: number;
   emberT: number;
+  /** set down on a boat's deck: which boat, and where on it (boat-space x, y, z, turn): it sails with it */
+  deck?: { n: string; l: [number, number, number, number] } | null;
 }
 
 const _e = new THREE.Euler(), _q = new THREE.Quaternion();
@@ -626,6 +628,8 @@ export class StructureManager {
 
   place(kind: PlaceKind, a: PlaceAim, nid?: string, silent = false): Structure | null {
     if (!a.ok) return null;
+    // (on a boat's deck: it rides with the boat, no plinth under it and no fixed collider)
+    const deck = this.deckSpot?.(a.x, a.y, a.z, a.yaw) ?? null;
     let hook = 0;
     if (kind === "lantern") {
       const c = this.ceilingAt?.(a.x, a.y, a.z);
@@ -634,7 +638,7 @@ export class StructureManager {
     const m = buildModel(kind, this.shadows, hook);
     // a packed-earth plinth under the footprint hides any gap where the ground falls away
     const post = this.onPost(kind, a);
-    const onTop = post || (ON_TABLE.includes(kind) && Math.abs(this.tableTop(a.x, a.z, a.y + 0.1) - a.y) < 0.05);
+    const onTop = post || !!deck || (ON_TABLE.includes(kind) && Math.abs(this.tableTop(a.x, a.z, a.y + 0.1) - a.y) < 0.05);
     for (const [lx, lz, r] of onTop ? [] : FOOT[kind].cols) {
       const gx = a.x + lx * Math.cos(a.yaw) + lz * Math.sin(a.yaw), gz = a.z - lx * Math.sin(a.yaw) + lz * Math.cos(a.yaw);
       let low = a.y;
@@ -677,6 +681,7 @@ export class StructureManager {
     const s: Structure = {
       id: this.nextId++, nid: nid ?? `${this.idPrefix}${this.nextId}`, kind, x: a.x, y: a.y, z: a.z, yaw: a.yaw, node, cols, hits, inv,
       // a new campfire is built with a few logs already burning
+      deck,
       fuel: kind === "campfire" ? 3 * WOOD_BURN.campfire : 0, lit: kind === "torch" || kind === "lantern" || kind === "campfire", prog: 0, flames, glow, lamp, phase: Math.random() * 10, emberT: 0,
     };
     if (kind === "lantern" && lamp) {
@@ -687,6 +692,11 @@ export class StructureManager {
     if (!silent) this.onPlace?.(s);
     return s;
   }
+
+  /** (set by the game) the boat deck under a spot, and where a deck spot is now */
+  deckSpot: ((x: number, y: number, z: number, yaw: number) => { n: string; l: [number, number, number, number] } | null) | null = null;
+  deckWorld: ((n: string, l: [number, number, number, number], out: { x: number; y: number; z: number; yaw: number; q: THREE.Quaternion }) => boolean) | null = null;
+  private deckTmp = { x: 0, y: 0, z: 0, yaw: 0, q: new THREE.Quaternion() };
 
   remove(s: Structure, silent = false) {
     const i = this.list.indexOf(s);
@@ -755,6 +765,17 @@ export class StructureManager {
 
   update(dt: number, px: number, _py: number, pz: number) {
     this.time += dt;
+    // things on boats' decks sail with them
+    for (const s of this.list) {
+      if (!s.deck || !this.deckWorld?.(s.deck.n, s.deck.l, this.deckTmp)) continue;
+      const w = this.deckTmp, dx = w.x - s.x, dy = w.y - s.y, dz = w.z - s.z, dyaw = w.yaw - s.yaw;
+      s.x = w.x; s.y = w.y; s.z = w.z; s.yaw = w.yaw;
+      s.node.position.set(w.x, w.y, w.z);
+      if (!s.node.rotationQuaternion) s.node.rotationQuaternion = new Quaternion();
+      s.node.rotationQuaternion.set(w.q.x, w.q.y, w.q.z, w.q.w);
+      const c = Math.cos(dyaw), sn = Math.sin(dyaw);
+      for (const h of s.hits) { const hx = h.x + dx - w.x, hz = h.z + dz - w.z; h.x = w.x + hx * c + hz * sn; h.z = w.z - hx * sn + hz * c; h.y += dy; }
+    }
     const t = this.time;
     const cands: { s: Structure; d: number }[] = [];
     this.fireNear = 0;
