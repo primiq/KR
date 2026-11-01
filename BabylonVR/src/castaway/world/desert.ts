@@ -17,6 +17,7 @@ import {
     RenderTargetTexture, type Scene, ShaderMaterial, Texture, ToHalfFloat, Vector3, VertexData,
 } from "@babylonjs/core";
 import { PBRCustomMaterial } from "@babylonjs/materials";
+import grassJpg from "@eztree/app/public/grass.jpg?url";
 import * as THREE from "three";
 import { NOISE_GLSL, foliageMaterial } from "../render/materials";
 import { Inst } from "../render/inst";
@@ -139,6 +140,7 @@ export class Desert {
     private digTex!: RawTexture;
     private wetTex!: RawTexture;
     private greenTex!: RawTexture;
+    private grassTex!: Texture;
     private def: RenderTargetTexture[] = [];
     private cur = 0;
     private fx!: EffectRenderer;
@@ -175,6 +177,9 @@ export class Desert {
         for (const t of [this.digTex, this.wetTex, this.greenTex]) t.wrapU = t.wrapV = Texture.CLAMP_ADDRESSMODE;
         this.works.digDirty = this.works.wetDirty = null; this.works.greenDirty = false;
 
+        // ---- the grass texture (the island's)
+        this.grassTex = new Texture(grassJpg, scene, false, true, Texture.TRILINEAR_SAMPLINGMODE);
+        this.grassTex.anisotropicFilteringLevel = this.lite ? 2 : 8;
         // ---- the trodden-sand window (two textures, ping-ponged)
         for (let k = 0; k < 2; k++) {
             const rt = new RenderTargetTexture(`sandDeform${k}`, DEF_N, scene, { generateMipMaps: false, type: Constants.TEXTURETYPE_HALF_FLOAT, format: Constants.TEXTUREFORMAT_RGBA, samplingMode: Texture.BILINEAR_SAMPLINGMODE });
@@ -202,6 +207,7 @@ export class Desert {
         m.AddUniform("dDig", "sampler2D", null as never);
         m.AddUniform("dWet", "sampler2D", null as never);
         m.AddUniform("dGreen", "sampler2D", null as never);
+        m.AddUniform("dGrassTex", "sampler2D", null as never);
         m.AddUniform("dInfo", "vec4", null as never);      // field centre x, z; half size; cell
         m.AddUniform("dWin", "vec4", null as never);       // window origin x, z; size; fine (1) or coarse (0)
         m.AddUniform("dFine", "vec4", null as never);      // fine grid centre x, z; half size; time
@@ -289,6 +295,22 @@ ${this.lite ? "" : `            wetN = max(wetN, 0.6 * max(max(dWetAt(wp.xz + ve
             // (drier, yellower patches here and there, and darker lusher ones where it is greenest)
             green = mix(green, vec3(0.42, 0.38, 0.19), smoothstep(0.35, 0.9, n4 * 0.5 + 0.5) * 0.5);
             green = mix(green, vec3(0.14, 0.24, 0.07), smoothstep(0.55, 0.95, n1 * 0.5 + 0.5) * 0.4);
+            // the grass itself: the island's grass texture at two scales (so it never reads as tiled), tinted to the
+            // oasis's dusty olive and its patches, with its blades roughening the light a little
+            vec3 gt = toLinearSpace(texture2D(dGrassTex, wp.xz * 0.29).rgb);
+            vec3 gt2 = toLinearSpace(texture2D(dGrassTex, wp.xz * 0.071 + vec2(0.37, 0.61)).rgb);
+            vec3 gtex = mix(gt, gt2, 0.35);
+            float gl = dot(gtex, vec3(0.333));
+            // (the texture's detail, its greens pulled towards the oasis's olive and a little desaturated)
+            vec3 tinted = gtex * vec3(0.86, 0.96, 0.56);
+            tinted = mix(vec3(dot(tinted, vec3(0.3, 0.59, 0.11))), tinted, 0.85);
+            green = mix(green * clamp(gl * 4.0, 0.6, 1.3), tinted, 0.6) * 1.4;
+            green = clamp(green, vec3(0.0), vec3(0.5));
+            if (grass > 0.05) {
+                float gx = dot(toLinearSpace(texture2D(dGrassTex, wp.xz * 0.29 + vec2(0.004, 0.0)).rgb), vec3(0.333)) - dot(gt, vec3(0.333));
+                float gz = dot(toLinearSpace(texture2D(dGrassTex, wp.xz * 0.29 + vec2(0.0, 0.004)).rgb), vec3(0.333)) - dot(gt, vec3(0.333));
+                normalW = normalize(normalW - vec3(gx, 0.0, gz) * 6.0 * grass);
+            }
             vec3 col = mix(sand, green, grass);
             col = mix(col, col * vec3(0.62, 0.56, 0.5), wetK * 0.8);
             // under water: darker and greener with depth (only where water really stands)
@@ -324,6 +346,7 @@ ${this.lite ? "" : `            wetN = max(wetN, 0.6 * max(max(dWetAt(wp.xz + ve
             e.setTexture("dDef", this.def[this.cur]);
             e.setTexture("dWet", this.wetTex);
             e.setTexture("dGreen", this.greenTex);
+            e.setTexture("dGrassTex", this.grassTex);
             e.setFloat4("dWin", this.origin.x, this.origin.z, WIN, fine ? 1 : 0);
             e.setFloat4("dFine", this.fine.position.x, this.fine.position.z, FINE / 2, this.time);
             e.setFloat4("dEdit", EDIT_X0, EDIT_Z0, EDIT_HALF * 2, this.night);
