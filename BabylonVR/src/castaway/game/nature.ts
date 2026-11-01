@@ -324,51 +324,69 @@ export class Birds {
 // Flocks of flamingos wade in the shallows by day: they stalk slowly through ankle-deep water, stop to feed (head down in the water),
 // rest on one leg, and when you come too close the whole flock runs a few steps and takes off on slow wingbeats, legs trailing,
 // to settle in other shallows further along the shore. Local to each player, like the small birds.
+type FlState = 'wade' | 'feed' | 'rest' | 'preen' | 'stretch' | 'fly';
 interface Flamingo {
-  x: number; y: number; z: number; yaw: number; st: 'wade' | 'feed' | 'rest' | 'fly';
+  x: number; y: number; z: number; yaw: number; st: FlState;
   t: number; tx: number; tz: number; flock: number; fx: number; fy: number; fz: number; ty: number; dur: number; flap: number; s: number;
+  /** the pose, eased towards each state's: neck (lower, upper, turn), legs (hip, knee: left, right), wings open 0..1, step phase */
+  n1: number; n2: number; ny: number; hip: [number, number]; knee: [number, number]; wing: number; phase: number; side: number; moving: number;
 }
 const FL_CAP = 30;
 
-function flamingoBody() {
-  const m = new Mesher(), pink = '#f48aa8', deep = '#e0607e', pale = '#fbc2cf';
-  m.sph(0.2, pink, 0, 0.95, 0, 0.75, 0.62, 1.15, 10);                 // body (head towards -z)
-  m.sph(0.12, deep, 0, 0.98, 0.18, 0.7, 0.5, 0.9, 7);                 // tail feathers
-  // the S-shaped neck: up from the chest, a bend, then the head
-  m.cyl(0.03, 0.035, 0.32, pink, 0, 1.13, -0.17, 1, 1, 6, 0.35);
-  m.cyl(0.028, 0.03, 0.3, pink, 0, 1.4, -0.16, 1, 1, 6, -0.45);
-  m.sph(0.055, pale, 0, 1.57, -0.24, 0.9, 0.9, 1.2, 7);               // head
-  m.cyl(0.018, 0.026, 0.12, '#f3e6dc', 0, 1.53, -0.31, 1, 1, 5, 1.9); // beak
-  m.cyl(0.012, 0.018, 0.05, '#1a1a1a', 0, 1.49, -0.37, 1, 1, 5, 2.6); // black beak tip
-  for (const s of [-1, 1]) m.sph(0.012, '#1a1a1a', s * 0.04, 1.59, -0.27, 1, 1, 1, 4);
-  // long pink legs with a backward knee
-  for (const s of [-1, 1]) {
-    m.cyl(0.012, 0.014, 0.45, deep, s * 0.06, 0.62, 0.02, 1, 1, 5, 0.12);
-    m.cyl(0.011, 0.012, 0.42, deep, s * 0.06, 0.22, -0.01, 1, 1, 5, -0.05);
-    m.box(0.07, 0.015, 0.1, deep, s * 0.06, 0.01, -0.04);
-  }
-  return m.build(false);
+/** a flamingo in parts, each drawn as one instanced mesh for the whole flock (pivots at their joints) */
+function flamingoParts() {
+  const pink = '#f48aa8', deep = '#e0607e', pale = '#fbc2cf', leg = '#e8728c';
+  // the body, its pivot in the middle (head towards -z); a paler breast and a dark-tipped tail
+  const torso = new Mesher();
+  torso.sph(0.2, pink, 0, 0, 0, 0.75, 0.62, 1.15, 12);
+  torso.sph(0.13, pale, 0, -0.02, -0.12, 0.85, 0.7, 0.8, 9);
+  torso.sph(0.12, deep, 0, 0.03, 0.2, 0.7, 0.5, 0.9, 8);
+  torso.sph(0.06, '#2a1d22', 0, 0.02, 0.29, 0.8, 0.4, 0.8, 6);
+  // the lower neck, from the chest up; the upper neck with the head on it, from the bend
+  const neck1 = new Mesher();
+  neck1.cyl(0.028, 0.038, 0.3, pink, 0, 0.15, 0, 1, 1, 7);
+  neck1.sph(0.03, pink, 0, 0.3, 0, 1, 1, 1, 6);
+  const neck2 = new Mesher();
+  neck2.cyl(0.025, 0.029, 0.26, pink, 0, 0.13, 0, 1, 1, 7);
+  neck2.sph(0.055, pale, 0, 0.27, -0.03, 0.9, 0.9, 1.2, 8);                          // head
+  neck2.cyl(0.018, 0.026, 0.12, '#f3e6dc', 0, 0.23, -0.1, 1, 1, 6, 1.9);            // the bent beak
+  neck2.cyl(0.012, 0.018, 0.05, '#1a1a1a', 0, 0.19, -0.16, 1, 1, 5, 2.6);           // its black tip
+  for (const sd of [-1, 1]) neck2.sph(0.011, '#1a1a1a', sd * 0.04, 0.29, -0.06, 1, 1, 1, 5);
+  // a leg: the thigh from the hip to the backward "knee" (the ankle), and the shin and foot below it
+  const legU = new Mesher();
+  legU.cyl(0.014, 0.016, 0.44, leg, 0, -0.22, 0, 1, 1, 6);
+  legU.sph(0.022, deep, 0, -0.44, 0, 1, 1, 1, 6);
+  const legL = new Mesher();
+  legL.cyl(0.011, 0.013, 0.42, leg, 0, -0.21, 0, 1, 1, 6);
+  legL.box(0.075, 0.014, 0.11, deep, 0, -0.42, -0.04);
+  // a wing: feathered outline, pink coverts and black flight feathers at the tip and trailing edge (span along +x)
+  const wingM = new Mesher();
+  const shape = (pts: number[][]) => { const sh = new THREE.Shape(); sh.moveTo(pts[0][0], pts[0][1]); for (const q of pts.slice(1)) sh.lineTo(q[0], q[1]); return new THREE.ShapeGeometry(sh).rotateX(Math.PI / 2); };
+  wingM.add(shape([[0, -0.07], [0.16, -0.1], [0.36, -0.07], [0.48, -0.02], [0.44, 0.04], [0.32, 0.07], [0.2, 0.11], [0.06, 0.12], [0, 0.1]]), pink);
+  wingM.add(shape([[0.34, -0.065], [0.5, -0.04], [0.62, 0.0], [0.6, 0.03], [0.5, 0.05], [0.44, 0.06], [0.4, 0.04]]).translate(0, 0.002, 0), '#1e1418');
+  wingM.add(shape([[0.06, 0.1], [0.2, 0.1], [0.34, 0.06], [0.44, 0.05], [0.4, 0.1], [0.24, 0.15], [0.08, 0.15]]).translate(0, -0.002, 0), '#2a1d22');
+  const built = { torso: torso.build(false), neck1: neck1.build(false), neck2: neck2.build(false), legU: legU.build(false), legL: legL.build(false), wing: wingM.build(false) };
+  (built.wing.material as THREE.Material).side = THREE.DoubleSide;
+  return built;
 }
+
+const _fq = new THREE.Quaternion(), _fq2 = new THREE.Quaternion(), _fe = new THREE.Euler(), _fm = new THREE.Matrix4(), _fm2 = new THREE.Matrix4(), _fv = new THREE.Vector3(), _fs = new THREE.Vector3(1, 1, 1);
+const _fz = new THREE.Vector3(0, 0, 1);
+const _foldQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(1.35, -1.4, 0, 'YXZ'));
+const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
 
 export class Flamingos {
   readonly group = new THREE.Group();
   private list: Flamingo[] = [];
-  private body: THREE.InstancedMesh;
-  private wingL: THREE.InstancedMesh;
-  private wingR: THREE.InstancedMesh;
+  private parts: Record<'torso' | 'neck1' | 'neck2' | 'legU' | 'legL' | 'wing', THREE.InstancedMesh>;
   private spawnT = 3;
   private flocks = 0;
-  private d = new THREE.Object3D();
-  private w = new THREE.Object3D();
   sound: ((kind: 'honk' | 'flap', vol: number) => void) | null = null;
 
   constructor() {
-    const b = flamingoBody();
-    this.body = new THREE.InstancedMesh(b.geometry, b.material as THREE.Material, FL_CAP);
-    const wg = new THREE.BoxGeometry(0.55, 0.012, 0.22).translate(0.27, 0, 0);
-    const wm = new THREE.MeshStandardMaterial({ color: '#f06a8a', roughness: 0.8, side: THREE.DoubleSide });
-    this.wingL = new THREE.InstancedMesh(wg, wm, FL_CAP); this.wingR = new THREE.InstancedMesh(wg, wm, FL_CAP);
-    for (const m of [this.body, this.wingL, this.wingR]) { m.count = 0; m.frustumCulled = false; this.group.add(m); }
+    const b = flamingoParts();
+    const inst = (m: THREE.Mesh, n: number) => { const im = new THREE.InstancedMesh(m.geometry, m.material as THREE.Material, n); im.count = 0; im.frustumCulled = false; this.group.add(im); return im; };
+    this.parts = { torso: inst(b.torso, FL_CAP), neck1: inst(b.neck1, FL_CAP), neck2: inst(b.neck2, FL_CAP), legU: inst(b.legU, FL_CAP * 2), legL: inst(b.legL, FL_CAP * 2), wing: inst(b.wing, FL_CAP * 2) };
   }
 
   /** ankle-deep water, flat enough to wade in */
@@ -390,7 +408,8 @@ export class Flamingos {
       for (let k = 0; k < 8; k++) {
         const x = c.x + (Math.random() - 0.5) * 7, z = c.z + (Math.random() - 0.5) * 7, h = this.shallow(x, z);
         if (h === null) continue;
-        this.list.push({ x, y: h, z, yaw: Math.random() * 6.28, st: 'wade', t: Math.random() * 4, tx: x, tz: z, flock: f, fx: x, fy: h, fz: z, ty: h, dur: 1, flap: Math.random() * 6, s: 0.92 + Math.random() * 0.16 });
+        this.list.push({ x, y: h, z, yaw: Math.random() * 6.28, st: 'wade', t: Math.random() * 4, tx: x, tz: z, flock: f, fx: x, fy: h, fz: z, ty: h, dur: 1, flap: Math.random() * 6, s: 0.92 + Math.random() * 0.16,
+          n1: 0.12, n2: -0.25, ny: 0, hip: [0, 0], knee: [0, 0], wing: 0, phase: Math.random() * 6, side: Math.random() < 0.5 ? -1 : 1, moving: 0 });
         break;
       }
     }
@@ -407,6 +426,14 @@ export class Flamingos {
     }
   }
 
+  /** a few steps somewhere nearby in the shallows */
+  private stroll(b: Flamingo, far = 1) {
+    for (let k = 0; k < 6; k++) {
+      const a = b.yaw + (Math.random() - 0.5) * 2.6, l = (1 + Math.random() * 3) * far, x = b.x - Math.sin(a) * l, z = b.z - Math.cos(a) * l;
+      if (this.shallow(x, z) !== null) { b.tx = x; b.tz = z; return; }
+    }
+  }
+
   update(dt: number, me: { x: number; z: number }, threats: { x: number; z: number; fast: boolean }[], hour: number, active: boolean) {
     const day = hour > 6 && hour < 19;
     if (!active || !day) { if (this.list.length && (!active || this.list.every((b) => b.st !== 'fly'))) this.list = []; this.draw(); return; }
@@ -420,12 +447,15 @@ export class Flamingos {
     for (const b of this.list) {
       b.flap += sdt;
       if (b.st === 'fly') {
-        b.t += sdt; if (b.t < 0) continue;
-        const k = Math.min(1, b.t / b.dur), e = k * k * (3 - 2 * k);
-        const nx = b.fx + (b.tx - b.fx) * e, nz = b.fz + (b.tz - b.fz) * e;
-        if (Math.hypot(nx - b.x, nz - b.z) > 1e-4) b.yaw = Math.atan2(-(nx - b.x), -(nz - b.z));
-        b.x = nx; b.z = nz; b.y = b.fy + (b.ty - b.fy) * e + Math.sin(k * Math.PI) * Math.min(14, 3 + b.dur * 1.4);
-        if (k >= 1) { b.st = 'wade'; b.y = b.ty; b.t = 2 + Math.random() * 3; b.tx = b.x; b.tz = b.z; }
+        b.t += sdt;
+        if (b.t >= 0) {
+          const k = Math.min(1, b.t / b.dur), e = k * k * (3 - 2 * k);
+          const nx = b.fx + (b.tx - b.fx) * e, nz = b.fz + (b.tz - b.fz) * e;
+          if (Math.hypot(nx - b.x, nz - b.z) > 1e-4) b.yaw = Math.atan2(-(nx - b.x), -(nz - b.z));
+          b.x = nx; b.z = nz; b.y = b.fy + (b.ty - b.fy) * e + Math.sin(k * Math.PI) * Math.min(14, 3 + b.dur * 1.4);
+          if (k >= 1) { b.st = 'wade'; b.y = b.ty; b.t = 2 + Math.random() * 3; b.tx = b.x; b.tz = b.z; }
+        }
+        this.pose(b, sdt);
         continue;
       }
       for (const q of threats) {
@@ -435,52 +465,117 @@ export class Flamingos {
           this.flyOff(b, q.x, q.z); break;
         }
       }
-      if ((b.st as string) === 'fly') continue;
+      if ((b.st as string) === 'fly') { this.pose(b, sdt); continue; }
       b.t -= sdt;
       if (b.t <= 0) {
+        // left alone: mostly strolling about the shallows and feeding as it goes, now and then a rest on one leg, a preen,
+        // a good stretch of the wings
         const r = Math.random();
-        if (r < 0.45) {
-          // stalk a few steps through the shallows
-          for (let k = 0; k < 5; k++) { const a = b.yaw + (Math.random() - 0.5) * 2, l = 1 + Math.random() * 2.5, x = b.x - Math.sin(a) * l, z = b.z - Math.cos(a) * l; if (this.shallow(x, z) !== null) { b.tx = x; b.tz = z; break; } }
-          b.st = 'wade'; b.t = 3 + Math.random() * 4;
-        } else if (r < 0.8) { b.st = 'feed'; b.t = 3 + Math.random() * 5; }
-        else { b.st = 'rest'; b.t = 6 + Math.random() * 10; }
+        if (r < 0.42) { this.stroll(b); b.st = 'wade'; b.t = 3 + Math.random() * 5; }
+        else if (r < 0.72) { this.stroll(b, 0.5); b.st = 'feed'; b.t = 4 + Math.random() * 6; }
+        else if (r < 0.84) { b.st = 'rest'; b.t = 7 + Math.random() * 10; b.side = Math.random() < 0.5 ? -1 : 1; b.tx = b.x; b.tz = b.z; }
+        else if (r < 0.94) { b.st = 'preen'; b.t = 2.5 + Math.random() * 3; b.side = Math.random() < 0.5 ? -1 : 1; b.tx = b.x; b.tz = b.z; }
+        else { b.st = 'stretch'; b.t = 2.2; b.flap = 0; b.tx = b.x; b.tz = b.z; }
         if (Math.random() < 0.08) this.sound?.('honk', Math.max(0, 1 - Math.hypot(b.x - me.x, b.z - me.z) / 45) * 0.35);
       }
-      if (b.st === 'wade') {
-        const dx = b.tx - b.x, dz = b.tz - b.z, l = Math.hypot(dx, dz);
-        if (l > 0.05) { const s = Math.min(l, 0.45 * sdt); b.x += (dx / l) * s; b.z += (dz / l) * s; b.yaw = Math.atan2(-dx, -dz); }
-        b.y = this.shallow(b.x, b.z) ?? b.y;
-      }
+      // walking (wading at a stately pace, slower while feeding)
+      const dx = b.tx - b.x, dz = b.tz - b.z, l = Math.hypot(dx, dz);
+      const speed = b.st === 'wade' ? 0.42 : b.st === 'feed' ? 0.14 : 0;
+      if (l > 0.05 && speed > 0) {
+        const s = Math.min(l, speed * sdt);
+        b.x += (dx / l) * s; b.z += (dz / l) * s;
+        let dy = Math.atan2(-dx, -dz) - b.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+        b.yaw += dy * Math.min(1, sdt * 3);
+        b.phase += (s / 0.3) * Math.PI;
+        b.moving = Math.min(1, b.moving + sdt * 4);
+      } else b.moving = Math.max(0, b.moving - sdt * 4);
+      b.y = this.shallow(b.x, b.z) ?? b.y;
+      this.pose(b, sdt);
     }
     this.draw();
   }
 
+  /** ease the bird's joints towards what it is doing */
+  private pose(b: Flamingo, dt: number) {
+    const t = b.flap, k = Math.min(1, dt * 5), mv = b.moving, ph = b.phase;
+    let n1 = 0.12 + 0.03 * Math.sin(t * 0.7), n2 = -0.25, ny = 0.15 * Math.sin(t * 0.31), wing = 0;
+    const hip: [number, number] = [0, 0], knee: [number, number] = [0, 0];
+    // a stride: one leg forward as the other goes back, the lifted one's knee bending back; the neck bobs with each step
+    const stepL = Math.sin(ph), stepR = Math.sin(ph + Math.PI);
+    hip[0] = 0.42 * stepL * mv; hip[1] = 0.42 * stepR * mv;
+    knee[0] = -0.9 * Math.max(0, -Math.cos(ph)) * mv; knee[1] = -0.9 * Math.max(0, Math.cos(ph)) * mv;
+    n1 += 0.1 * Math.sin(ph * 2) * mv;
+    switch (b.st) {
+      case 'feed':
+        // head right down in the water, sweeping side to side (the body stays level on its legs)
+        n1 = -2.15; n2 = -0.75 + 0.1 * Math.sin(t * 2.3); ny = 0.35 * Math.sin(t * 1.6);
+        break;
+      case 'rest': {
+        // on one leg, the other tucked up under the body; the head laid back along it
+        const i = b.side < 0 ? 0 : 1;
+        hip[i] = -0.55; knee[i] = 2.6; hip[1 - i] = 0; knee[1 - i] = 0;
+        n1 = 0.7 + 0.03 * Math.sin(t * 0.9); n2 = 2.25; ny = 0;
+        break;
+      }
+      case 'preen':
+        n1 = 0.45; n2 = 1.5; ny = b.side * 1.3 + 0.2 * Math.sin(t * 6); wing = 0.15;
+        break;
+      case 'stretch':
+        // wings spread wide and beat slowly a couple of times, neck up
+        wing = Math.min(1, b.flap * 2.5) * Math.min(1, Math.max(0, (2.2 - b.flap) * 2.5)); n1 = 0.35; n2 = 0.1;
+        break;
+      case 'fly':
+        if (b.t >= 0) { n1 = -1.45; n2 = 0.05; ny = 0; wing = 1; hip[0] = hip[1] = -1.45; knee[0] = knee[1] = 0; }
+        break;
+    }
+    b.n1 = lerp(b.n1, n1, k); b.n2 = lerp(b.n2, n2, k); b.ny = lerp(b.ny, ny, k);
+    for (let i = 0; i < 2; i++) { b.hip[i] = lerp(b.hip[i], hip[i], b.st === 'wade' || b.st === 'feed' ? Math.min(1, dt * 12) : k); b.knee[i] = lerp(b.knee[i], knee[i], b.st === 'wade' || b.st === 'feed' ? Math.min(1, dt * 12) : k); }
+    b.wing = lerp(b.wing, wing, Math.min(1, dt * 4));
+  }
+
   private draw() {
-    const d = this.d, w = this.w;
     let n = 0;
+    const P = this.parts, M = new THREE.Matrix4(), part = (mesh: THREE.InstancedMesh, i: number, local: THREE.Matrix4) => { _fm2.multiplyMatrices(M, local); mesh.setMatrixAt(i, _fm2); };
     for (const b of this.list) {
       if (b.t < -50) continue;
       const flying = b.st === 'fly' && b.t >= 0;
-      d.position.set(b.x, b.y, b.z);
-      // feeding: tip forward so the head goes down to the water; flying: stretched out level
-      const pitch = flying ? -1.2 : b.st === 'feed' ? -0.75 - 0.1 * Math.sin(b.flap * 3) : b.st === 'rest' ? 0.05 : -0.05 * Math.sin(b.flap * 4);
-      d.rotation.set(pitch, b.yaw, 0, 'YXZ');
-      d.scale.setScalar(b.s);
-      if (flying) d.position.y += 0.9;
-      d.updateMatrix();
-      this.body.setMatrixAt(n, d.matrix);
-      const flap = flying ? Math.sin(b.flap * 7) * 0.8 : -0.1;
-      for (const [mesh, s] of [[this.wingR, 1], [this.wingL, -1]] as const) {
-        w.position.set(s * 0.12, 1.0, 0.0);
-        w.rotation.set(0, flying ? 0 : s * 1.45, s * flap * (flying ? 1 : 0.2), 'YXZ');
-        w.scale.set(s, 1, flying ? 1 : 0.55);
-        w.updateMatrix();
-        _m.multiplyMatrices(d.matrix, w.matrix);
-        mesh.setMatrixAt(n, _m);
+      // the bird: its feet at (x, y, z), facing yaw; flying, a little higher (legs trailing behind it)
+      _fq.setFromAxisAngle(_up, b.yaw);
+      M.compose(_fv.set(b.x, b.y + (flying ? 0.5 : 0), b.z), _fq, _fs.set(b.s, b.s, b.s));
+      // the body bobs a little with each step, and breathes
+      const bob = 0.012 * Math.abs(Math.sin(b.phase)) * b.moving + 0.004 * Math.sin(b.flap * 1.3);
+      part(P.torso, n, _fm.makeTranslation(0, 0.95 + bob, 0));
+      // the neck: from the chest, turned, bent; the upper neck and head from the bend
+      _fe.set(b.n1, b.ny, 0, 'YXZ'); _fq2.setFromEuler(_fe);
+      const n1m = new THREE.Matrix4().compose(_fv.set(0, 1.06 + bob, -0.17), _fq2, _fs.set(1, 1, 1));
+      part(P.neck1, n, n1m);
+      _fe.set(b.n2, 0, 0); _fq2.setFromEuler(_fe);
+      const n2m = n1m.clone().multiply(new THREE.Matrix4().compose(_fv.set(0, 0.3, 0), _fq2, _fs.set(1, 1, 1)));
+      part(P.neck2, n, n2m);
+      // the legs: thigh from the hip, shin from the knee
+      for (let i = 0; i < 2; i++) {
+        const sd = i === 0 ? -1 : 1;
+        _fe.set(b.hip[i], 0, 0); _fq2.setFromEuler(_fe);
+        const up = new THREE.Matrix4().compose(_fv.set(sd * 0.06, 0.86 + bob, 0.02), _fq2, _fs.set(1, 1, 1));
+        part(P.legU, n * 2 + i, up);
+        _fe.set(b.knee[i], 0, 0); _fq2.setFromEuler(_fe);
+        part(P.legL, n * 2 + i, up.clone().multiply(new THREE.Matrix4().compose(_fv.set(0, -0.44, 0), _fq2, _fs.set(1, 1, 1))));
+      }
+      // the wings: folded flat along the sides, or spread and beating (the left one the right one mirrored)
+      const flapA = flying ? Math.sin(b.flap * 7) * 0.8 : b.st === 'stretch' ? Math.sin(b.flap * 3) * 0.45 + 0.2 : 0;
+      _fq2.setFromAxisAngle(_fz, flapA);
+      const q = _foldQ.clone().slerp(_fq2, b.wing);
+      for (let i = 0; i < 2; i++) {
+        const sd = i === 0 ? -1 : 1;
+        const wm = new THREE.Matrix4().compose(_fv.set(sd * 0.11, 1.0 + bob, -0.06), new THREE.Quaternion(), _fs.set(1, 1, 1));
+        if (sd < 0) wm.multiply(new THREE.Matrix4().makeScale(-1, 1, 1));
+        wm.multiply(new THREE.Matrix4().makeRotationFromQuaternion(q));
+        part(P.wing, n * 2 + i, wm);
       }
       n++;
     }
-    for (const m of [this.body, this.wingL, this.wingR]) { m.count = n; m.instanceMatrix.needsUpdate = true; }
+    P.torso.count = P.neck1.count = P.neck2.count = n;
+    P.legU.count = P.legL.count = P.wing.count = n * 2;
+    for (const m of Object.values(P)) m.instanceMatrix.needsUpdate = true;
   }
 }
