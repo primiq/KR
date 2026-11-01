@@ -614,14 +614,17 @@ class Avatar {
       const h = vr.hand[i], upper = vr.seg[i * 2], fore = vr.seg[i * 2 + 1];
       h.visible = upper.visible = fore.visible = !!d;
       if (!d) continue;
-      const tp = loc(new THREE.Vector3(), d[0], d[1], d[2]);
       const tq = new THREE.Quaternion(d[3], d[4], d[5], d[6]).premultiply(yinv);
+      const tp = loc(new THREE.Vector3(), d[0], d[1], d[2]);
       if (!this.vInit) { this.vp[i].copy(tp); this.vq[i].copy(tq); }
       this.vp[i].lerp(tp, kk); this.vq[i].slerp(tq, kk);
-      const H = this.vp[i];
+      // (the arm reaches the wrist of the hand drawn round the controller, a little behind its grip, not the grip itself)
+      const H = this.vp[i].clone().add(new THREE.Vector3(0, -0.012, 0.085).applyQuaternion(this.vq[i]));
       const S = new THREE.Vector3(bx + side * 0.27, by + 0.2, bz);
       // two-bone arm: the elbow bends down and slightly back
-      const L1 = 0.3, L2 = 0.3;
+      // (an arm stretched further than it reaches grows to meet the hand, rather than stopping short of it)
+      const reach = H.distanceTo(S), grow = Math.max(1, reach / (0.6 * 0.995));
+      const L1 = 0.3 * grow, L2 = 0.3 * grow;
       const dir = H.clone().sub(S), dist = Math.min(dir.length(), (L1 + L2) * 0.995);
       dir.normalize();
       const pole = new THREE.Vector3(side * 0.5, -1, 0.35); pole.addScaledVector(dir, -pole.dot(dir)).normalize();
@@ -633,8 +636,8 @@ class Avatar {
         m.quaternion.setFromUnitVectors(Avatar.UP, b.clone().sub(a).normalize());
         m.scale.set(1, Math.max(0.02, len), 1);
       };
-      place(upper, S, E); place(fore, E, H.distanceTo(S) > L1 + L2 ? S.clone().addScaledVector(dir, L1 + L2) : H);
-      h.position.copy(H);
+      place(upper, S, E); place(fore, E, H);
+      h.position.copy(this.vp[i]);
       if (i === 1) {
         if (this.held.parent !== h) { h.add(this.held); this.held.position.set(0, 0, 0); this.held.scale.setScalar(1); }
         this.held.quaternion.copy(this.vq[i]).multiply(Avatar.TOOL);

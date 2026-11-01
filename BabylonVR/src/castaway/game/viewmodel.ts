@@ -8,6 +8,7 @@ import { ITEMS, type ItemId } from "./items";
 const T = {
     handle: tok("handle"), steel: tok("steel"), stone: tok("stoneTool"), diamond: tok("diamond"), skin: tok("skin"), sleeve: tok("sleeve"),
     guitar: tok("guitarBody"), rope: tok("rope"), paper: tok("paper"), soot: tok("soot"), flame: tok("flame"), item: tok("item"),
+    bark: tok("bark"), woodEnd: tok("woodEnd"), leaf: tok("leaf"), straw: tok("straw"), white: tok("white"), orange: tok("orange"), red: tok("red"),
 };
 /** your skin tone, for the first-person hands */
 export function setViewSkin(hex: string) { setHandSkin(hex); }
@@ -54,6 +55,49 @@ export function heldModel(id: ItemId): THREE.Group {
         g.add(m(new THREE.BoxGeometry(0.04, 0.88, 0.003), T.steel, 0, -0.29, -0.047));
     } else if (id === "building_plan") {
         g.add(m(new THREE.CylinderGeometry(0.035, 0.035, 0.3, 10).rotateZ(Math.PI / 2), T.paper, 0, 0.02, 0));
+    } else if (id === "wood") {
+        // a short log: bark round it, pale cut ends
+        g.add(m(new THREE.CylinderGeometry(0.045, 0.05, 0.32, 9), T.bark, 0, 0.06, 0));
+        for (const y of [-0.1, 0.22]) g.add(m(new THREE.CylinderGeometry(0.043, 0.043, 0.006, 9), T.woodEnd, 0, y + (y < 0 ? -0.001 : 0.001), 0));
+    } else if (id === "fiber") {
+        for (let k = 0; k < 7; k++) { const a = (k / 7) * Math.PI * 2; g.add(m(new THREE.CylinderGeometry(0.006, 0.004, 0.3, 4), T.straw, Math.cos(a) * 0.016, 0.06, Math.sin(a) * 0.016)); }
+        g.add(m(new THREE.CylinderGeometry(0.026, 0.026, 0.03, 8), T.rope, 0, 0.02, 0));
+    } else if (id === "metal") {
+        g.add(m(new THREE.BoxGeometry(0.06, 0.13, 0.035), T.steel, 0, 0.05, 0));
+    } else if (id === "metal_ore") {
+        g.add(m(new THREE.IcosahedronGeometry(0.065, 1).scale(1, 0.8, 1), T.stone, 0, 0.04, 0));
+        for (const [x, y, z] of [[0.04, 0.06, 0.03], [-0.05, 0.03, 0.02], [0.01, 0.08, -0.05]]) g.add(m(new THREE.IcosahedronGeometry(0.018, 0), T.orange, x, y, z));
+    } else if (id === "coal") {
+        g.add(m(new THREE.IcosahedronGeometry(0.055, 0).scale(1, 0.85, 1.1), T.soot, 0, 0.04, 0));
+    } else if (id === "stone") {
+        g.add(m(new THREE.IcosahedronGeometry(0.065, 1).scale(1, 0.75, 1.1), T.stone, 0, 0.04, 0));
+    } else if (id === "diamond") {
+        g.add(m(new THREE.OctahedronGeometry(0.045, 0).scale(1, 1.4, 1), T.diamond, 0, 0.06, 0));
+    } else if (id === "berries") {
+        for (const [x, y, z] of [[0, 0.04, 0], [0.025, 0.06, 0.01], [-0.024, 0.055, 0.012], [0.008, 0.07, -0.022], [-0.01, 0.085, 0.005]]) g.add(m(new THREE.SphereGeometry(0.02, 8, 6), T.red, x, y, z));
+    } else if (id === "coconut" || id === "roasted_coconut") {
+        g.add(m(new THREE.SphereGeometry(0.07, 10, 8).scale(1, 1.1, 1), T.item, 0, 0.06, 0));
+    } else if (id === "raw_meat" || id === "cooked_meat") {
+        g.add(m(new THREE.SphereGeometry(0.06, 10, 8).scale(1.3, 0.55, 1), T.item, 0, 0.04, 0));
+        g.add(m(new THREE.CylinderGeometry(0.01, 0.01, 0.1, 6).rotateZ(Math.PI / 2), T.white, 0.07, 0.04, 0));
+    } else if (id === "raw_fish" || id === "cooked_fish") {
+        g.add(m(new THREE.SphereGeometry(0.04, 10, 8).scale(0.55, 2.2, 1), T.item, 0, 0.08, 0));
+        g.add(m(new THREE.ConeGeometry(0.035, 0.05, 4).rotateX(Math.PI), T.item, 0, -0.01, 0));
+    } else if (id === "sapling") {
+        g.add(m(new THREE.CylinderGeometry(0.006, 0.01, 0.26, 5), T.handle, 0, 0.1, 0));
+        for (const a of [0.4, 2.5, 4.4]) g.add(m(new THREE.BoxGeometry(0.06, 0.004, 0.025).translate(0.03, 0, 0).rotateY(a).rotateZ(0.3), T.leaf, 0, 0.2 + a * 0.01, 0));
+    } else if (id === "sand") {
+        g.add(m(new THREE.ConeGeometry(0.065, 0.06, 10), T.item, 0, 0.05, 0));
+    } else if (id === "turtle_egg") {
+        g.add(m(new THREE.SphereGeometry(0.035, 10, 8).scale(1, 1.2, 1), T.white, 0, 0.05, 0));
+    } else if (id === "leather") {
+        g.add(m(new THREE.BoxGeometry(0.14, 0.14, 0.01), T.item, 0, 0.06, 0));
+    } else if (def.flower !== undefined) {
+        g.add(m(new THREE.CylinderGeometry(0.004, 0.004, 0.2, 4), T.leaf, 0, 0.08, 0));
+        for (let k = 0; k < 5; k++) { const a = (k / 5) * Math.PI * 2; g.add(m(new THREE.SphereGeometry(0.014, 6, 4).scale(1, 0.4, 1), T.item, Math.cos(a) * 0.018, 0.19, Math.sin(a) * 0.018)); }
+    } else if (def.kind === "placeable") {
+        // (something you set down: a little block of it)
+        g.add(m(new THREE.BoxGeometry(0.1, 0.08, 0.1), T.item, 0, 0.05, 0));
     } else {
         // anything else: a small lump in the item's colour
         g.add(m(new THREE.IcosahedronGeometry(0.06, 1), T.item, 0, 0.05, 0));

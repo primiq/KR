@@ -1,4 +1,4 @@
-import { type Material, type Mesh, PBRMaterial, type Scene } from "@babylonjs/core";
+import { Color3, DynamicTexture, type Material, type Mesh, PBRMaterial, type Scene, StandardMaterial } from "@babylonjs/core";
 import * as THREE from "three";
 import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { Noise2D, mulberry32, smoothstep as sstep } from "../core/noise";
@@ -408,7 +408,32 @@ export class Vegetation {
         stumpCount();
         stumpMesh.mesh.alwaysSelectAsActiveMesh = true;
 
+        // ---- a soft dark patch on the ground round every trunk's foot (so a tree stands in the ground, not on it)
+        const blobTex = new DynamicTexture("trunkShadowTex", 64, scene, false);
+        {
+            const c = blobTex.getContext() as CanvasRenderingContext2D, gr = c.createRadialGradient(32, 32, 0, 32, 32, 32);
+            gr.addColorStop(0, "rgba(0,0,0,0.75)"); gr.addColorStop(0.35, "rgba(0,0,0,0.5)"); gr.addColorStop(1, "rgba(0,0,0,0)");
+            c.clearRect(0, 0, 64, 64); c.fillStyle = gr; c.fillRect(0, 0, 64, 64); blobTex.hasAlpha = true; blobTex.update();
+        }
+        const blobMat = new StandardMaterial("trunkShadowMat", scene);
+        blobMat.diffuseColor = new Color3(0, 0, 0); blobMat.specularColor = new Color3(0, 0, 0); blobMat.emissiveColor = new Color3(0.02, 0.015, 0.01);
+        blobMat.disableLighting = true; blobMat.opacityTexture = blobTex; blobMat.alpha = 0.6; blobMat.zOffset = -4; blobMat.backFaceCulling = false;
+        const blobs = new Inst("trunkShadow", new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), blobMat, palms.length + trees.length + oasis.palms.length, scene);
+        blobs.mesh.alwaysSelectAsActiveMesh = true;
+        let blobIdx = 0;
+        const blob = (p: Placement, size: number) => {
+            const h = (x: number, z: number) => heightAt(x, z), sx = (h(p.x + 0.6, p.z) - h(p.x - 0.6, p.z)) / 1.2, sz = (h(p.x, p.z + 0.6) - h(p.x, p.z - 0.6)) / 1.2;
+            dummy.position.set(p.x, h(p.x, p.z) + 0.04, p.z);
+            dummy.rotation.set(-Math.atan(sz), 0, Math.atan(sx));
+            dummy.scale.set(size, 1, size);
+            dummy.updateMatrix();
+            const k = blobIdx++;
+            blobs.setMatrixAt(k, dummy.matrix);
+            this.track(blobs, k, dummy.matrix.clone(), p.x, p.z, false);
+            blobs.count = blobIdx; blobs.instanceMatrix.needsUpdate = true;
+        };
         const addTree = (kind: "palm" | "tree", p: Placement, ref: InstRef, colR: number, geo: THREE.BufferGeometry) => {
+        blob(p, (kind === "palm" ? 2.2 : 3.4) * p.scale);
             const col: Collider = { x: p.x, z: p.z, r: colR };
             this.colliders.add(col);
             const sIdx = stumpIdx++;

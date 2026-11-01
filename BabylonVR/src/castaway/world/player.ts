@@ -77,6 +77,8 @@ export class Player {
     surfaceAt: (x: number, z: number) => number = () => 0;
     /** 0..1: wading against a sandstorm (main sets it): up to half speed */
     slow = 0;
+    /** may you go past the world's edge here (main: when a boat is close by) */
+    roam: (x: number, z: number) => boolean = () => false;
     /** is the water here a lake or a pool (its own level), not the sea (level 0)? */
     lakeAt: (x: number, z: number) => boolean = (x, z) => inDesert(x, z);
     /** camera shake output (radians / metres), read by the camera rig */
@@ -347,7 +349,8 @@ export class Player {
                 if (!this.cave && rd > DESERT_LIMIT) { nx = DESERT_X + dx * DESERT_LIMIT / rd; nz = DESERT_Z + dz * DESERT_LIMIT / rd; }
             } else {
                 const r = Math.hypot(nx, nz), lim = Math.max(WORLD_RADIUS, Math.hypot(this.pos.x, this.pos.z));
-                if (!this.cave && r > lim) { nx *= lim / r; nz *= lim / r; }
+                // (not near a boat: you can always swim out to one, however far out it is)
+                if (!this.cave && r > lim && !this.roam(nx, nz)) { nx *= lim / r; nz *= lim / r; }
             }
             this.pos.x = nx;
             this.pos.z = nz;

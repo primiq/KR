@@ -44,7 +44,7 @@ import { type FrameAim, type Painting, Paintings } from "./paintings";
 import { Painter } from "../ui/painter";
 import type { Weather } from "../world/weather";
 import { FISH_WIGGLE, SeaLife } from "../world/sealife";
-import { fishMaterial, glassMaterial, woodMaterials } from "../render/materials";
+import { deckMaterial, fishMaterial, glassMaterial } from "../render/materials";
 import { Flowers } from "../world/flowers";
 import { isProbablyHeadset } from "../../config";
 import { FLOWERS } from "../world/flowerKinds";
@@ -316,6 +316,7 @@ export class Game {
         this.slide.say = (t) => this.hud.message(t);
         this.slide.sound = (k, v) => { if (k === "splash") this.sfx.splash(v); else if (k === "land") this.sfx.splash(0.6); else this.sfx.whoosh(); };
         this.boats = new Boats(this.natureRoot, !!o.shadows);
+        this.player.roam = (x, z) => this.boats.list.some((b) => Math.hypot(b.x - x, b.z - z) < 30);
         this.boats.surface = (x, z) => this.player.surfaceAt(x, z);
         this.boats.say = (t) => this.hud.message(t);
         this.boats.sfx = this.sfx as never;
@@ -393,7 +394,7 @@ export class Game {
         this.sealife = new SeaLife(this.natureRoot, !o.shadows);
         this.natureMirror = new ThreeMirror(o.scene, this.natureRoot, null, o.shadows, {
             custom: (m) => (m.name.startsWith("fish") ? fishMaterial(o.scene, FISH_WIGGLE[+m.name.slice(4)] ?? 0.1)
-                : m.name === "skyMirror" ? skyMirrorMaterial(o.scene) : m.name === "woodSlab" ? woodMaterials(o.scene).slab : m.name === "glass" ? glassMaterial(o.scene) : druidMaterial(o.scene, m)),
+                : m.name === "skyMirror" ? skyMirrorMaterial(o.scene) : m.name === "woodSlab" ? deckMaterial(o.scene) : m.name === "glass" ? glassMaterial(o.scene) : druidMaterial(o.scene, m)),
         });
         this.birds.sound = (k, v) => { if (k === "chirp") this.sfx.chirp(v); else this.sfx.flutter(v); };
         this.flamingos.sound = (k, v) => { if (k === "honk") this.sfx.honk(v); else this.sfx.flutter(v); };
@@ -1024,7 +1025,9 @@ export class Game {
         this.boatAim = def?.boat && !ug.active && !this.boats.on ? this.boats.aim(eye, dir, player.yaw + Math.PI / 2 + this.boatTurn) : null;
         this.boats.showGhost(this.boatAim, performance.now() / 1000);
         // a boat: climb aboard from outside; on deck, the wheel
-        const bt = ug.active || this.boats.atHelm ? null : this.boats.target(eye, dir, 4.5);
+        let bt = ug.active || this.boats.atHelm ? null : this.boats.target(eye, dir, 4.5);
+        // (close beside a boat, from any side, with nothing else in view: use climbs aboard, no need to aim at it)
+        if (!bt && !ug.active && !this.boats.on && !t && !st) { const nb = this.boats.nearHull(player.pos.x, player.pos.y, player.pos.z); if (nb) bt = { b: nb, what: "board", dist: 0.5 }; }
         const useBoat = !!bt && (!t || bt.dist < t.dist) && (!st || bt.dist < st.dist) && !useDoor;
         if (useBoat && bt) {
             const b = bt.b, E = this.keyLabel("E");

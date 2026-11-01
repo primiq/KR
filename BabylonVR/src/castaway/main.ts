@@ -700,6 +700,15 @@ async function main() {
             // (a headset draws a little under its recommended resolution: about a third fewer pixels, hardly softer)
             // (no controller models: you see your own hands, vr/vr.ts)
             xr = await scene.createDefaultXRExperienceAsync({ disableDefaultUI: true, disableTeleportation: true, optionalFeatures: true, inputOptions: { doNotLoadControllerMeshes: true }, outputCanvasOptions: { canvasOptions: { framebufferScaleFactor: headset ? 0.8 : 1 } } });
+            // the pointer you aim at the menus with: bright red, and a red dot where it lands (the grey one was hard to see)
+            {
+                const ps = xr.pointerSelection;
+                if (ps) {
+                    ps.laserPointerDefaultColor = new Color3(1, 0.08, 0.05); ps.laserPointerPickedColor = new Color3(1, 0.35, 0.25);
+                    ps.selectionMeshDefaultColor = new Color3(1, 0.1, 0.05); ps.selectionMeshPickedColor = new Color3(1, 0.4, 0.3);
+                    ps.displayLaserPointer = true; ps.displaySelectionMesh = true;
+                }
+            }
             const { CastawayVR } = await import("./vr/vr");
             vrMode = new CastawayVR(scene, xr, game, player, input, pipeline);
             $("play-vr").classList.remove("hidden");
@@ -834,7 +843,16 @@ async function main() {
                     mirrorAv ??= sync?.avatars ?? new Avatars(scene, false);
                     const myId = sync?.session.myId ?? 0;
                     mirrorAv.mirrorSelf(mirrorOn, me, myId, dt, sync?.session.players.get(myId)?.name);
-                    mirrorAv.fpSelf(fpOn, me, myId, dt, !!pose);
+                    // (in a headset: under the head and hands as they are drawn this frame, not a frame ahead of them)
+                    let fpMe = me;
+                    if (pose && vrMode) {
+                        const sh = vrMode.drawnHeadShift();
+                        if (sh.lengthSquared() < 1) {
+                            const back = (h: number[] | 0) => (h ? [h[0] - sh.x, h[1] - sh.y, h[2] - sh.z, h[3], h[4], h[5], h[6]] : 0);
+                            fpMe = { ...me, x: me.x + sh.x, y: me.y + sh.y, z: me.z + sh.z, v: { h: pose.h, r: back(pose.r), l: back(pose.l) } };
+                        }
+                    }
+                    mirrorAv.fpSelf(fpOn, fpMe, myId, dt, !!pose);
                 }
             }
             {

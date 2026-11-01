@@ -34,7 +34,7 @@ export function foliageMaterial(scene: Scene, name: string, amp: number, push = 
         if (amp > 0) {
             // (no translucency: Babylon's adds the same light to every surface whatever its colour, so it greened the palm trunks
             //  and washed out the leaves; Castaway's foliage has none either)
-            new FoliagePlugin(m, amp, push, storm);
+            new FoliagePlugin(m, amp, push, storm, name === "palm" || name === "jungle", name === "jungle");
         }
         return m;
     });
@@ -156,13 +156,15 @@ float rockVein(vec3 wp) {
  * Timber: boards with dark gaps and grain, worked out on whichever plane each face lies in (walls stand boards up,
  * slabs lay them along the floor) so pieces line up whichever way they are turned.
  */
-function plankMaterial(scene: Scene, name: string, base: Color3, alt: Color3, wall: boolean): PBRCustomMaterial {
+function plankMaterial(scene: Scene, name: string, base: Color3, alt: Color3, wall: boolean, local = false): PBRCustomMaterial {
     const m = new PBRCustomMaterial(name, scene);
     m.metallic = 0;
     m.roughness = 0.9;
-    m.Fragment_Definitions(NOISE_GLSL);
+    // (`local`: worked out on the mesh's own coordinates, for something that moves (a boat's deck): the boards go with it)
+    if (local) { m.Vertex_Definitions("varying vec3 vLocP; varying vec3 vLocN;"); m.Vertex_MainEnd("vLocP = positionUpdated; vLocN = normalUpdated;"); }
+    m.Fragment_Definitions((local ? "varying vec3 vLocP; varying vec3 vLocN;\n" : "") + NOISE_GLSL);
     m.Fragment_Custom_Albedo(`
-        vec3 wp = vPositionW; vec3 nW = normalize(vNormalW);
+        vec3 wp = ${local ? "vLocP" : "vPositionW"}; vec3 nW = normalize(${local ? "vLocN" : "vNormalW"});
         float ax = abs(nW.x), ay = abs(nW.y);
         // board direction: across a wall face, along x on floors
         float u = ay > 0.6 ? wp.x * ${wall ? "3.3" : "2.2"} : (ax > 0.6 ? wp.z : wp.x) * ${wall ? "3.3" : "2.2"};
@@ -177,6 +179,11 @@ function plankMaterial(scene: Scene, name: string, base: Color3, alt: Color3, wa
         surfaceAlbedo = col;
     `);
     return m;
+}
+
+/** the boat's deck: the floor planks, fixed to the boat as it sails */
+export function deckMaterial(scene: Scene): PBRCustomMaterial {
+    return once("deckWood", () => plankMaterial(scene, "planksDeck", Color3.FromHexString("#c08c58").toLinearSpace(), Color3.FromHexString("#a87a48").toLinearSpace(), false, true));
 }
 
 export interface WoodMats { wall: PBRCustomMaterial; slab: PBRCustomMaterial; beam: PBRMaterial; pile: PBRMaterial }

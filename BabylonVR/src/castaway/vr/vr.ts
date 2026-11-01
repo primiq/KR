@@ -204,8 +204,13 @@ export class CastawayVR {
         this.heldId = "__redress" as ItemId;      // the item in the hand is hidden for a gorilla or a cat: rebuild it
     }
 
+    /** where the feet were (and the way you faced) when the headset last caught up with them */
+    private lastFeet: Vector3 | null = null;
+    private lastYaw = 0;
+
     private placeRig(face = false) {
         const cam = this.cam;
+        this.lastFeet = null;
         const h = this.eyeH;
         cam.position.set(this.player.pos.x, this.player.pos.y + h, this.player.pos.z);
         if (face) {
@@ -221,6 +226,14 @@ export class CastawayVR {
         const { input, game, player } = this;
         const L = this.hands.get("left") ?? null, R = this.hands.get("right") ?? null;
         const cam = this.cam;
+        // the game moved you since the last frame (a boat's deck carrying you along, climbing aboard, a door): the headset
+        // goes with you, turned as you were turned (otherwise the head stays behind and pulls you back where you were)
+        if (this.lastFeet) {
+            const d = player.pos.subtract(this.lastFeet);
+            if (d.lengthSquared() > 1e-8) cam.position.addInPlace(d);
+            let dyaw = player.yaw - this.lastYaw; dyaw = Math.atan2(Math.sin(dyaw), Math.cos(dyaw));
+            if (Math.abs(dyaw) > 1e-5 && Math.abs(dyaw) < 3.2) cam.rotationQuaternion = Quaternion.RotationAxis(Vector3.Up(), dyaw).multiply(cam.rotationQuaternion ?? Quaternion.Identity());
+        }
         // room-scale: the body follows the head across the floor (through the same collision as walking)
         const hx = cam.position.x, hz = cam.position.z;
         if (Math.hypot(hx - player.pos.x, hz - player.pos.z) > 1e-3 && Math.hypot(hx - player.pos.x, hz - player.pos.z) < 2) {
@@ -466,6 +479,7 @@ export class CastawayVR {
         if (player.eyeAt) cam.position.set(player.eyeAt.x, player.eyeAt.y, player.eyeAt.z);
         else cam.position.set(player.pos.x, player.pos.y + this.eyeH, player.pos.z);
         player.eye.copyFrom(cam.position);
+        this.lastFeet = player.pos.clone(); this.lastYaw = player.yaw;
         // the game reads the headset's own position and gaze (the warp level's screen, the invasion cannon, sound)
         game.vr.head = cam.position;
         game.vr.headDir = cam.getDirection(Vector3.Forward(true));
@@ -525,6 +539,19 @@ export class CastawayVR {
         // (where the hands are: dragged through the desert's sand, they dig)
         { const L = this.hands.get("left"), R = this.hands.get("right"); game.vr.handL = L ? (L.src.grip ?? L.src.pointer).absolutePosition.clone() : null; game.vr.handR = R ? (R.src.grip ?? R.src.pointer).absolutePosition.clone() : null; }
         this.panel.update(dt);
+    }
+
+    /**
+     * How far the head being drawn this frame is from where the camera now is: the headset draws the eyes where they
+     * were at the start of the frame (the camera's move this frame only shows next frame), so your own body is put that
+     * much back, under the head you see (it ran ahead of it while you walked).
+     */
+    drawnHeadShift(): Vector3 {
+        const cam = this.cam, rigs = cam.rigCameras;
+        if (!this.active || !rigs.length) return Vector3.Zero();
+        const c = new Vector3();
+        for (const r of rigs) c.addInPlace(r.position);
+        return c.scaleInPlace(1 / rigs.length).subtractInPlace(cam.position);
     }
 
     /** Head and hand transforms relative to the feet (world axes), sent to other players so they see your avatar. */
@@ -609,6 +636,7 @@ export class CastawayVR {
             const map: Record<string, [string, number, number]> = {
                 handle: ["#8b5e34", 0.85, 0], steel: ["#aeb6bd", 0.3, 0.9], stoneTool: ["#8e8a82", 0.9, 0], diamond: ["#7ff4ff", 0.08, 0.2],
                 rope: ["#b8a470", 1, 0], paper: ["#3b73a8", 0.8, 0], soot: ["#0d0b0a", 1, 0],
+                bark: ["#5e4128", 1, 0], woodEnd: ["#c9a06a", 0.9, 0], leaf: ["#3f7d2a", 0.8, 0], straw: ["#b9b46a", 0.9, 0], white: ["#efe9dc", 0.6, 0], orange: ["#c0662c", 0.7, 0.2], red: ["#b5142b", 0.5, 0],
             };
             const m = map[k] ?? [color, 0.85, 0];
             return solid(this.scene, m[0], m[1], m[2]);

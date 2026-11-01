@@ -121,11 +121,13 @@ export class VRPanel {
 
     constructor(private readonly scene: Scene, private readonly game: Game) {
         // ---- wrist
-        this.wrist = MeshBuilder.CreatePlane("vrWrist", { width: 0.2, height: 0.125 }, scene);
+        this.wrist = MeshBuilder.CreatePlane("vrWrist", { width: 0.24, height: 0.15 }, scene);
         this.wrist.isPickable = false;
         this.wrist.setEnabled(false);
         this.wrist.renderingGroupId = 1;
         this.wristUI = AdvancedDynamicTexture.CreateForMesh(this.wrist, 1024, 640, false);
+        // (sharper text seen at an angle)
+        this.wristUI.anisotropicFilteringLevel = 8;
         const w = new Rectangle("wbg");
         w.background = BG;
         w.cornerRadius = 40;
@@ -203,6 +205,7 @@ export class VRPanel {
         this.board.setEnabled(false);
         this.board.renderingGroupId = 1;
         this.boardUI = AdvancedDynamicTexture.CreateForMesh(this.board, 1650, 1125, true);
+        this.boardUI.anisotropicFilteringLevel = 8;
         const b = new Rectangle("bbg");
         b.background = BG;
         b.cornerRadius = 40;
@@ -522,23 +525,31 @@ export class VRPanel {
      */
     attach(_src: WebXRInputSource) {
         this.hudOn = true;
-        this.hudInit = false;
         this.wrist.setEnabled(true);
     }
     private hudOn = false;
-    private hudInit = false;
-    private static readonly HUD_AT = new Vector3(-0.23, -0.2, -0.72);
-    private followHead(dt: number) {
+    private static readonly HUD_AT = new Vector3(-0.21, -0.18, -0.62);
+    private followHead(_dt: number) {
         const cam = this.scene.activeCamera;
         if (!cam || !this.hudOn) return;
-        // (the camera's own turn, so the panel's readable side, +z, faces your eyes)
-        const q = cam.absoluteRotation, at = cam.globalPosition.add(VRPanel.HUD_AT.applyRotationQuaternion(q));
+        // fixed in the lower left of your view: placed from the head as the headset draws it this frame (its eyes), so it
+        // never slides about as you walk or turn
+        const rigs = cam.rigCameras;
+        let at: Vector3, q: Quaternion;
+        const rq = rigs.length ? (rigs[0] as unknown as { rotationQuaternion: Quaternion | null }).rotationQuaternion : null;
+        if (rq) {
+            const c = new Vector3();
+            for (const r of rigs) c.addInPlace(r.position);
+            c.scaleInPlace(1 / rigs.length);
+            q = rq;
+            at = c.add(VRPanel.HUD_AT.applyRotationQuaternion(q));
+        } else {
+            q = cam.absoluteRotation;
+            at = cam.globalPosition.add(VRPanel.HUD_AT.applyRotationQuaternion(q));
+        }
         const w = this.wrist;
-        if (!w.rotationQuaternion) w.rotationQuaternion = q.clone();
-        const k = this.hudInit ? 1 - Math.exp(-dt * 7) : 1;
-        this.hudInit = true;
-        Vector3.LerpToRef(w.position, at, k, w.position);
-        Quaternion.SlerpToRef(w.rotationQuaternion, q, k, w.rotationQuaternion);
+        if (!w.rotationQuaternion) w.rotationQuaternion = q.clone(); else w.rotationQuaternion.copyFrom(q);
+        w.position.copyFrom(at);
     }
 
     setVisible(v: boolean) {
@@ -574,6 +585,16 @@ export class VRPanel {
         bar.value = Math.max(0, Math.min(1, bar.value + dy * dt * 0.9));
     }
 
+    /** where the head is drawn this frame (the headset's eyes) */
+    private drawnHead(): Vector3 {
+        const cam = this.scene.activeCamera!, rigs = cam.rigCameras;
+        if (!rigs.length) return cam.globalPosition.clone();
+        const c = new Vector3();
+        for (const r of rigs) c.addInPlace(r.position);
+        return c.scaleInPlace(1 / rigs.length);
+    }
+    /** the board's place relative to your head: it travels with you (walking, on a boat) without turning as you look about */
+    private boardOff = new Vector3();
     /** put the board in front of the head, at chest height */
     private placeBoard() {
         const cam = this.scene.activeCamera!;
@@ -583,6 +604,7 @@ export class VRPanel {
         this.board.position.copyFrom(cam.globalPosition.add(f.scale(0.85)).add(new Vector3(0, -0.25, 0)));
         // planes face +z in a right-handed scene: turn the front towards the viewer
         this.board.rotation.set(0.25, Math.atan2(-f.x, -f.z), 0);
+        this.boardOff.copyFrom(this.board.position.subtract(this.drawnHead()));
     }
 
     update(_dt: number) {
@@ -611,7 +633,7 @@ export class VRPanel {
             if (open) this.placeBoard();
             this.board.setEnabled(open);
             this.dirty = true;
-        }
+        } else if (open) this.board.position.copyFrom(this.drawnHead().add(this.boardOff));
         if (open && this.extra === "map") {
             // the map redraws a few times a second while it shows (you, friends, pings move)
             this.mapT -= _dt;

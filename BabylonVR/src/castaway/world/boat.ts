@@ -586,6 +586,17 @@ export class Boats {
     }
     return best;
   }
+  /** a boat you are close to (beside it in the water, or on a jetty by it), from any side: you can climb aboard with use */
+  nearHull(x: number, y: number, z: number, pad = 2.2): Boat | null {
+    let best: Boat | null = null, bd = 1e9;
+    for (const b of this.list) {
+      if (this.on === b || Math.abs(b.x - x) > LEN || Math.abs(b.z - z) > LEN) continue;
+      const l = toLocal(pose(b), x, y, z, L1);
+      const ox = Math.max(0, Math.abs(l.x) - HB), oz = Math.max(0, l.z - LEN / 2, -LEN / 2 - l.z), d = Math.hypot(ox, oz);
+      if (d < pad && l.y > -3.5 && l.y < DECK + 2.5 && d < bd) { bd = d; best = b; }
+    }
+    return best;
+  }
   /** climb aboard from the water (or a jetty): onto the nearest bit of deck. Sets the feet `pos`. */
   board(b: Boat, pos: PV, vel: PV) {
     const p = pose(b), l = toLocal(p, pos.x, pos.y, pos.z, L1);
