@@ -124,6 +124,20 @@ async function main() {
     const qSel = $<HTMLSelectElement>("quality");
     qSel.value = getPref("castaway.quality") ?? "auto";
     $("version").textContent = __CASTAWAY_VERSION__;
+    // developer mode (the cheats in Settings, the VR playground link): ?dev in the address, or tap the version five times
+    let devMode = params.has("dev") || getPref("castaway.dev") === "1";
+    const showDev = () => { $("dev-section").classList.toggle("hidden", !devMode); $("playground-link").classList.toggle("hidden", !devMode); };
+    showDev();
+    {
+        let taps = 0, tapT = 0;
+        $("version").addEventListener("click", () => {
+            const t = performance.now();
+            taps = t - tapT < 600 ? taps + 1 : 1; tapT = t;
+            if (taps < 5) return;
+            taps = 0; devMode = !devMode; setPref("castaway.dev", devMode ? "1" : "0"); showDev();
+            $("version").textContent = `${__CASTAWAY_VERSION__}${devMode ? " · developer mode" : ""}`;
+        });
+    }
     /** saves the game first when one is running (set once it is) */
     let saveBeforeReload = () => {};
     /** switches what it can of a new graphics choice on the spot; false: the island must be built again for it */
@@ -1279,7 +1293,7 @@ async function main() {
             exitVR: () => void vm.exit(),
             gfx: () => ({ pref: getPref("castaway.quality") ?? "auto", custom: { ...gfx } }),
             gfxPreview: (pref, custom) => pickQuality(pref, custom),
-            dev: devTools,
+            dev: devMode ? devTools : undefined,
             applyGfx: (pref, custom) => game.hud.message(applyGfx(pref, custom) === "Applied." ? "Graphics applied." : "Rebuilding the island for that…"),
             chat: (t) => { if (sync) { sync.sendChat(t); chat.add("You", "#ffffff", t); } else game.hud.message("Host or join a room to chat"); },
             pingAt: (x, z) => { if (sync) sync.pingAt(x, z); else game.hud.message("Pings are for rooms with friends"); },
@@ -1323,8 +1337,18 @@ async function main() {
     Object.assign(window as unknown as Record<string, unknown>, { Wind, scene, engine, game, player, sites, caves, heightAt, weather, cats, sky, dive, air, cat, vegetation, terrain, ocean, input, clock, camera, getSync: () => sync, doSave, camp, narrator, mozzie, locs, towns, waterfall, seabed, desert });
 }
 
-main().catch((e) => {
-    console.error(e);
+/** something stopped the game from starting: say so where it can be seen, in words a player can act on */
+function cannotStart(why: string) {
+    document.getElementById("menu")?.classList.add("hidden");
+    document.getElementById("loading")?.classList.remove("hidden");
     const el = document.getElementById("loading-text");
-    if (el) el.textContent = `Something went wrong: ${e?.message ?? e}`;
+    if (el) el.textContent = why;
+    const bar = document.querySelector<HTMLElement>("#loading .bar");
+    if (bar) bar.style.display = "none";
+}
+// (no WebGL 2: nothing can be drawn at all)
+if (!document.createElement("canvas").getContext("webgl2")) cannotStart("This browser can't run the game's 3D graphics (WebGL 2). Try an up-to-date Chrome, Edge, Firefox or Safari, or the Quest's own browser.");
+else main().catch((e) => {
+    console.error(e);
+    cannotStart(`Something went wrong while starting the game (${e?.message ?? e}). Reload the page to try again.`);
 });

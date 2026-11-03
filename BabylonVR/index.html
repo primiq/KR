@@ -6,7 +6,9 @@
   <meta name="theme-color" content="#0a2a3a" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <title>Petr's Castaway — Island Survival (Babylon.js)</title>
+  <title>Petr's Castaway — Island Survival</title>
+  <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+  <link rel="apple-touch-icon" href="./icon.svg" />
   <meta name="description" content="A tropical island survival game: gather, craft, build, dig into caves for ore and diamonds, and play with friends or in VR. Free, in your browser." />
   <meta property="og:title" content="Petr's Castaway — Island Survival" />
   <meta property="og:description" content="Gather, craft, build and survive on a tropical island. Caves, multiplayer and VR." />
@@ -90,10 +92,12 @@
         <div class="gfx-actions"><button type="button" id="gfx-reset" class="ghost-btn">Back to the preset</button><button type="button" id="gfx-apply" class="mbtn primary">Apply</button></div>
         <h3>Sound</h3>
         <label class="mp-opt"><input type="checkbox" id="narration-on" checked /> Narrator voice</label>
+        <div id="dev-section" class="hidden">
         <h3>Developer</h3>
         <div class="gfx-actions dev-row"><button type="button" id="dev-fly" class="ghost-btn">Flying: off</button><button type="button" id="dev-time-back" class="ghost-btn">Time −1 h</button><button type="button" id="dev-time-fwd" class="ghost-btn">Time +1 h</button></div>
         <div class="gfx-actions dev-row"><button type="button" id="dev-storm" class="ghost-btn">Desert sandstorm: start / stop</button></div>
         <p class="gfx-note" id="dev-note">For testing: works once you are in a game.</p>
+        </div>
         <details class="controls">
           <summary>Controls</summary>
           <div class="help" id="help-desktop">
@@ -104,7 +108,7 @@
         </details>
       </div>
 
-      <div class="menu-foot"><span id="version" class="version"></span><span id="backend" class="backend"></span><a class="backend" href="./playground.html">VR playground</a></div>
+      <div class="menu-foot"><span id="version" class="version"></span><span id="backend" class="backend"></span><a id="playground-link" class="backend hidden" href="./playground.html">VR playground</a></div>
     </div>
   </div>
 

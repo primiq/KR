@@ -3,7 +3,7 @@
 // src/world/locations/<id>.data.json) and its monitor picture from scripts/loc-previews.mjs (<id>.preview.jpg, a render
 // of our own recreation). Both are picked up automatically when the files exist.
 const DATA = import.meta.glob('./locations/*.data.json', { eager: true, query: '?raw', import: 'default' }) as Record<string, string>;
-const PREVIEW = import.meta.glob('./locations/*.preview.jpg', { eager: true, query: '?inline', import: 'default' }) as Record<string, string>;
+const PREVIEW = import.meta.glob('./locations/*.preview.jpg', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
 
 export interface LocationEntry {
   id: string;

@@ -1,0 +1,10 @@
+# Cloudflare static assets: the build's files carry a hash in their names, so a browser may keep them for good; the pages
+# themselves are always checked for a newer version (a new release shows up on the next load, never a stale mix).
+/bundle/*
+  Cache-Control: public, max-age=31536000, immutable
+/assets/*
+  Cache-Control: public, max-age=604800
+/
+  Cache-Control: no-cache
+/*.html
+  Cache-Control: no-cache

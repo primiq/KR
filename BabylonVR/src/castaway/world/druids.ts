@@ -24,9 +24,9 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 interface V3 { x: number; y: number; z: number }
 /** a stand-in for a shader uniform: the Babylon side reads .value every frame */
 const uniform = (v: number) => ({ value: v });
-import marioUrl from '../assets/mario/mario.glb?inline';
-import summonUrl from '../assets/mario/summon.mp3?inline';
-import itsMeUrl from '../assets/mario/its-me.mp3?inline';
+import marioUrl from '../assets/mario/mario.glb?url';
+import summonUrl from '../assets/mario/summon.mp3?url';
+import itsMeUrl from '../assets/mario/its-me.mp3?url';
 
 export type DruidPhase = 'idle' | 'summon' | 'alive' | 'dying';
 const SUMMON_S = 13.63;            // the drone's length: the summoning lasts exactly that long

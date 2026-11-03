@@ -9,8 +9,8 @@
 // Babylon port: drawn by render/mirror.ts. The mirror is a plane named 'skyMirror' (the Babylon side gives it a
 // MirrorTexture, world/skyView.ts, about MIRROR_X).
 import * as THREE from 'three';
-import photoUrl from '../assets/photo.jpg?inline';
-import songUrl from '../assets/song.mp3?inline';
+import photoUrl from '../assets/photo.jpg?url';
+import songUrl from '../assets/song.mp3?url';
 
 interface V3 { x: number; y: number; z: number }
 

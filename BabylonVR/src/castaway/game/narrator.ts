@@ -8,7 +8,7 @@ import { getPref, setPref } from '../core/prefs';
 import type * as THREE from 'three';
 import { setPannerPos } from '../campaign/mosquito';
 
-const CLIPS = import.meta.glob('../assets/narration/*.mp3', { eager: true, query: '?inline', import: 'default' }) as Record<string, string>;
+const CLIPS = import.meta.glob('../assets/narration/*.mp3', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
 interface Line { id: string; voice: string; text: string; subtitle?: string }
 const LINES = new Map<string, Line>((script.lines as Line[]).map((l) => [l.id, l]));
 const clipOf = (id: string) => CLIPS[`../assets/narration/${id}.mp3`] as string | undefined;

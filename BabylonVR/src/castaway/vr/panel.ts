@@ -81,6 +81,7 @@ export class VRPanel {
     private gfx: { pref: string; custom: GfxCustom } | null = null;
     private gfxPane!: StackPanel;
     private gfxLabels: { b: Button; text: () => string; on?: () => boolean }[] = [];
+    private devRows: Control[] = [];
     private tabGfx!: Button;
     /** the map and quick-chat tabs (null: bag / craft / menu) */
     private extra: "map" | "chat" | null = null;
@@ -428,8 +429,10 @@ export class VRPanel {
         const ap = btn(r4, 600, () => "Apply", () => this.menuActions?.applyGfx(g().pref, g().custom));
         ap.background = "#7a3a3a";
         text("Most changes apply straight away. A new preset or grass range rebuilds the island (saved first): you come straight back to it.", 110, 30);
-        text("Developer", 70, 34);
+        const devT = text("Developer", 70, 34);
         const r5 = row();
+        // (only in developer mode: main gives no dev actions otherwise)
+        this.devRows = [devT, r5];
         btn(r5, 400, () => `Flying: ${this.menuActions?.dev?.flying() ? "on" : "off"}`, () => this.menuActions?.dev?.fly(), () => !!this.menuActions?.dev?.flying());
         btn(r5, 340, () => "Time -1 h", () => this.menuActions?.dev?.time(-1));
         btn(r5, 340, () => "Time +1 h", () => this.menuActions?.dev?.time(1));
@@ -671,6 +674,7 @@ export class VRPanel {
         if (ex) return;
         if (this.gfxOpen && this.gfx) {
             for (const l of this.gfxLabels) { if (l.b.textBlock) l.b.textBlock.text = l.text(); if (l.on) l.b.background = l.on() ? "#2d6a5a" : "#ffffff22"; }
+            for (const c of this.devRows) c.isVisible = !!this.menuActions?.dev;
             return;
         }
         if (this.menuOpen) { this.menuStatus.text = this.menuActions?.status() ?? ""; this.codeText.text = `Room code: ${this.code.padEnd(5, "_")}`; return; }
