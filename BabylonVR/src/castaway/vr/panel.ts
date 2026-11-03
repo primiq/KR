@@ -428,13 +428,14 @@ export class VRPanel {
             pane.addControl(r);
             return r;
         };
-        const button = (parent: StackPanel, label: string, w: number, fn: () => void, bg = "#2d6a5a") => {
+        const button = (parent: StackPanel, label: string, w: number, fn: () => void, bg = ACC) => {
             const x = Button.CreateSimpleButton(`m${label}`, label);
             x.width = `${w}px`;
             x.height = "92px";
-            x.color = TXT;
+            x.color = bg === ACC ? INK : TXT;
             x.fontSize = 36;
-            x.cornerRadius = 20;
+            x.fontWeight = "bold";
+            x.cornerRadius = 26;
             x.thickness = 0;
             x.background = bg;
             x.paddingLeft = "8px";
@@ -459,11 +460,11 @@ export class VRPanel {
             const kr = row(100);
             for (let c = 0; c < 8; c++) {
                 const ch = ALPHA[r * 8 + c];
-                button(kr, ch, 150, () => { if (this.code.length < 5) this.code += ch; }, "#ffffff22");
+                button(kr, ch, 150, () => { if (this.code.length < 5) this.code += ch; }, ACC_DIM);
             }
         }
         const r3 = row();
-        button(r3, "⌫ Delete", 300, () => { this.code = this.code.slice(0, -1); }, "#ffffff22");
+        button(r3, "⌫ Delete", 300, () => { this.code = this.code.slice(0, -1); }, ACC_DIM);
         button(r3, "Join room", 360, () => { if (this.code.length === 5) void this.menuActions?.join(this.code).then(say); else say("Type the 5-letter room code"); });
         pane.isVisible = false;
         this.buildGfx(b);
@@ -481,7 +482,7 @@ export class VRPanel {
         const row = () => { const r = new StackPanel("grow"); r.isVertical = false; r.height = "112px"; pane.addControl(r); return r; };
         const btn = (r: StackPanel, w: number, label: () => string, fn: () => void, on?: () => boolean) => {
             const x = Button.CreateSimpleButton("gb", "");
-            x.width = `${w}px`; x.height = "92px"; x.color = TXT; x.fontSize = 36; x.cornerRadius = 20; x.thickness = 0; x.background = "#ffffff22";
+            x.width = `${w}px`; x.height = "92px"; x.color = TXT; x.fontSize = 36; x.fontWeight = "bold"; x.cornerRadius = 26; x.thickness = 0; x.background = ACC_DIM;
             x.paddingLeft = "8px"; x.paddingRight = "8px";
             x.onPointerUpObservable.add(() => { if (this.gfx) fn(); this.dirty = true; });
             r.addControl(x);
@@ -505,7 +506,8 @@ export class VRPanel {
         const r4 = row();
         btn(r4, 500, () => "Back to the preset", () => { g().custom = {}; });
         const ap = btn(r4, 600, () => "Apply", () => this.menuActions?.applyGfx(g().pref, g().custom));
-        ap.background = "#7a3a3a";
+        ap.background = SEL;
+        ap.color = INK;
         text("Most changes apply straight away. A new preset or grass range rebuilds the island (saved first): you come straight back to it.", 110, 30);
         const devT = text("Developer", 70, 34);
         const r5 = row();
@@ -559,7 +561,7 @@ export class VRPanel {
         side.addControl(zrow);
         const zb = (label: string, f: number) => {
             const x = Button.CreateSimpleButton(`z${label}`, label);
-            x.width = "280px"; x.height = "92px"; x.color = TXT; x.fontSize = 38; x.cornerRadius = 20; x.thickness = 0; x.background = "#2d6a5a";
+            x.width = "280px"; x.height = "92px"; x.color = INK; x.fontSize = 38; x.fontWeight = "bold"; x.cornerRadius = 26; x.thickness = 0; x.background = ACC;
             x.paddingLeft = "8px"; x.paddingRight = "8px";
             x.onPointerUpObservable.add(() => { this.mapZoom = Math.max(1, Math.min(6, this.mapZoom * f)); this.mapT = 0; });
             zrow.addControl(x);
@@ -586,7 +588,7 @@ export class VRPanel {
             pane.addControl(row);
             for (const ph of PHRASES.slice(r * 4, r * 4 + 4)) {
                 const x = Button.CreateSimpleButton(`ch${ph}`, ph);
-                x.width = "380px"; x.height = "100px"; x.color = TXT; x.fontSize = 38; x.cornerRadius = 20; x.thickness = 0; x.background = "#2d6a5a";
+                x.width = "380px"; x.height = "100px"; x.color = INK; x.fontSize = 38; x.fontWeight = "bold"; x.cornerRadius = 26; x.thickness = 0; x.background = ACC;
                 x.paddingLeft = "8px"; x.paddingRight = "8px";
                 x.onPointerUpObservable.add(() => { if (this.menuActions?.chat) { this.menuActions.chat(ph); this.close(); } });
                 row.addControl(x);
@@ -751,7 +753,7 @@ export class VRPanel {
         lit(this.tabChat, ex === "chat");
         if (ex) return;
         if (this.gfxOpen && this.gfx) {
-            for (const l of this.gfxLabels) { if (l.b.textBlock) l.b.textBlock.text = l.text(); if (l.on) l.b.background = l.on() ? "#2d6a5a" : "#ffffff22"; }
+            for (const l of this.gfxLabels) { if (l.b.textBlock) l.b.textBlock.text = l.text(); if (l.on) lit(l.b, l.on()); }
             for (const c of this.devRows) c.isVisible = !!this.menuActions?.dev;
             return;
         }
