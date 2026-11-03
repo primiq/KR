@@ -19,14 +19,23 @@ export function iconUrl(id: ItemId): string {
 }
 
 const BG = "#0b1a22d8", SLOT = "#ffffff1f", SEL = "#ffd166", TXT = "#f4efe2";
+/** the board's palette: a deep sea-green slate, warm parchment text, teal for what you can do, gold for what is picked */
+const B_BG = "#0c1a21f2", B_EDGE = "#ffd16638", CARD = "#ffffff0d", CARD_EDGE = "#ffffff1c", ACC = "#3aa58a", ACC_DIM = "#ffffff12",
+    INK = "#0c1a21", MUTED = "#f4efe28c", GOOD = "#8be0b5", SHORT = "#ff9a86";
+
+/** a tab or toggle that lights up (teal, dark text) when it is the one showing */
+function lit(b: Button, on: boolean) {
+    b.background = on ? ACC : ACC_DIM;
+    b.color = on ? INK : TXT;
+}
 
 function slotControl(name: string, size: number): { root: Button; img: Image; cnt: TextBlock; key?: TextBlock } {
     const root = Button.CreateSimpleButton(name, "");
     root.width = `${size}px`;
     root.height = `${size}px`;
-    root.cornerRadius = 14;
+    root.cornerRadius = 20;
     root.thickness = 3;
-    root.color = "#ffffff30";
+    root.color = "#ffffff26";
     root.background = SLOT;
     const img = new Image(`${name}i`, "");
     img.width = "78%";
@@ -67,6 +76,7 @@ export class VRPanel {
     private contBox: StackPanel;
     private contTitle: TextBlock;
     private detail: TextBlock;
+    private detailName: TextBlock;
     private actions: Button[] = [];
     private bagPane: Grid;
     private craftPane: ScrollViewer;
@@ -208,25 +218,43 @@ export class VRPanel {
         this.boardUI = AdvancedDynamicTexture.CreateForMesh(this.board, 1650, 1125, true);
         this.boardUI.anisotropicFilteringLevel = 8;
         const b = new Rectangle("bbg");
-        b.background = BG;
-        b.cornerRadius = 40;
-        b.thickness = 0;
+        b.background = B_BG;
+        b.cornerRadius = 44;
+        b.thickness = 4;
+        b.color = B_EDGE;
         this.boardUI.addControl(b);
+        // (the tab strip: a darker band across the top, a gold hairline under it)
+        const band = new Rectangle("bband");
+        band.height = "116px";
+        band.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+        band.background = "#00000038";
+        band.thickness = 0;
+        b.addControl(band);
+        const rule = new Rectangle("brule");
+        rule.height = "3px";
+        rule.top = "116px";
+        rule.width = "96%";
+        rule.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+        rule.background = B_EDGE;
+        rule.thickness = 0;
+        b.addControl(rule);
         const top = new StackPanel("tabs");
         top.isVertical = false;
-        top.height = "110px";
+        top.height = "116px";
         top.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
-        top.paddingTop = "20px";
-        const tab = (name: string, label: string, fn: () => void) => {
+        top.paddingTop = "18px";
+        top.paddingBottom = "14px";
+        const tab = (name: string, label: string, fn: () => void, w = 214) => {
             const t = Button.CreateSimpleButton(name, label);
-            t.width = "220px";
-            t.height = "80px";
-            t.color = TXT;
-            t.fontSize = 40;
-            t.cornerRadius = 20;
+            t.width = `${w}px`;
+            t.height = "84px";
+            t.fontSize = 38;
+            t.fontWeight = "bold";
+            t.cornerRadius = 42;
             t.thickness = 0;
-            t.paddingLeft = "10px";
-            t.paddingRight = "10px";
+            t.paddingLeft = "7px";
+            t.paddingRight = "7px";
+            lit(t, false);
             t.onPointerUpObservable.add(fn);
             top.addControl(t);
             return t;
@@ -237,23 +265,28 @@ export class VRPanel {
         this.tabChat = tab("tchat", "Chat", () => this.setExtra("chat"));
         this.tabMenu = tab("tmenu", "Menu", () => { this.menuOpen = true; this.gfxOpen = false; this.extra = null; this.dirty = true; });
         this.tabGfx = tab("tgfx", "Graphics", () => { this.gfxOpen = true; this.menuOpen = false; this.extra = null; this.gfx = this.menuActions?.gfx() ?? null; this.dirty = true; });
-        tab("tclose", "Close  ✕", () => this.close());
+        const x = tab("tclose", "✕", () => this.close(), 110);
+        x.background = "#b5483a";
+        x.color = TXT;
         b.addControl(top);
 
         this.bagPane = new Grid("bag");
-        this.bagPane.top = "110px";
-        this.bagPane.height = "1000px";
+        this.bagPane.top = "130px";
+        this.bagPane.height = "980px";
         this.bagPane.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
         this.bagPane.addColumnDefinition(0.62);
         this.bagPane.addColumnDefinition(0.38);
         b.addControl(this.bagPane);
         const left = new StackPanel("left");
+        left.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+        left.paddingTop = "6px";
         this.bagPane.addControl(left, 0, 0);
         this.contBox = new StackPanel("cont");
         this.contTitle = new TextBlock("ctitle", "");
         this.contTitle.height = "60px";
-        this.contTitle.color = TXT;
+        this.contTitle.color = SEL;
         this.contTitle.fontSize = 36;
+        this.contTitle.fontWeight = "bold";
         this.contBox.addControl(this.contTitle);
         const contRow = new StackPanel("crow");
         contRow.isVertical = false;
@@ -269,38 +302,79 @@ export class VRPanel {
         }
         this.contBox.addControl(contRow);
         left.addControl(this.contBox);
+        const bagHead = new TextBlock("baghead", "Backpack");
+        bagHead.height = "64px";
+        bagHead.color = SEL;
+        bagHead.fontSize = 36;
+        bagHead.fontWeight = "bold";
+        left.addControl(bagHead);
         const g = new Grid("slots");
-        g.height = "600px";
-        g.width = "960px";
+        g.height = "672px";
+        g.width = "1000px";
         for (let i = 0; i < 6; i++) g.addColumnDefinition(1 / 6);
         for (let r = 0; r < 4; r++) g.addRowDefinition(0.25);
         for (let i = 0; i < game.inv.size; i++) {
-            const s = slotControl(`g${i}`, 140);
-            if (i < game.inv.hotbar) s.root.color = "#ffd16655";
+            const s = slotControl(`g${i}`, 154);
+            if (i < game.inv.hotbar) {
+                // (the hotbar: a gold rim and its number)
+                s.root.color = "#ffd16680";
+                const k = new TextBlock(`g${i}k`, String(i + 1));
+                k.color = "#ffd166cc";
+                k.fontSize = 28;
+                k.fontWeight = "bold";
+                k.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+                k.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+                k.paddingLeft = "12px";
+                k.paddingTop = "6px";
+                s.root.addControl(k);
+            }
             s.root.onPointerUpObservable.add(() => { game.hud.slotClick(0, i); this.dirty = true; });
             g.addControl(s.root, Math.floor(i / 6), i % 6);
             this.grid.push(s);
         }
         left.addControl(g);
+        // (the details card: what's picked, and what you can do with it)
+        const card = new Rectangle("dcard");
+        card.background = CARD;
+        card.color = CARD_EDGE;
+        card.thickness = 2;
+        card.cornerRadius = 30;
+        card.width = "560px";
+        card.height = "920px";
+        card.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+        card.top = "10px";
+        this.bagPane.addControl(card, 0, 1);
         const right = new StackPanel("right");
-        right.paddingRight = "30px";
-        this.bagPane.addControl(right, 0, 1);
+        right.width = "500px";
+        right.paddingTop = "30px";
+        right.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+        card.addControl(right);
+        this.detailName = new TextBlock("dname", "");
+        this.detailName.height = "76px";
+        this.detailName.color = SEL;
+        this.detailName.fontSize = 44;
+        this.detailName.fontWeight = "bold";
+        this.detailName.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+        right.addControl(this.detailName);
         this.detail = new TextBlock("detail", "Point at an item and pull the trigger.");
-        this.detail.height = "520px";
+        this.detail.height = "430px";
+        this.detail.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
         this.detail.color = TXT;
         this.detail.fontSize = 34;
+        this.detail.lineSpacing = "6px";
         this.detail.textWrapping = true;
         this.detail.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
         right.addControl(this.detail);
         const act = (name: string, fn: () => void) => {
             const a = Button.CreateSimpleButton(name, name);
-            a.height = "96px";
-            a.color = TXT;
-            a.background = "#2d6a5a";
+            a.height = "104px";
+            a.color = INK;
+            a.background = ACC;
             a.fontSize = 38;
-            a.cornerRadius = 20;
+            a.fontWeight = "bold";
+            a.cornerRadius = 26;
             a.thickness = 0;
-            a.paddingTop = "10px";
+            a.paddingTop = "14px";
             a.onPointerUpObservable.add(() => { fn(); this.dirty = true; });
             right.addControl(a);
             this.actions.push(a);
@@ -312,12 +386,16 @@ export class VRPanel {
         act("Move", () => game.hud.actXfer());
 
         this.craftPane = new ScrollViewer("craft");
-        this.craftPane.top = "120px";
+        this.craftPane.top = "128px";
         this.craftPane.height = "980px";
-        this.craftPane.width = "1580px";
+        this.craftPane.width = "1600px";
         this.craftPane.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
         this.craftPane.thickness = 0;
-        this.craftPane.barSize = 30;
+        this.craftPane.barSize = 26;
+        // (no outline round the bar's track)
+        this.craftPane.color = "transparent";
+        this.craftPane.barColor = "#ffd16699";
+        this.craftPane.barBackground = "#ffffff10";
         this.craftList = new StackPanel("craftList");
         this.craftPane.addControl(this.craftList);
         b.addControl(this.craftPane);
@@ -663,14 +741,14 @@ export class VRPanel {
         this.craftPane.isVisible = craft;
         this.menuPane.isVisible = this.menuOpen;
         this.gfxPane.isVisible = this.gfxOpen;
-        this.tabGfx.background = this.gfxOpen ? "#2d6a5a" : "#ffffff18";
+        lit(this.tabGfx, this.gfxOpen);
         this.mapPane.isVisible = ex === "map";
         this.chatPane.isVisible = ex === "chat";
-        this.tabBag.background = !craft && !other ? "#2d6a5a" : "#ffffff18";
-        this.tabCraft.background = craft ? "#2d6a5a" : "#ffffff18";
-        this.tabMenu.background = this.menuOpen ? "#2d6a5a" : "#ffffff18";
-        this.tabMap.background = ex === "map" ? "#2d6a5a" : "#ffffff18";
-        this.tabChat.background = ex === "chat" ? "#2d6a5a" : "#ffffff18";
+        lit(this.tabBag, !craft && !other);
+        lit(this.tabCraft, craft);
+        lit(this.tabMenu, this.menuOpen);
+        lit(this.tabMap, ex === "map");
+        lit(this.tabChat, ex === "chat");
         if (ex) return;
         if (this.gfxOpen && this.gfx) {
             for (const l of this.gfxLabels) { if (l.b.textBlock) l.b.textBlock.text = l.text(); if (l.on) l.b.background = l.on() ? "#2d6a5a" : "#ffffff22"; }
@@ -701,8 +779,12 @@ export class VRPanel {
         const ps = pick ? (pick.c === 0 ? g.inv : pick.c === 1 ? c : g.worn)?.slots[pick.i] : null;
         if (ps) {
             const d = ITEMS[ps.id];
-            this.detail.text = `${d.name}${ps.count > 1 ? ` ×${ps.count}` : ""}\n\n${d.desc}`;
-        } else this.detail.text = "Point at an item and pull the trigger to pick it, then at another slot to move it. The top row is your hotbar.";
+            this.detailName.text = `${d.name}${ps.count > 1 ? `  ×${ps.count}` : ""}`;
+            this.detail.text = d.desc;
+        } else {
+            this.detailName.text = "Your bag";
+            this.detail.text = "Point at an item and pull the trigger to pick it, then at another slot to move it. The top row (gold) is your hotbar.";
+        }
         const own = !!pick && pick.c === 0 && !!ps;
         const def = ps ? ITEMS[ps.id] : null;
         this.actions[0].isVisible = own && (def?.kind === "food" || def?.kind === "armor");
@@ -727,51 +809,140 @@ export class VRPanel {
         if (key === this.craftKey) return;
         this.craftKey = key;
         this.craftList.clearControls();
-        let group = "";
+        // two cards a row, under a heading per group
+        const W = 1560, CW = 762, CH = 176;
+        let group = "", row: StackPanel | null = null, n = 0;
         for (const r of RECIPES) {
             if (r.group !== group) {
                 group = r.group;
-                const h = new TextBlock(`cg${group}`, GROUP_LABEL[r.group]);
-                h.height = "80px";
-                h.color = "#ffd166";
-                h.fontSize = 40;
-                h.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-                h.paddingLeft = "20px";
+                const h = new Rectangle(`cg${group}`);
+                h.width = `${W}px`;
+                h.height = "84px";
+                h.thickness = 0;
+                const ht = new TextBlock(`cgt${group}`, GROUP_LABEL[r.group].toUpperCase());
+                ht.color = SEL;
+                ht.fontSize = 34;
+                ht.fontWeight = "bold";
+                ht.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+                ht.paddingLeft = "16px";
+                ht.paddingTop = "14px";
+                h.addControl(ht);
+                const hl = new Rectangle(`cgl${group}`);
+                hl.height = "2px";
+                hl.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
+                hl.top = "-10px";
+                hl.background = B_EDGE;
+                hl.thickness = 0;
+                h.addControl(hl);
                 this.craftList.addControl(h);
+                row = null;
+                n = 0;
             }
+            if (!row || n === 2) {
+                row = new StackPanel(`crr${r.out}`);
+                row.isVertical = false;
+                row.width = `${W}px`;
+                row.height = `${CH + 16}px`;
+                this.craftList.addControl(row);
+                n = 0;
+            }
+            n++;
             const def = ITEMS[r.out];
             const ok = canAfford(inv, r) && (!r.bench || bench);
-            const row = new Grid(`cr${r.out}`);
-            row.height = "120px";
-            row.addColumnDefinition(120, true);
-            row.addColumnDefinition(1);
-            row.addColumnDefinition(260, true);
+            // (just crafted: the card glows gold for a moment)
+            const fresh = jc === r.out;
+            const slot = new Rectangle(`cs${r.out}`);
+            slot.width = `${W / 2}px`;
+            slot.height = `${CH + 16}px`;
+            slot.thickness = 0;
+            row.addControl(slot);
+            const card = new Rectangle(`cc${r.out}`);
+            card.width = `${CW}px`;
+            card.height = `${CH}px`;
+            card.cornerRadius = 28;
+            card.thickness = fresh ? 4 : 2;
+            card.color = fresh ? SEL : ok ? "#3aa58a88" : CARD_EDGE;
+            card.background = fresh ? "#ffd16626" : ok ? "#3aa58a14" : CARD;
+            slot.addControl(card);
+            const grid = new Grid(`cgr${r.out}`);
+            grid.addColumnDefinition(140, true);
+            grid.addColumnDefinition(1);
+            grid.addColumnDefinition(172, true);
+            card.addControl(grid);
+            // the item, on a round plate
+            const plate = new Rectangle(`cp${r.out}`);
+            plate.width = "122px";
+            plate.height = "122px";
+            plate.cornerRadius = 61;
+            plate.thickness = 0;
+            plate.background = ok ? "#ffffff1a" : "#ffffff0c";
+            grid.addControl(plate, 0, 0);
             const img = new Image(`ci${r.out}`, iconUrl(r.out));
             img.width = "96px";
             img.height = "96px";
-            row.addControl(img, 0, 0);
-            const costs = r.cost.map(([id, n]) => `${n} ${costLabel(r, id, ITEMS[id].name)} (${costHave(inv, r, id)})`).join(" · ");
-            const tb = new TextBlock(`ct${r.out}`, `${def.name}${r.count > 1 ? ` ×${r.count}` : ""}\n${costs}${r.bench && !bench ? "\nNeeds a workbench nearby" : ""}`);
-            tb.color = ok ? TXT : "#f4efe288";
-            tb.fontSize = 32;
-            tb.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-            tb.textWrapping = true;
-            row.addControl(tb, 0, 1);
-            // (just crafted: the row glows gold for a moment)
-            const fresh = jc === r.out;
-            if (fresh) row.background = "#ffd16633";
-            const btn = Button.CreateSimpleButton(`cb${r.out}`, fresh ? "✓ Crafted!" : "Craft");
-            btn.height = "90px";
-            btn.width = "220px";
-            btn.color = TXT;
+            img.alpha = ok ? 1 : 0.55;
+            plate.addControl(img);
+            // its name, then what it costs: a chip per ingredient, green when you have enough
+            const mid = new StackPanel(`cm${r.out}`);
+            mid.paddingTop = "14px";
+            grid.addControl(mid, 0, 1);
+            const name = new TextBlock(`cn${r.out}`, `${def.name}${r.count > 1 ? `  ×${r.count}` : ""}`);
+            name.height = "56px";
+            name.color = ok ? TXT : MUTED;
+            name.fontSize = 36;
+            name.fontWeight = "bold";
+            name.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+            mid.addControl(name);
+            const chips = new StackPanel(`cch${r.out}`);
+            chips.isVertical = false;
+            chips.height = "62px";
+            chips.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+            mid.addControl(chips);
+            for (const [id, need] of r.cost) {
+                const have = costHave(inv, r, id), enough = have >= need;
+                const chip = new Rectangle(`ck${r.out}${id}`);
+                chip.width = "150px";
+                chip.height = "54px";
+                chip.cornerRadius = 27;
+                chip.thickness = 0;
+                chip.background = enough ? "#3aa58a2e" : "#ff9a8624";
+                chip.paddingRight = "8px";
+                const ci = new Image(`cki${r.out}${id}`, iconUrl(id));
+                ci.width = "38px";
+                ci.height = "38px";
+                ci.left = "9px";
+                ci.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+                chip.addControl(ci);
+                const ct = new TextBlock(`ckt${r.out}${id}`, `${Math.min(have, 999)}/${need}`);
+                ct.color = enough ? GOOD : SHORT;
+                ct.fontSize = 26;
+                ct.fontWeight = "bold";
+                ct.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+                ct.paddingRight = "12px";
+                chip.addControl(ct);
+                chips.addControl(chip);
+            }
+            const note = new TextBlock(`cno${r.out}`, r.bench && !bench ? "⚒ Needs a workbench nearby" : r.cost.map(([id]) => costLabel(r, id, ITEMS[id].name)).join(" · "));
+            note.height = "40px";
+            note.color = r.bench && !bench ? "#ffb870" : MUTED;
+            note.fontSize = 24;
+            note.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+            note.textWrapping = false;
+            mid.addControl(note);
+            const btn = Button.CreateSimpleButton(`cb${r.out}`, fresh ? "✓ Done!" : "Craft");
+            btn.height = "112px";
+            btn.width = "156px";
+            btn.color = ok || fresh ? INK : MUTED;
             btn.fontSize = 36;
-            btn.cornerRadius = 20;
+            btn.fontWeight = "bold";
+            btn.cornerRadius = 30;
             btn.thickness = 0;
-            btn.background = fresh ? "#c9a227" : ok ? "#2d6a5a" : "#ffffff14";
+            btn.background = fresh ? SEL : ok ? ACC : "#ffffff10";
             btn.isEnabled = ok;
+            btn.disabledColor = "#ffffff10";
+            btn.disabledColorItem = MUTED;
             btn.onPointerUpObservable.add(() => { g.hud.onCraft?.(r); this.craftKey = ""; this.dirty = true; });
-            row.addControl(btn, 0, 2);
-            this.craftList.addControl(row);
+            grid.addControl(btn, 0, 2);
         }
     }
 }
