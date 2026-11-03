@@ -107,9 +107,9 @@ export class Narrator {
     if (!ctx || !url) return Promise.resolve(null);
     p = (async () => {
       try {
-        const b64 = url.slice(url.indexOf(',') + 1), bin = atob(b64), arr = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-        return await ctx.decodeAudioData(arr.buffer);
+        // (a file URL in the build, or an inlined data URL: fetch reads either)
+        const res = await fetch(url);
+        return await ctx.decodeAudioData(await res.arrayBuffer());
       } catch (e) { console.warn('narration decode', id, e); return null; }
     })();
     this.bufs.set(id, p);
