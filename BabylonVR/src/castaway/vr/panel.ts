@@ -263,7 +263,7 @@ export class VRPanel {
         this.tabCraft = tab("tcraft", "Craft", () => { this.menuOpen = false; this.gfxOpen = false; this.extra = null; game.hud.setTab("craft"); this.dirty = true; });
         this.tabMap = tab("tmap", "Map", () => this.setExtra("map"));
         this.tabChat = tab("tchat", "Chat", () => this.setExtra("chat"));
-        this.tabMenu = tab("tmenu", "Menu", () => { this.menuOpen = true; this.gfxOpen = false; this.extra = null; this.dirty = true; });
+        this.tabMenu = tab("tmenu", "Multiplayer", () => { this.menuOpen = true; this.gfxOpen = false; this.extra = null; this.dirty = true; }, 280);
         this.tabGfx = tab("tgfx", "Graphics", () => { this.gfxOpen = true; this.menuOpen = false; this.extra = null; this.gfx = this.menuActions?.gfx() ?? null; this.dirty = true; });
         const x = tab("tclose", "✕", () => this.close(), 110);
         x.background = "#b5483a";
@@ -729,7 +729,7 @@ export class VRPanel {
         }
         if (open && this.extra === "chat") {
             const who = this.menuActions?.players?.() ?? null;
-            const t = who ?? "Playing solo: host a room from the Menu tab (or join a friend's) to chat.";
+            const t = who ?? "Playing solo: host a room from the Multiplayer tab (or join a friend's) to chat.";
             if (this.chatPlayers.text !== t) this.chatPlayers.text = t;
         }
         // (a craft's highlight coming on and going off redraws the board)
