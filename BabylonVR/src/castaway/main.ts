@@ -1045,10 +1045,37 @@ async function main() {
     document.body.classList.remove("prestart");
     const contBtn = $("continue"), playBtn = $("play");
     let armed = 0;
+    /**
+     * The first few seconds of play still compile and load what the warm-up could not see (the sea's reflection, shadows,
+     * what is round you): keep the loading screen up over them, with the game running behind it, until it draws smoothly.
+     */
+    let settled = false;
+    const settle = () => {
+        if (settled) { input.enabled = true; return; }
+        settled = true;
+        input.enabled = false;
+        $("loading").classList.remove("hidden");
+        progress(1, "Almost there…");
+        const t0 = performance.now();
+        let smooth = 0;
+        const recent: number[] = [];
+        const obs = scene.onAfterRenderObservable.add(() => {
+            const dt = engine.getDeltaTime();
+            // (smooth for this device: a slow machine's frames are all slow, a stall is several times its usual frame)
+            recent.push(dt); if (recent.length > 30) recent.shift();
+            const usual = [...recent].sort((a, b) => a - b)[Math.floor(recent.length / 2)];
+            smooth = dt < Math.max(100, usual * 1.6) ? smooth + 1 : 0;
+            if ((smooth >= 20 && performance.now() - t0 > 600) || performance.now() - t0 > 20000) {
+                scene.onAfterRenderObservable.remove(obs);
+                $("loading").classList.add("hidden");
+                input.enabled = true;
+            }
+        });
+    };
     const begin = () => {
         started = true;
         setNameLocked(true);
-        input.enabled = true;
+        settle();
         game.sfx.init();
         $("menu").classList.add("hidden");
         $("ready").classList.add("hidden");

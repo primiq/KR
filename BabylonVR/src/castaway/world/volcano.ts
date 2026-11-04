@@ -435,6 +435,8 @@ export class Volcano {
         this.hud = document.createElement("div");
         this.hud.style.cssText = "position:fixed;left:50%;top:70px;transform:translateX(-50%);z-index:5;display:none;color:#ffd9a0;font:700 22px system-ui,sans-serif;text-align:center;text-shadow:0 1px 6px rgba(0,0,0,.9);pointer-events:none;letter-spacing:.03em";
         document.body.appendChild(this.hud);
+        // (draw the screens once now: an empty texture never counts as ready, and the loading screen would wait on it)
+        this.drawScreens(0);
         this.setVisible(false);
     }
 
