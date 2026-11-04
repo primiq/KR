@@ -382,6 +382,7 @@ export class WorldSync {
             case "mw": { const c = g.under.cat; if (c?.active) { const d = Math.hypot(e.x - g.player.pos.x, e.z - g.player.pos.z); if (d < 14) g.sfx.meow(Math.max(0.15, 1 - d / 14)); } break; }
             case "qc": case "qr": case "qs": case "qd": case "qx": case "qz": case "qn": case "qy": case "qi": case "qb": case "qt": case "qm": case "qp": case "qk": g.under.camp?.net(e, from); break;
             case "tp": case "td": case "tx": case "tb": g.under.trial?.net(e, from); break;
+            case "vs": case "vf": case "vd": case "vh": g.under.lava?.net(e, from); break;
             case "hs": case "hf": case "he": g.under.hide?.net(e); break;
             case "hb": g.under.hide?.net({ ...e, from }); break;
             case "ml": g.warp.net(e, from); break;

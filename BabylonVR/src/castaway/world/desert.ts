@@ -573,9 +573,9 @@ varying float vGV;
 
     private tufts: { inst: Inst; k: number; x: number; z: number; sx: number; sy: number; rx: number; ry: number; rz: number }[] = [];
     private tuftDummy = new THREE.Object3D();
-    /** a tuft stands on the ground as it is (and is not there at all under a building) */
+    /** a tuft stands on the ground as it is (and is not there at all under a building, or where its sand was dug away) */
     private setTuft(t: Desert["tufts"][number]) {
-        const d = this.tuftDummy, gone = inCut(t.x, t.z, 0.35) || t.sx === 0;
+        const d = this.tuftDummy, gone = inCut(t.x, t.z, 0.35) || t.sx === 0 || digAt(t.x, t.z) < -0.12 || wetAt(t.x, t.z) && digAt(t.x, t.z) < 0;
         d.position.set(t.x, heightAt(t.x, t.z) - 0.03, t.z); d.rotation.set(t.rx, t.ry, t.rz);
         d.scale.set(gone ? 0 : t.sx, gone ? 0 : t.sy, gone ? 0 : t.sx); d.updateMatrix(); t.inst.setMatrixAt(t.k, d.matrix);
     }
@@ -583,6 +583,12 @@ varying float vGV;
     private offsetAt(k: number) {
         const i = k % EDIT_N, j = (k - i) / EDIT_N, x = EDIT_X0 + (i + 0.5) * (EDIT_HALF * 2 / EDIT_N), z = EDIT_Z0 + (j + 0.5) * (EDIT_HALF * 2 / EDIT_N);
         return inCut(x, z, 4.2) ? heightAt(x, z) - desertHeight(x, z) : dig[k];
+    }
+    /** the sand was dug or filled here: the reeds on it go with it (or come back when it is filled in again) */
+    groundDug(x0: number, z0: number, x1: number, z1: number) {
+        const touched = new Set<Inst>();
+        for (const t of this.tufts) if (t.x > x0 && t.x < x1 && t.z > z0 && t.z < z1) { this.setTuft(t); touched.add(t.inst); }
+        for (const inst of touched) inst.instanceMatrix.needsUpdate = true;
     }
     /** a building went up or came down here: the sand under it is levelled (or comes back), grass under it goes */
     terrainChanged(x0: number, z0: number, x1: number, z1: number) {

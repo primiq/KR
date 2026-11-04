@@ -439,7 +439,7 @@ export class Game {
         });
         this.fishing.surface = (x, z) => this.player.surfaceAt(x, z);
         this.player.onLand = (v) => {
-            if (this.stats.dead || this.under.camp?.active || this.under.town?.active) return;
+            if (this.stats.dead || this.under.camp?.active || this.under.town?.active || this.under.lava?.active) return;
             const d = (v - 14) * 6;
             if (d < 1) return;
             this.stats.hurt(d, "fall");

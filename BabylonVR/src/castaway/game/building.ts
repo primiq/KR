@@ -338,7 +338,9 @@ function matFor(k: MatKey): Material {
     switch (k) {
         case "wall": return W.wall;
         case "slab": return W.slab;
-        case "beam": { const b = W.beam; if (b.zOffset === 0) b.zOffset = -1; return b; }
+        // (the dark beams sit flush with the planks in places: a slope-only offset does nothing for a face seen straight on,
+        //  so far off, where depth gets coarse, they flickered; a constant offset as well keeps them in front at any range)
+        case "beam": { const b = W.beam; if (b.zOffset === 0) { b.zOffset = -1; b.zOffsetUnits = -6; } return b; }
         case "pile": return W.pile;
         case "glass": return glassMaterial(s);
         case "pool": return POOL_SEA ?? poolMaterial(s);

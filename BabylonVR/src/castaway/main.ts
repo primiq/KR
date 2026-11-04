@@ -43,6 +43,8 @@ import { Airstrip } from "./world/airstrip";
 import { CatHome } from "./world/catroom";
 import { HideIsle } from "./world/hideisle";
 import { TileTrial } from "./world/tiletrial";
+import { Volcano } from "./world/volcano";
+import { LAVA_BOARD } from "./world/skyroom";
 import { FPPaws, PLAYER_COATS } from "./world/cats";
 import { HUMAN, CAT, GORILLA } from "./world/player";
 import { Narrator } from "./game/narrator";
@@ -586,10 +588,32 @@ async function main() {
     poolAt = (x, z) => game.building.poolWater(x, z);
     game.sand = desert;
     // (digging under a palm or a rock: it settles with the sand)
-    desert.works.onGround = (x0, z0, x1, z1) => vegetation.reseat(x0, z0, x1, z1);
+    desert.works.onGround = (x0, z0, x1, z1) => { vegetation.reseat(x0, z0, x1, z1); desert.groundDug(x0, z0, x1, z1); };
     // every dawn the ground near water greens: the host says when, so everybody's green is the same
     desert.onDawn = () => { if (!sync || sync.session.isHost) { desert.green(); sync?.session.sendEvent({ k: "sg" }); } };
     desert.onGreened = () => { if (desert.active) game.hud.message("The sand by the water has turned green overnight. Saplings will take there now."); };
+    // Floris Lava (the red door): climb out of a volcano before the lava gets you, then fly away as it blows
+    const lava = new Volcano(scene);
+    game.under.lava = lava;
+    lava.placeBoard(LAVA_BOARD.x, LAVA_BOARD.y, LAVA_BOARD.z, LAVA_BOARD.ry);
+    lava.say = (t) => game.hud.message(t);
+    lava.myId = () => sync?.session.myId ?? 0;
+    lava.myName = () => sync?.session.name || "You";
+    lava.send = (e) => sync?.session.sendEvent(e);
+    lava.others = () => hide.others();
+    lava.sfx = {
+        press: () => game.sfx.tilePress(), geyser: (d) => game.sfx.geyser(d), blub: (v) => game.sfx.blub(v), rumble: (d, v) => game.sfx.rumble(d, v),
+        eruption: () => game.sfx.eruption(), rotor: (v, r) => game.sfx.setRotor(v, r), burn: () => { game.sfx.death(); game.sfx.sizzle(1); }, win: () => game.sfx.tileWin(), tick: () => game.sfx.tileTick(false),
+    };
+    lava.shake = (k) => { player.shake(k); game.vr.haptic?.(Math.min(1, k)); };
+    {
+        // (a red flash when the lava gets you)
+        const fl = document.createElement("div");
+        fl.style.cssText = "position:fixed;inset:0;background:radial-gradient(ellipse at center, rgba(255,120,30,0.35), rgba(160,20,0,0.85));opacity:0;pointer-events:none;z-index:4;transition:opacity 1.2s ease-out";
+        document.body.appendChild(fl);
+        lava.flash = (k) => { fl.style.transition = "none"; fl.style.opacity = String(Math.min(1, k)); requestAnimationFrame(() => { fl.style.transition = "opacity 1.6s ease-out"; fl.style.opacity = "0"; }); };
+    }
+    lava.goHome = () => { lava.leave(player); sky.enter(player, "lava"); };
     trial.say = (t) => game.hud.message(t);
     trial.myId = () => sync?.session.myId ?? 0;
     trial.myName = () => sync?.session.name || "You";
@@ -779,6 +803,10 @@ async function main() {
             if (hide.active && !hide.contains(player.pos.x, player.pos.z)) { hide.leave(player); player.teleport(player.pos.x, heightAt(player.pos.x, player.pos.z), player.pos.z, player.yaw); }
             if (!trial.active && trial.contains(player.pos.x, player.pos.z) && sky.exitTo) { const e = sky.exitTo; player.teleport(e.x, e.y, e.z, e.yaw); }
             if (trial.active && !trial.contains(player.pos.x, player.pos.z)) { trial.leave(player); player.teleport(player.pos.x, heightAt(player.pos.x, player.pos.z), player.pos.z, player.yaw); }
+            if (!lava.active && lava.contains(player.pos.x, player.pos.z) && sky.exitTo) { const e = sky.exitTo; player.teleport(e.x, e.y, e.z, e.yaw); }
+            if (lava.active && !lava.contains(player.pos.x, player.pos.z)) { lava.leave(player); player.teleport(player.pos.x, heightAt(player.pos.x, player.pos.z), player.pos.z, player.yaw); }
+            // (jump to climb back out of the helicopter before it takes off)
+            if (lava.seated && input.jumpQueued) { if (lava.getOut()) input.jumpQueued = false; }
             if (!camp.active && camp.contains(player.pos.x, player.pos.z) && sky.exitTo) { const e = sky.exitTo; player.teleport(e.x, e.y, e.z, e.yaw); }
             if (camp.active && !camp.contains(player.pos.x, player.pos.z)) { camp.leave(); player.teleport(player.pos.x, heightAt(player.pos.x, player.pos.z), player.pos.z, player.yaw); }
             for (const t of towns) {
@@ -810,6 +838,7 @@ async function main() {
             if (sync) sync.avatars.three.labelsOff = hide.active;
             game.sfx.setDeaf(hide.deaf);
             trial.update(dt, player, now / 1000);
+            lava.update(dt, player, clock.day);
             camp.update(dt, now / 1000);
             locs.update(dt);
             game.under.town?.update(dt, now / 1000, clock.sunDir.y, player);
@@ -1342,7 +1371,7 @@ async function main() {
     // a hidden tab stops rendering: keep the room in step anyway (a host who alt-tabs must not freeze everyone else)
     setInterval(() => { if (document.hidden) sync?.update(0.1); }, 100);
 
-    Object.assign(window as unknown as Record<string, unknown>, { Wind, scene, engine, game, player, sites, caves, heightAt, weather, cats, sky, dive, air, cat, vegetation, terrain, ocean, input, clock, camera, getSync: () => sync, doSave, camp, narrator, mozzie, locs, towns, waterfall, seabed, desert });
+    Object.assign(window as unknown as Record<string, unknown>, { Wind, scene, engine, game, player, sites, caves, heightAt, weather, cats, sky, dive, air, cat, vegetation, terrain, ocean, input, clock, camera, getSync: () => sync, doSave, camp, narrator, mozzie, locs, towns, waterfall, seabed, desert, lava });
 }
 
 /** something stopped the game from starting: say so where it can be seen, in words a player can act on */

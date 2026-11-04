@@ -20,6 +20,7 @@ import type { Campaign, CampTarget } from '../campaign/campaign';
 import type { LocationsRoom, LocTarget } from '../world/locationsroom';
 import type { Town } from '../world/town';
 import type { TileTrial, TrialTarget } from '../world/tiletrial';
+import type { Volcano, LavaTarget } from '../world/volcano';
 import { CAT, HUMAN } from '../world/player';
 import { rayGround } from './building';
 import type { ItemId } from './items';
@@ -67,7 +68,9 @@ export type UgTarget =
   | { kind: 'trialdoor'; dist: number }
   | { kind: 'desertdoor'; dist: number }
   | { kind: 'desertexit'; dist: number }
-  | { kind: 'trial'; t: TrialTarget; dist: number };
+  | { kind: 'trial'; t: TrialTarget; dist: number }
+  | { kind: 'lavadoor'; dist: number }
+  | { kind: 'lava'; t: LavaTarget; dist: number };
 
 const DIG_HITS = 6;
 
@@ -98,6 +101,8 @@ export class Underground {
   /** the Locations room was entered (the narrator says hello) */
   onLocs: (() => void) | null = null;
   trial: TileTrial | null = null;
+  /** Floris Lava: the volcano behind the red door (set by main) */
+  lava: Volcano | null = null;
   /** The Desert (the sand door): an open level far off, no room of its own (set by main) */
   desert: Desert | null = null;
   /** cat house entered / left (main swaps the body, the paws and the multiplayer flag) */
@@ -270,6 +275,10 @@ export class Underground {
     if (lp && (!best || lp.dist < (best as UgTarget).dist)) best = { kind: 'locroom', t: lp.t, dist: lp.dist };
     const cp = this.camp?.pick(eye, dir, reach, assist);
     if (cp && (cp.t.w === 'm' && cp.t.t.w === 'held' || !best || cp.dist < (best as UgTarget).dist)) best = { kind: 'camp', t: cp.t, dist: cp.dist };
+    const lv = this.sky?.pickLava(eye, dir, Math.max(reach, 3.2), assist);
+    if (lv != null && (!best || lv < (best as UgTarget).dist)) best = { kind: 'lavadoor', dist: lv };
+    const lp2 = this.lava?.pick(eye, dir, reach, assist);
+    if (lp2 && (!best || lp2.dist < (best as UgTarget).dist)) best = { kind: 'lava', t: lp2.t, dist: lp2.dist };
     const tp = this.trial?.pick(eye, dir, reach, assist);
     if (tp && (!best || tp.dist < (best as UgTarget).dist)) best = { kind: 'trial', t: tp.t, dist: tp.dist };
     const hp = this.hide?.pick(eye, dir, reach, assist);
@@ -306,6 +315,8 @@ export class Underground {
       case 'desertexit': return { name: 'Shimmering arch', hint: '<b>E</b> back to the secret room', ok: true };
       case 'trialdoor': return { name: 'Copper door', hint: '<b>E</b> open · the Chamber of Tiles', ok: true };
       case 'trial': return this.trial!.prompt(t.t);
+      case 'lavadoor': return { name: 'Floris Lava', hint: '<b>E</b> open · climb out of a volcano before it blows', ok: true };
+      case 'lava': return this.lava!.prompt(t.t);
       case 'catdoor': return { name: 'Door with a paw print', hint: '<b>E</b> open · become a cat', ok: true };
       case 'catexit': return { name: 'Kitchen door', hint: '<b>E</b> back to the secret room', ok: true };
       case 'airdoor': return { name: 'Door to the airstrip', hint: '<b>E</b> open', ok: true };
@@ -340,6 +351,8 @@ export class Underground {
       case 'desertdoor': if (this.sky) { this.sky.leave(this.h.player, { x: DESERT_SPAWN.x, y: desertHeight(DESERT_SPAWN.x, DESERT_SPAWN.z), z: DESERT_SPAWN.z, yaw: DESERT_SPAWN.yaw }); this.h.message('The door opens onto hot sand. Down in the dunes ahead, an oasis...'); this.h.sfx.creak(); } break;
       case 'desertexit': if (this.sky) { this.sky.enter(this.h.player, 'desert'); this.h.message('Back in the secret room.'); this.h.sfx.creak(); } break;
       case 'trialdoor': if (this.sky && this.trial) { this.sky.depart(); this.trial.enter(this.h.player); this.h.sfx.creak(); } break;
+      case 'lavadoor': if (this.sky && this.lava) { this.sky.depart(); this.lava.enter(this.h.player); this.h.sfx.creak(); } break;
+      case 'lava': { if (this.lava?.interact(t.t) === 'exit' && this.sky) { this.lava.leave(this.h.player); this.sky.enter(this.h.player, 'lava'); this.h.message('Back in the secret room.'); this.h.sfx.creak(); } break; }
       case 'trial': { if (this.trial?.interact(t.t) === 'exit' && this.sky) { this.trial.leave(this.h.player); this.sky.enter(this.h.player, 'trial'); this.h.message('Back in the secret room.'); this.h.sfx.creak(); } break; }
       case 'hide': { if (this.hide?.interact(t.t, this.h.player) === 'exit' && this.sky) { this.hide.leave(this.h.player); this.sky.enter(this.h.player, 'hide'); this.h.message('Back in the secret room.'); this.h.sfx.creak(); } break; }
       case 'catdoor': if (this.sky && this.cat) { this.sky.depart(); this.cat.enter(this.h.player, CAT); this.onCat?.(true); this.h.message('You are a cat now. Jump on things (hold Space at a scratching post to climb), pounce with click, chase the mouse!'); this.h.sfx.creak(); } break;

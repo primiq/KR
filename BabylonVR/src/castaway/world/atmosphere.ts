@@ -174,9 +174,9 @@ export class Atmosphere {
         this.sun.intensity = 6.5 * day * (1 - 0.35 * low);
         const my = -sy, up = smoothstep(-0.06, 0.22, my);
         this.moon.direction.copyFrom(this.sunDir);
-        this.moon.intensity = 0.55 * (1 - day) * (0.25 + 0.75 * up);
+        this.moon.intensity = 0.4 * (1 - day) * (0.25 + 0.75 * up);
         // (the moon and the lightning stay switched on, at intensity 0 when idle: toggling a light recompiles every lit shader)
-        this.scene.environmentIntensity = lerp(0.3, 1, day);
+        this.scene.environmentIntensity = lerp(0.12, 1, day);
         // ---- the sky's own light, so places out of the sun never fall to black: a soft fill from the whole sky (blue by day,
         //      a warm pink glow at dusk and dawn, a cool moonlit blue at night) with warm light bounced up off the sand and
         //      grass. (The cave fill light does this job above ground: one light fewer for every material.)
@@ -187,9 +187,9 @@ export class Atmosphere {
         const skyDay = new Color3(0.62, 0.76, 1.0), skyDusk = new Color3(0.95, 0.72, 0.66), skyNight = new Color3(0.42, 0.55, 0.95);
         fill.diffuse = Color3.Lerp(Color3.Lerp(skyDay, skyNight, nightK), skyDusk, dusk);
         fill.groundColor = Color3.Lerp(Color3.Lerp(new Color3(0.42, 0.33, 0.22), new Color3(0.12, 0.13, 0.2), nightK), new Color3(0.5, 0.38, 0.32), 0.6 * dusk);
-        fill.intensity = 0.25 * day + 0.7 * dusk + 0.16 * dusk * this.sun.intensity + 0.32 * nightK * (0.55 + 0.45 * up);
+        fill.intensity = 0.25 * day + 0.7 * dusk + 0.16 * dusk * this.sun.intensity + 0.2 * nightK * (0.55 + 0.45 * up);
         // eyes adapt: the dark is lifted a little (not so much that night looks like day)
-        this.setExposure(1 + 0.45 * (1 - day) + 0.15 * dusk);
+        this.setExposure(1 + 0.22 * (1 - day) + 0.15 * dusk);
         const sm = this.sky.material as SkyMaterial;
         sm.sunPosition = this.sunDir.scale(100);
         if (this.sunDisc) {

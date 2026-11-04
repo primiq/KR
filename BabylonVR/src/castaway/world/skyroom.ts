@@ -20,8 +20,10 @@ const HW = 2.5, HL = 13, H = 4.2, EDGE = 0.32;
 /** the bays along each wall (z of each door's middle), from the entrance end to the far end */
 const BAYS = [9.6, 6.4, 3.2, 0, -3.2, -6.4, -9.6];
 /** which door is in which bay: west wall (x = -HW) and east wall (x = +HW) */
-const W_HIDE = BAYS[0], W_TRIAL = BAYS[1], W_CAMP = BAYS[2], W_LOC = BAYS[3], W_AIR = BAYS[4];
-const E_CAT = BAYS[0], E_DUNE = BAYS[1], E_CLOUD = BAYS[2], E_MIRROR = BAYS[3];
+const W_HIDE = BAYS[0], W_TRIAL = BAYS[1], W_CAMP = BAYS[2], W_LOC = BAYS[3], W_AIR = BAYS[4], W_LAVA = BAYS[5];
+const E_CAT = BAYS[0], E_DUNE = BAYS[1], E_CLOUD = BAYS[2], E_MIRROR = BAYS[3], E_BOARD = BAYS[5];
+/** Floris Lava's results board: on the east wall across from its door (world/volcano.ts draws it) */
+export const LAVA_BOARD = { x: HW - 0.075, y: SKY_Y + 1.75, z: E_BOARD, ry: -Math.PI / 2 };
 const SONG_Z = -HL + 0.9;
 /** the mirror's plane (x), for world/skyView.ts */
 export const MIRROR_X = HW - 0.075;
@@ -150,7 +152,12 @@ export class SkyRoom {
     door(-1, W_CAMP, '#f2c94c', 'Banana or Salmon', (put) => { put(0.12, 0.5, -0.25, 1.75, basic('#ffe680')); put(0.42, 0.12, 0.22, 1.55, basic('#e88a7a')); put(0.08, 0.18, 0.46, 1.55, basic('#e88a7a')); });
     door(-1, W_LOC, '#34495e', 'Locations, Locations', (put) => { put(0.6, 0.45, 0, 1.7, basic('#16a085')); put(0.5, 0.35, 0, 1.7, basic('#9ff5e0'), 0.03); });
     door(-1, W_AIR, '#c8431b', 'The Airstrip', (put) => { put(1.1, 0.4, 0, 2.0, basic('#1d3a5c')); put(0.7, 0.08, 0, 2.0, basic('#f6e7bd'), 0.03); });
-    for (const z of [BAYS[5], BAYS[6]]) door(-1, z, '#5d544a', 'Coming soon', (put) => { put(0.42, 0.42, 0, 1.6, basic('#3d3630')); put(0.1, 0.22, 0, 1.68, creamD, 0.03); put(0.08, 0.08, 0, 1.48, creamD, 0.03); });
+    door(-1, W_LAVA, '#b8321a', 'Floris Lava', (put) => {
+      const rockC = basic('#2b1d18'), lava = basic('#ff7a1a');
+      put(1.0, 0.32, 0, 0.7, rockC); put(0.72, 0.3, 0, 1.0, rockC); put(0.44, 0.26, 0, 1.27, rockC);
+      put(0.14, 0.5, 0, 1.0, lava, 0.03); put(0.3, 0.18, 0, 1.55, lava); put(0.12, 0.12, -0.2, 1.8, lava); put(0.1, 0.1, 0.18, 1.9, lava);
+    });
+    for (const z of [BAYS[6]]) door(-1, z, '#5d544a', 'Coming soon', (put) => { put(0.42, 0.42, 0, 1.6, basic('#3d3630')); put(0.1, 0.22, 0, 1.68, creamD, 0.03); put(0.08, 0.08, 0, 1.48, creamD, 0.03); });
     // ---- east wall
     door(1, E_CAT, '#7b4fb0', "You're a Cat!", (put) => { for (const [dz, y] of [[-0.18, 1.55], [0.0, 1.62], [0.18, 1.55], [-0.08, 1.38], [0.1, 1.38]]) put(0.09, 0.09, dz, y, gold); put(0.26, 0.2, 0, 1.2, gold); });
     door(1, E_DUNE, '#d9a35f', 'The Desert', (put) => {
@@ -185,7 +192,13 @@ export class SkyRoom {
       fr(0.1, t, Wm + 2 * t, CY + Hh / 2 + t / 2, E_MIRROR); fr(0.1, t, Wm + 2 * t, CY - Hh / 2 - t / 2, E_MIRROR);
       fr(0.1, Hh, t, CY, E_MIRROR + Wm / 2 + t / 2); fr(0.1, Hh, t, CY, E_MIRROR - Wm / 2 - t / 2);
     }
-    for (const z of [BAYS[4], BAYS[5], BAYS[6]]) door(1, z, '#5d544a', 'Coming soon', (put) => { put(0.42, 0.42, 0, 1.6, basic('#3d3630')); put(0.1, 0.22, 0, 1.68, creamD, 0.03); put(0.08, 0.08, 0, 1.48, creamD, 0.03); });
+    {
+      // Floris Lava's results board hangs here in a gold frame (the board itself is drawn by world/volcano.ts)
+      const fr = (h: number, w: number, y: number, z: number) => box(0.08, h, w, HW - 0.05, y, z, gold);
+      fr(0.1, 2.4, 2.63, E_BOARD); fr(0.1, 2.4, 0.87, E_BOARD); fr(1.86, 0.1, 1.75, E_BOARD + 1.15); fr(1.86, 0.1, 1.75, E_BOARD - 1.15);
+      box(0.04, 1.76, 2.3, HW - 0.04, 1.75, E_BOARD, walnutD);
+    }
+    for (const z of [BAYS[4], BAYS[6]]) door(1, z, '#5d544a', 'Coming soon', (put) => { put(0.42, 0.42, 0, 1.6, basic('#3d3630')); put(0.1, 0.22, 0, 1.68, creamD, 0.03); put(0.08, 0.08, 0, 1.48, creamD, 0.03); });
     // ---- the far end: your photo in a big gold frame, lamps either side, and the song button on a stand before it
     {
       const tex = new THREE.TextureLoader().load(photoUrl); tex.colorSpace = THREE.SRGBColorSpace;
@@ -232,6 +245,7 @@ export class SkyRoom {
   pickCat(eye: V3, dir: V3, reach: number, assist = 1) { return this.pickAt(HW, E_CAT, 1.1, 1.0, eye, dir, reach, assist); }
   pickHide(eye: V3, dir: V3, reach: number, assist = 1) { return this.pickAt(-HW, W_HIDE, 1.1, 1.0, eye, dir, reach, assist); }
   pickTrial(eye: V3, dir: V3, reach: number, assist = 1) { return this.pickAt(-HW, W_TRIAL, 1.1, 1.0, eye, dir, reach, assist); }
+  pickLava(eye: V3, dir: V3, reach: number, assist = 1) { return this.pickAt(-HW, W_LAVA, 1.1, 1.0, eye, dir, reach, assist); }
   pickCamp(eye: V3, dir: V3, reach: number, assist = 1) { return this.pickAt(-HW, W_CAMP, 1.1, 1.0, eye, dir, reach, assist); }
   pickLoc(eye: V3, dir: V3, reach: number, assist = 1) { return this.pickAt(-HW, W_LOC, 1.1, 1.0, eye, dir, reach, assist); }
   pickDesert(eye: V3, dir: V3, reach: number, assist = 1) { return this.pickAt(HW, E_DUNE, 1.1, 1.0, eye, dir, reach, assist); }
@@ -249,12 +263,12 @@ export class SkyRoom {
   }
   private closeCloud() { this.cloudT = -1; this.cloudDoor.rotation.y = 0; }
   /** (back) from one of the other places: arrive in front of the door you left by, facing into the hall */
-  enter(p: { teleport(x: number, y: number, z: number, yaw: number): void; cave: any }, from: 'hut' | 'air' | 'cat' | 'hide' | 'trial' | 'camp' | 'loc' | 'desert' = 'hut') {
+  enter(p: { teleport(x: number, y: number, z: number, yaw: number): void; cave: any }, from: 'hut' | 'air' | 'cat' | 'hide' | 'trial' | 'camp' | 'loc' | 'desert' | 'lava' = 'hut') {
     this.active = true; this.group.visible = true; this.closeCloud();
     p.cave = this;
     const W = (z: number) => p.teleport(-HW + 1.4, SKY_Y, z, -Math.PI / 2), E = (z: number) => p.teleport(HW - 1.4, SKY_Y, z, Math.PI / 2);
     if (from === 'desert') E(E_DUNE); else if (from === 'cat') E(E_CAT);
-    else if (from === 'air') W(W_AIR); else if (from === 'camp') W(W_CAMP); else if (from === 'loc') W(W_LOC); else if (from === 'hide') W(W_HIDE); else if (from === 'trial') W(W_TRIAL);
+    else if (from === 'air') W(W_AIR); else if (from === 'camp') W(W_CAMP); else if (from === 'loc') W(W_LOC); else if (from === 'hide') W(W_HIDE); else if (from === 'trial') W(W_TRIAL); else if (from === 'lava') W(W_LAVA);
     else p.teleport(0, SKY_Y, HL - 1.5, 0);
   }
   /** the player goes elsewhere (the airstrip sets its own ground): just hide the room and stop the song */
