@@ -44,7 +44,7 @@ const START_ANG = Math.PI * 0.5;
 interface V3 { x: number; y: number; z: number }
 type Kind = "slab" | "beam" | "pillar";
 /** a platform: a footprint (a circle, or a rectangle hl x hw turned by `rot`) with its top and bottom; pistons bob */
-interface Plat { kind: Kind; x: number; z: number; top: number; bottom: number; hl: number; hw: number; rot: number; bob: { amp: number; per: number; ph: number } | null; mesh?: Mesh }
+interface Plat { /** a shelf to fall onto, not a step of the course */ extra?: boolean; kind: Kind; x: number; z: number; top: number; bottom: number; hl: number; hw: number; rot: number; bob: { amp: number; per: number; ph: number } | null; mesh?: Mesh }
 /** a wall to bump into (an oriented box between y0 and y1) */
 interface Wall { x: number; z: number; hl: number; hw: number; rot: number; y0: number; y1: number }
 export type LavaTarget = { w: "start" } | { w: "exit" } | { w: "stop" } | { w: "heli" };
@@ -74,18 +74,18 @@ function buildCourse(): { plats: Plat[]; arrive: number } {
     let prev = slab(ang, top, 2.4, 1.1);
     plats.push(prev);
     for (let n = 1; n < 400; n++) {
-        const hard = R() < 0.2, rest = n % 12 === 0;
+        const hard = R() < 0.2, rest = n % 9 === 0;
         let rise = rest ? 0.3 : hard ? 0.72 + R() * 0.12 : 0.4 + R() * 0.38;
-        const gap = rest ? 1.1 : hard ? 2.5 + R() * 0.5 : 1.2 + R() * 1.25;
+        const gap = rest ? 1.1 : hard ? 2.2 + R() * 0.5 : 1.1 + R() * 1.15;
         if (top + rise > TOP - 0.45) break;
         const k = R();
         let p: Plat;
         const tNew = top + rise;
         if (rest) p = slab(0, tNew, 2.5, 1.15);
-        else if (k < 0.4) p = slab(0, tNew, 0.95 + R() * 0.9, 0.62 + R() * 0.3);
-        else if (k < 0.55) { p = slab(0, tNew, 1.6 + R() * 0.9, 0.3, "beam", 2.2 + R() * 1.6); p.rot += (R() - 0.5) * 0.9; }
+        else if (k < 0.4) p = slab(0, tNew, 1.35 + R() * 0.9, 0.85 + R() * 0.3);
+        else if (k < 0.55) { p = slab(0, tNew, 1.8 + R() * 0.9, 0.45, "beam", 2.2 + R() * 1.6); p.rot += (R() - 0.5) * 0.9; }
         else {
-            const rad = 0.5 + R() * 0.62, inset = 1.4 + R() * 3.4;
+            const rad = 0.75 + R() * 0.6, inset = 1.6 + R() * 3.2;
             const r = rIn(tNew) - inset;
             p = { kind: "pillar", x: 0, z: r, top: tNew, bottom: -6, hl: rad, hw: rad, rot: 0, bob: null };
             // a few pistons that rise and sink: time the jump
@@ -112,13 +112,30 @@ function buildCourse(): { plats: Plat[]; arrive: number } {
     const last = slab(ang, lastTop, 2.0, 1.0);
     if (lastTop - top > 0.9) { const mid = slab(ang - 0.06, (top + lastTop) / 2, 1.0, 0.8); plats.push(mid); }
     plats.push(last);
+    // shelves to fall onto: from each resting ledge, a wide shelf runs along the wall under the next stretch of the course,
+    // so a slip costs a few metres, not the whole climb (walk back along it and go again)
+    const route = plats.length;
+    for (let i = 0; i < route; i++) {
+        const r0 = plats[i];
+        if (r0.kind !== "slab" || r0.hl < 2.4 || i + 2 >= route) continue;
+        const a0 = Math.atan2(r0.z, r0.x), j = Math.min(route - 1, i + 8);
+        let a1 = Math.atan2(plats[j].z, plats[j].x);
+        while (a1 < a0) a1 += Math.PI * 2;
+        const rr = rIn(r0.top) - 1.7, segs = Math.max(1, Math.ceil(((a1 - a0) * rr) / 3.6));
+        for (let k = 0; k < segs; k++) {
+            const a = a0 + ((k + 0.5) / segs) * (a1 - a0), half = ((a1 - a0) * rr) / segs / 2 + 0.15;
+            const sh = slab(a, r0.top, half, 1.7);
+            sh.extra = true;
+            plats.push(sh);
+        }
+    }
     // a column stands on the floor, unless that would put it across the route lower down: then it ends well above
     // the heads of whoever comes by under it (it juts out of the wall up there)
     const segDist = (px: number, pz: number, a: Plat, b: Plat) => {
         const dx = b.x - a.x, dz = b.z - a.z, l2 = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((px - a.x) * dx + (pz - a.z) * dz) / l2));
         return Math.hypot(px - (a.x + dx * t), pz - (a.z + dz * t));
     };
-    for (let i = 0; i < plats.length; i++) {
+    for (let i = 0; i < route; i++) {
         const c = plats[i];
         if (c.kind !== "pillar") continue;
         for (let j = 1; j < i; j++) {
@@ -442,9 +459,10 @@ export class Volcano {
     }
     private buildMountain() {
         // the caldera wall, from the floor up to the rim (pushed back a little here and there: never into where you climb)
-        this.polar("volcWall", 144, 30, (a, k) => { const y = k * TOP, r = rIn(y) + this.wallBump(a, y); return [Math.cos(a) * r, y, Math.sin(a) * r]; });
+        // (it starts below the floor, and the floor runs on under it: no gap at the foot of the wall to see out through)
+        this.polar("volcWall", 144, 31, (a, k) => { const y = -2 + k * (TOP + 2), r = rIn(y) + this.wallBump(a, Math.max(0, y)); return [Math.cos(a) * r, y, Math.sin(a) * r]; });
         // the floor
-        this.polar("volcFloor", 64, 8, (a, k) => { const r = k * (R0 + 0.5); return [Math.cos(a) * r, k < 0.98 ? 0.0 : -0.3, Math.sin(a) * r]; });
+        this.polar("volcFloor", 72, 8, (a, k) => { const r = k * (R0 + 2.5); return [Math.cos(a) * r, 0.0, Math.sin(a) * r]; });
         // the rim: a broad flat walk all the way round
         this.polar("volcRim", 144, 4, (a, k) => { const r0 = rIn(TOP) + this.wallBump(a, TOP), r = r0 + k * (RIM_OUT - r0); return [Math.cos(a) * r, TOP + (k > 0 && k < 1 ? Math.sin(a * 13 + k * 5) * 0.03 : 0), Math.sin(a) * r]; });
         // and the mountain's flanks, down into the sea
@@ -665,8 +683,11 @@ export class Volcano {
     }
     /** a seat in the cabin, in caldera-local terms */
     private seatPos(i: number, out: Vector3) {
-        const lx = (i % 2 ? 1 : -1) * 0.55, lz = 0.6 - Math.floor(i / 2) * 1.0, c = Math.cos(this.heliYaw), s = Math.sin(this.heliYaw);
-        out.set(this.heliAt.x + c * lx + s * lz, this.heliAt.y + 0.6, this.heliAt.z - s * lx + c * lz);
+        const lx = (i % 2 ? 1 : -1) * 0.55, lz0 = 0.6 - Math.floor(i / 2) * 1.0, c = Math.cos(this.heliYaw), s = Math.sin(this.heliYaw);
+        // (the cabin's tilt too: nose down as it speeds away)
+        const pt = this.heliT0 >= 0 ? this.heliPitch + Math.sin((this.now() - this.heliT0) * 0.9) * 0.02 : 0;
+        const ly = 0.63 * Math.cos(pt) - lz0 * Math.sin(pt), lz = 0.63 * Math.sin(pt) + lz0 * Math.cos(pt);
+        out.set(this.heliAt.x + c * lx + s * lz, this.heliAt.y + ly, this.heliAt.z - s * lx + c * lz);
         return out;
     }
 
@@ -850,6 +871,7 @@ export class Volcano {
         const sp = new Vector3();
         p.ride = () => {
             if (this.mySeat < 0) return false;
+            this.heliPose();
             this.seatPos(this.mySeat, sp);
             p.pos.set(sp.x + VX, sp.y + BASE, sp.z + VZ);
             return true;
@@ -1079,7 +1101,11 @@ export class Volcano {
         let last = 0; for (const r of this.results.values()) if (r.ms !== null) last = Math.max(last, r.ms);
         return last || el * 1000;
     }
-    private flyHeli(dt: number) {
+    /**
+     * Where the helicopter is right now (and how fast its rotor turns): worked out from the clock alone, so the seat you ride
+     * in and the helicopter you see are always in the very same place, frame after frame (no shaking).
+     */
+    private heliPose(): number {
         let spin = 0;
         if (this.heliT0 < 0) {
             this.heliAt.copyFrom(this.padPos); this.heliAt.y = TOP + 0.25; this.heliYaw = this.padYaw;
@@ -1106,6 +1132,10 @@ export class Volcano {
             // (nose down while it speeds away, level once it turns)
             this.heliPitch = 0.16 * go * (1 - go) * 4 * (1 - t2);
         }
+        return spin;
+    }
+    private flyHeli(dt: number) {
+        const spin = this.heliPose();
         this.heli.position.copyFrom(this.heliAt);
         this.heli.rotation.y = this.heliYaw;
         this.heli.rotation.x = this.heliT0 >= 0 ? this.heliPitch + Math.sin((this.now() - this.heliT0) * 0.9) * 0.02 : 0;
