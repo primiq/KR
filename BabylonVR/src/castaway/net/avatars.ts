@@ -8,7 +8,7 @@ import { poseLeg, buildCat, PLAYER_COATS } from '../world/cats';
 import type { PState } from './session';
 import { heightAt } from '../world/island';
 import { ITEMS, type ItemId } from '../game/items';
-import { buildPlayer, buildArmor, buildHeld, flicker, makeNamePlate, HIP_Y, BODY_Y, HEAD_Y, TAG_Y, type PlayerRig } from './playerModel';
+import { buildPlayer, buildArmor, buildHeld, flicker, makeNamePlate, HIP_Y, BODY_Y, HEAD_Y, TAG_Y, SH_X, SH_Y, UPPER, FORE, type PlayerRig } from './playerModel';
 import { lookFromOutfit, outfitFor, outfitKey, parseOutfit, getOutfit, myDisplayName, setPlayerOutfit, playerColor, type Outfit } from './outfit';
 
 export { playerColor };
@@ -577,13 +577,29 @@ class Avatar {
       this.head.position.set(0, HEAD_Y, 0); this.head.quaternion.identity();
       this.body.position.set(0, BODY_Y, 0); this.R.lower.position.set(0, 0, 0); this.R.lower.scale.set(1, 1, 1);
       this.R.upper.rotation.set(0, 0, 0); this.R.upper.position.set(0, 0, 0);
+      // (the arms back on their own joints, for the walking animation)
+      this.body.rotation.set(0, 0, 0); this.twist = 0;
+      for (let i = 0; i < 2; i++) {
+        const side = i === 0 ? -1 : 1;
+        this.R.shoulders[i].position.set(side * SH_X, SH_Y, 0); this.R.elbows[i].position.set(0, -UPPER, 0); this.R.wrists[i].position.set(0, -FORE, 0);
+        (this.R.shoulders[i].children[0] as THREE.Mesh).scale.y = 1; (this.R.elbows[i].children[0] as THREE.Mesh).scale.y = 1;
+        this.R.wrists[i].rotation.set(0, 0, 0);
+        if (!this.fpHands) { this.R.open[i].visible = !(i === 1 && this.R.fist[1].visible); }
+      }
       this.tag.position.set(0, TAG_Y, 0); this.bar.sprite.position.set(0, TAG_Y - 0.14, 0);
       this.vInit = false;
     } else if (v) v.visor.visible = true;
   }
 
   private static readonly UP = new THREE.Vector3(0, 1, 0);
-  private static readonly TOOL = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0.64, -0.77).normalize());
+  /** the wrist's frame in the controller's: X as the controller's, the fingers (-Y) forward and a little down */
+  private static readonly WRIST = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(
+    new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0.35, 1).normalize(), new THREE.Vector3().crossVectors(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0.35, 1).normalize())));
+  /** VR: how far the chest is turned toward the hands, and each elbow's eased direction */
+  private twist = 0;
+  private poles = [new THREE.Vector3(), new THREE.Vector3()];
+  /** this is your own body in first person: the headset draws your hands, so the avatar's are hidden */
+  private fpHands = false;
 
   private updateVR(s: PState, dt: number, _k: number) {
     const v = s.v!, vr = this.vr!;
@@ -607,41 +623,88 @@ class Avatar {
     this.bar.sprite.position.set(this.vh.x, this.vh.y + 0.36, this.vh.z);
 
     const hands = [v.l, v.r]; // index 0 = left (-X), 1 = right (+X); matches arms[]
+    // The arms are the avatar's own (sleeves, elbows, wristbands, hands), worked by two-bone IK from the shoulders to the
+    // controllers. Round that, what makes them feel alive: the chest turns a little toward where the hands are working, a
+    // shoulder lifts and reaches when its hand goes up or out, and the elbows swing out as the hands rise (and fold in when
+    // they come down), eased so they never snap.
+    const pose: THREE.Vector3[] = [], have: boolean[] = [];
     for (let i = 0; i < 2; i++) {
-      const side = i === 0 ? -1 : 1, d = hands[i];
-      vr.has[i] = !!d;
-      this.arms[i].visible = !d;
-      const h = vr.hand[i], upper = vr.seg[i * 2], fore = vr.seg[i * 2 + 1];
-      h.visible = upper.visible = fore.visible = !!d;
+      const d = hands[i];
+      have[i] = !!d; vr.has[i] = !!d;
+      vr.hand[i].visible = false; vr.seg[i * 2].visible = vr.seg[i * 2 + 1].visible = false;
       if (!d) continue;
       const tq = new THREE.Quaternion(d[3], d[4], d[5], d[6]).premultiply(yinv);
       const tp = loc(new THREE.Vector3(), d[0], d[1], d[2]);
       if (!this.vInit) { this.vp[i].copy(tp); this.vq[i].copy(tq); }
       this.vp[i].lerp(tp, kk); this.vq[i].slerp(tq, kk);
-      // (the arm reaches the wrist of the hand drawn round the controller, a little behind its grip, not the grip itself)
-      const H = this.vp[i].clone().add(new THREE.Vector3(0, -0.012, 0.085).applyQuaternion(this.vq[i]));
-      const S = new THREE.Vector3(bx + side * 0.27, by + 0.2, bz);
-      // two-bone arm: the elbow bends down and slightly back
-      // (an arm stretched further than it reaches grows to meet the hand, rather than stopping short of it)
-      const reach = H.distanceTo(S), grow = Math.max(1, reach / (0.6 * 0.995));
-      const L1 = 0.3 * grow, L2 = 0.3 * grow;
-      const dir = H.clone().sub(S), dist = Math.min(dir.length(), (L1 + L2) * 0.995);
-      dir.normalize();
-      const pole = new THREE.Vector3(side * 0.5, -1, 0.35); pole.addScaledVector(dir, -pole.dot(dir)).normalize();
-      const along = (L1 * L1 - L2 * L2 + dist * dist) / (2 * dist), off = Math.sqrt(Math.max(0, L1 * L1 - along * along));
-      const E = S.clone().addScaledVector(dir, along).addScaledVector(pole, off);
-      const place = (m: THREE.Mesh, a: THREE.Vector3, b: THREE.Vector3) => {
-        const len = a.distanceTo(b);
-        m.position.copy(a).add(b).multiplyScalar(0.5);
-        m.quaternion.setFromUnitVectors(Avatar.UP, b.clone().sub(a).normalize());
-        m.scale.set(1, Math.max(0.02, len), 1);
-      };
-      place(upper, S, E); place(fore, E, H);
-      h.position.copy(this.vp[i]);
-      if (i === 1) {
-        if (this.held.parent !== h) { h.add(this.held); this.held.position.set(0, 0, 0); this.held.scale.setScalar(1); }
-        this.held.quaternion.copy(this.vq[i]).multiply(Avatar.TOOL);
+      pose[i] = this.vp[i];
+    }
+    // the chest: turned toward the hands (in front of you only), a touch, and smoothly
+    {
+      let sum = 0, n = 0;
+      for (let i = 0; i < 2; i++) if (have[i]) { const dx = pose[i].x - bx, dz = pose[i].z - bz; if (dz < 0.05) { sum += Math.atan2(dx, -dz); n++; } }
+      const want = n ? Math.max(-0.42, Math.min(0.42, (sum / n) * 0.35)) : 0;
+      this.twist += (want - this.twist) * (1 - Math.exp(-dt * 5));
+      this.body.rotation.y = -this.twist;
+    }
+    const cT = Math.cos(this.twist), sT = Math.sin(this.twist);
+    // (a point on the chest, turned with it)
+    // (a point on the chest, turned as the chest is: rotation.y = -twist)
+    const turn = (x: number, y: number, z: number, o: THREE.Vector3) => o.set(x * cT - z * sT, y, x * sT + z * cT);
+    const chest = (x: number, y: number, z: number, o: THREE.Vector3) => turn(x, y, z, o).add(new THREE.Vector3(bx, by, bz));
+    for (let i = 0; i < 2; i++) {
+      const side = i === 0 ? -1 : 1, sh = this.R.shoulders[i], el = this.R.elbows[i], wr = this.R.wrists[i];
+      const upperM = sh.children[0] as THREE.Mesh, foreM = el.children[0] as THREE.Mesh;
+      this.arms[i].visible = true;
+      if (!have[i]) {
+        // (no controller on this side: the arm just hangs)
+        chest(side * SH_X, SH_Y - BODY_Y, 0, sh.position);
+        sh.quaternion.setFromEuler(new THREE.Euler(0.05, 0, side * 0.08)); el.quaternion.setFromEuler(new THREE.Euler(-0.2, 0, 0)); wr.quaternion.identity();
+        el.position.set(0, -UPPER, 0); wr.position.set(0, -FORE, 0); upperM.scale.y = 1; foreM.scale.y = 1;
+        if (this.fpHands) { this.R.open[i].visible = false; this.R.fist[i].visible = false; }
+        continue;
       }
+      // the wrist, from the controller: the hand's fingers run forward and a little down from it, palm inward
+      const qW = this.vq[i].clone().multiply(Avatar.WRIST);
+      const W = this.vp[i].clone().sub(new THREE.Vector3(-side * 0.02, -0.075, 0).applyQuaternion(qW));
+      // the shoulder: on the turned chest, lifted and drawn toward a raised or far-reaching hand
+      const S = chest(side * SH_X, SH_Y - BODY_Y, 0, new THREE.Vector3());
+      const toW = W.clone().sub(S);
+      const lift = Math.max(-0.015, Math.min(0.055, toW.y * 0.14));
+      const reachOut = Math.max(0, toW.length() - (UPPER + FORE) * 0.85);
+      S.y += lift; S.addScaledVector(new THREE.Vector3(toW.x, 0, toW.z).normalize(), Math.min(0.05, reachOut * 0.5));
+      // the elbow's way: down, out and back; out and up as the hand rises; in across the body
+      const up = Math.max(0, Math.min(1, (W.y - S.y + 0.1) / 0.45));
+      const across = Math.max(0, Math.min(1, -side * (W.x - bx) / 0.25));
+      const poleL = new THREE.Vector3(side * (0.45 + 0.9 * up - 0.3 * across), -1 + 0.75 * up, 0.35 - 0.1 * up);
+      const pole = turn(poleL.x, poleL.y, poleL.z, new THREE.Vector3()).normalize();
+      if (!this.vInit || this.poles[i].lengthSq() < 0.5) this.poles[i].copy(pole);
+      this.poles[i].lerp(pole, 1 - Math.exp(-dt * 8)).normalize();
+      // two bones; an arm that cannot reach grows a little to meet the hand rather than leave it hanging in the air
+      const dist0 = S.distanceTo(W), grow = Math.max(1, dist0 / ((UPPER + FORE) * 0.995));
+      const L1 = UPPER * grow, L2 = FORE * grow;
+      const dir = W.clone().sub(S), dist = Math.max(Math.abs(L1 - L2) + 0.01, Math.min(dir.length(), (L1 + L2) * 0.995));
+      dir.normalize();
+      const pl = this.poles[i].clone().addScaledVector(dir, -this.poles[i].dot(dir)); if (pl.lengthSq() < 1e-6) pl.set(side, -1, 0.3); pl.normalize();
+      const along = (L1 * L1 - L2 * L2 + dist * dist) / (2 * dist), off = Math.sqrt(Math.max(0, L1 * L1 - along * along));
+      const E = S.clone().addScaledVector(dir, along).addScaledVector(pl, off);
+      const Wr = S.clone().addScaledVector(dir, dist);
+      // each bone's frame: its -Y runs down the bone, its X is the elbow's hinge (so the forearm folds the right way)
+      const hinge = new THREE.Vector3().crossVectors(E.clone().sub(S), Wr.clone().sub(E)); if (hinge.lengthSq() < 1e-8) hinge.set(1, 0, 0); hinge.normalize();
+      const frame = (a: THREE.Vector3, b: THREE.Vector3) => {
+        const y = a.clone().sub(b).normalize(), x = hinge.clone().addScaledVector(y, -hinge.dot(y)).normalize(), z = new THREE.Vector3().crossVectors(x, y);
+        return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
+      };
+      const qS = frame(S, E), qE = frame(E, Wr);
+      sh.position.copy(S); sh.quaternion.copy(qS);
+      el.position.set(0, -L1, 0); el.quaternion.copy(qS.clone().invert().multiply(qE));
+      wr.position.set(0, -L2, 0); wr.quaternion.copy(qE.clone().invert().multiply(qW));
+      upperM.scale.y = grow; foreM.scale.y = grow;
+      // the hands: open, or a fist round whatever the right one holds; in your own view the headset's hands are there instead
+      if (this.fpHands) { this.R.open[i].visible = false; this.R.fist[i].visible = false; }
+      else if (i === 0) { this.R.open[0].visible = true; this.R.fist[0].visible = false; }
+      else { this.R.fist[1].visible = !!this.held.children[0]; this.R.open[1].visible = !this.held.children[0]; }
+      if (i === 1 && this.held.parent !== this.R.grips[1]) { this.R.grips[1].add(this.held); this.held.position.set(0, 0, 0); this.held.rotation.set(-Math.PI / 2 - 0.25, 0, 0); this.held.scale.setScalar(1); }
     }
     // left-handed or missing right controller: put the tool back on the default arm
     if (!hands[1] && this.held.parent !== this.R.grips[1]) { this.R.grips[1].add(this.held); this.held.position.set(0, 0, 0); this.held.rotation.set(-Math.PI / 2 - 0.25, 0, 0); }
@@ -658,7 +721,8 @@ class Avatar {
     if (this.bubble) this.bubble.visible = false;
     if (!this.fpDone) { this.fpDone = true; this.group.traverse((o) => { if (o.name === 'nameplate') o.visible = false; }); }
     if (!vr) this.arms.forEach((a) => { a.visible = false; });
-    if (this.vr) { this.vr.hand.forEach((m) => { m.visible = false; }); if (!vr) this.vr.seg.forEach((m) => { m.visible = false; }); }
+    if (this.vr) { this.vr.hand.forEach((m) => { m.visible = false; }); this.vr.seg.forEach((m) => { m.visible = false; }); }
+    this.fpHands = true;
   }
   private fpDone = false;
 
