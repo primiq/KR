@@ -33,7 +33,9 @@ const STEP = 0.8;
 /** the lava: a head start (s), then how long it takes to reach the rim (s) */
 const GRACE = 40, RISE = 300;
 /** the helicopter: how long after take-off the volcano blows, and how long the eruption lasts before everybody goes home */
-const ERUPT_AFTER = 13, ERUPT_LEN = 13;
+const ERUPT_AFTER = 16, ERUPT_LEN = 17;
+/** the fade to black at the end (s before the end it starts, how long the fade back in takes) */
+const FADE_OUT = 2.2, FADE_IN = 1.6;
 const SEATS = 6;
 const CENTRE = new Vector2(VX, VZ);
 /** where the course starts (angle round the caldera) */
@@ -110,6 +112,21 @@ function buildCourse(): { plats: Plat[]; arrive: number } {
     const last = slab(ang, lastTop, 2.0, 1.0);
     if (lastTop - top > 0.9) { const mid = slab(ang - 0.06, (top + lastTop) / 2, 1.0, 0.8); plats.push(mid); }
     plats.push(last);
+    // a column stands on the floor, unless that would put it across the route lower down: then it ends well above
+    // the heads of whoever comes by under it (it juts out of the wall up there)
+    const segDist = (px: number, pz: number, a: Plat, b: Plat) => {
+        const dx = b.x - a.x, dz = b.z - a.z, l2 = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((px - a.x) * dx + (pz - a.z) * dz) / l2));
+        return Math.hypot(px - (a.x + dx * t), pz - (a.z + dz * t));
+    };
+    for (let i = 0; i < plats.length; i++) {
+        const c = plats[i];
+        if (c.kind !== "pillar") continue;
+        for (let j = 1; j < i; j++) {
+            const a = plats[j - 1], b = plats[j];
+            if (Math.max(a.top, b.top) > c.top - 3) continue;
+            if (segDist(c.x, c.z, a, b) < c.hl + Math.max(a.hw, b.hw, 0.6) + 1.2) c.bottom = Math.max(c.bottom, Math.max(a.top, b.top) + 3.2);
+        }
+    }
     return { plats, arrive: ang };
 }
 
@@ -215,6 +232,18 @@ export class Volcano {
     private smoke: ParticleSystem;
     private embers: ParticleSystem;
     private erupted = false;
+    // the big blast: a fireball, a column of ash, the mushroom cap that spreads on top of it, a ring rolling out over the rim
+    private fireball!: Mesh;
+    private stem!: ParticleSystem;
+    private cap!: ParticleSystem;
+    private surge!: ParticleSystem;
+    /** 0..1 how dark it has gone (the end), and whether it is coming back up (home again) */
+    private fadeK = 0;
+    private fadeIn = false;
+    private fadeSphere!: Mesh;
+    private heliPitch = 0;
+    private rotorDisc!: Mesh;
+    private blades: Mesh[] = [];
     private rumbled = false;
     private blubT = 0;
     private lastSec = -1;
@@ -344,6 +373,38 @@ export class Volcano {
         this.embers = sys("volcEmbers", 400);
         Object.assign(this.embers, { minEmitBox: new Vector3(-R0, 0, -R0), maxEmitBox: new Vector3(R0, 0.4, R0), direction1: new Vector3(-0.6, 2, -0.6), direction2: new Vector3(0.6, 5, 0.6), minLifeTime: 2.5, maxLifeTime: 5, minSize: 0.08, maxSize: 0.22, gravity: new Vector3(0, 0.3, 0), blendMode: ParticleSystem.BLENDMODE_ADD });
         this.embers.color1 = new Color4(1, 0.6, 0.2, 1); this.embers.color2 = new Color4(1, 0.35, 0.08, 1); this.embers.colorDead = new Color4(0.4, 0.1, 0, 0);
+        // ---- the blast: a fireball that swells and fades
+        this.fireball = MeshBuilder.CreateSphere("volcFireball", { diameter: 2, segments: 20 }, scene);
+        const fbm = new StandardMaterial("volcFireballM", scene); fbm.disableLighting = true; fbm.emissiveColor = new Color3(1, 0.55, 0.15); fbm.alpha = 1; fbm.backFaceCulling = false;
+        this.fireball.material = fbm; this.fireball.parent = this.root; this.fireball.position.set(0, TOP + 6, 0); this.fireball.isPickable = false; this.fireball.setEnabled(false);
+        // the column: ash pouring straight up out of the crater, glowing at its root
+        this.stem = sys("volcStem", 1600);
+        Object.assign(this.stem, { minEmitBox: new Vector3(-11, 0, -11), maxEmitBox: new Vector3(11, 4, 11), direction1: new Vector3(-2.5, 34, -2.5), direction2: new Vector3(2.5, 46, 2.5), minLifeTime: 3.6, maxLifeTime: 4.6, minSize: 14, maxSize: 22, gravity: new Vector3(0, -2, 0), blendMode: ParticleSystem.BLENDMODE_STANDARD, minAngularSpeed: -0.5, maxAngularSpeed: 0.5 });
+        // (dark, warm ash, lit orange from below: it has to stand out against a pale sky and the haze over the sea)
+        this.stem.addColorGradient(0, new Color4(1, 0.5, 0.15, 1)); this.stem.addColorGradient(0.15, new Color4(0.45, 0.2, 0.1, 0.97)); this.stem.addColorGradient(0.5, new Color4(0.2, 0.15, 0.12, 0.95)); this.stem.addColorGradient(1, new Color4(0.24, 0.2, 0.18, 0));
+        this.stem.addSizeGradient(0, 10); this.stem.addSizeGradient(1, 26);
+        // the cap: billows that pour outward from the top of the column and roll over, a doughnut of ash that keeps rising
+        this.cap = sys("volcCap", 1600);
+        Object.assign(this.cap, { minLifeTime: 7, maxLifeTime: 11, gravity: new Vector3(0, 0, 0), blendMode: ParticleSystem.BLENDMODE_STANDARD, minAngularSpeed: -0.3, maxAngularSpeed: 0.3, minEmitPower: 1, maxEmitPower: 1 });
+        this.cap.addColorGradient(0, new Color4(0.55, 0.28, 0.14, 0.95)); this.cap.addColorGradient(0.3, new Color4(0.3, 0.25, 0.22, 0.92)); this.cap.addColorGradient(1, new Color4(0.36, 0.33, 0.31, 0));
+        this.cap.addSizeGradient(0, 22); this.cap.addSizeGradient(1, 55);
+        this.cap.startPositionFunction = (_wm, pos) => { const a = Math.random() * Math.PI * 2, r = 6 + Math.random() * 14; pos.set(VX + Math.cos(a) * r, this.capY + (Math.random() - 0.5) * 8, VZ + Math.sin(a) * r); };
+        this.cap.startDirectionFunction = (_wm, dir, pt) => { const dx = pt.position.x - VX, dz = pt.position.z - VZ, l = Math.hypot(dx, dz) || 1, sp = 9 + Math.random() * 7; dir.set((dx / l) * sp, 2 + Math.random() * 4, (dz / l) * sp); };
+        // the base surge: a ring of ash racing out over the rim and down the mountain
+        this.surge = sys("volcSurge", 900);
+        Object.assign(this.surge, { minLifeTime: 3, maxLifeTime: 5, minSize: 10, maxSize: 18, gravity: new Vector3(0, -3, 0), blendMode: ParticleSystem.BLENDMODE_STANDARD, minEmitPower: 1, maxEmitPower: 1 });
+        this.surge.addColorGradient(0, new Color4(0.32, 0.25, 0.2, 0.9)); this.surge.addColorGradient(1, new Color4(0.4, 0.36, 0.33, 0));
+        this.surge.startPositionFunction = (_wm, pos) => { const a = Math.random() * Math.PI * 2, r = rIn(TOP) + Math.random() * 4; pos.set(VX + Math.cos(a) * r, BASE + TOP + 2 + Math.random() * 3, VZ + Math.sin(a) * r); };
+        this.surge.startDirectionFunction = (_wm, dir, pt) => { const dx = pt.position.x - VX, dz = pt.position.z - VZ, l = Math.hypot(dx, dz) || 1, sp = 22 + Math.random() * 10; dir.set((dx / l) * sp, -3 + Math.random() * 5, (dz / l) * sp); };
+        // (the eruption draws after the horizon haze, which would otherwise paint over it wherever the sky is behind,
+        //  but keeps the depth, so the mountain still hides what is behind it)
+        scene.setRenderingAutoClearDepthStencil(2, false, false, false);
+        for (const ps of [this.stem, this.cap, this.surge, this.fountain, this.bombs, this.smoke]) ps.renderingGroupId = 2;
+        // ---- the fade to black at the very end: a dark bubble round the eyes, drawn over everything (works in a headset too)
+        this.fadeSphere = MeshBuilder.CreateSphere("volcFade", { diameter: 1, segments: 8, sideOrientation: Mesh.BACKSIDE }, scene);
+        const fm = new StandardMaterial("volcFadeM", scene); fm.disableLighting = true; fm.emissiveColor = Color3.Black(); fm.diffuseColor = Color3.Black(); fm.backFaceCulling = false; fm.disableDepthWrite = true; fm.alpha = 0;
+        this.fadeSphere.material = fm; this.fadeSphere.renderingGroupId = 3; this.fadeSphere.isPickable = false; this.fadeSphere.alwaysSelectAsActiveMesh = true;
+        this.fadeSphere.metadata = { keepUnderground: true }; this.fadeSphere.setEnabled(false);
 
         // ---- screens: the big clock over the station door, the one inside, and the board back in the secret room
         this.boardTex = new DynamicTexture("volcBoard", { width: 1024, height: 768 }, scene, true);
@@ -526,40 +587,79 @@ export class Volcano {
     }
     /** the opening in the railing where the course arrives */
     private inGap(t: number) { let d = (t - this.arrive) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return Math.abs(d) < 0.055; }
+    private beacon!: Mesh;
     private buildHeli() {
         const h = this.heli, sc = this.scene;
-        const red = this.mat("volcHeliRed", "#c8321e", { rough: 0.45, metal: 0.3 }), white = this.mat("volcHeliWhite", "#ececec", { rough: 0.45, metal: 0.3 });
-        const dark = this.mat("volcHeliDark", "#22272b", { rough: 0.5, metal: 0.5 }), glass = this.mat("volcHeliGlass", "#78b4d6", { alpha: 0.3, rough: 0.05 });
-        // an open cabin you can stand in (its sides open), local z forward, floor at y = 0.5
-        this.box("hFloor", 2.6, 0.18, 3.8, 0, 0.5, 0, dark, h);
-        this.box("hRoof", 2.6, 0.22, 3.8, 0, 2.75, 0, red, h);
-        this.box("hBack", 2.6, 2.3, 0.18, 0, 1.6, -1.9, white, h);
-        this.box("hBelly", 2.4, 0.4, 3.6, 0, 0.25, 0, red, h);
-        for (const s of [-1, 1]) for (const z of [-1.85, 1.0]) this.box("hPillar", 0.14, 2.2, 0.14, s * 1.24, 1.65, z, white, h);
-        // the nose: a glass bubble
-        const nose = MeshBuilder.CreateSphere("hNose", { diameterX: 2.6, diameterY: 2.4, diameterZ: 2.4, segments: 14, slice: 0.5 }, sc);
-        nose.parent = h; nose.position.set(0, 1.6, 1.0); nose.rotation.x = Math.PI / 2; nose.material = glass; nose.isPickable = false;
-        this.box("hDash", 2.2, 0.6, 0.5, 0, 0.9, 1.4, dark, h);
-        // the tail
-        const boom = MeshBuilder.CreateCylinder("hBoom", { height: 6.5, diameterTop: 0.35, diameterBottom: 0.9, tessellation: 12 }, sc);
-        boom.parent = h; boom.rotation.x = -Math.PI / 2; boom.position.set(0, 2.2, -5.0); boom.material = red; boom.isPickable = false;
-        this.box("hFin", 0.12, 1.6, 1.0, 0, 2.9, -8.0, white, h);
-        this.box("hStab", 1.8, 0.1, 0.6, 0, 2.3, -7.7, white, h);
-        this.tailRotor.parent = h; this.tailRotor.position.set(0.18, 2.9, -8.1);
-        for (const r of [0, Math.PI / 2]) { const b = this.box("hTailBlade", 0.04, 1.4, 0.12, 0, 0, 0, dark, this.tailRotor); b.rotation.x = r; }
-        // skids
-        for (const s of [-1, 1]) {
-            const sk = MeshBuilder.CreateCylinder("hSkid", { height: 4.2, diameter: 0.12, tessellation: 8 }, sc); sk.parent = h; sk.rotation.x = Math.PI / 2; sk.position.set(s * 1.25, 0.0, 0.2); sk.material = dark; sk.isPickable = false;
-            for (const z of [-1, 1.3]) this.box("hStrut", 0.08, 0.5, 0.08, s * 1.2, 0.22, z, dark, h);
+        const red = this.mat("volcHeliRed", "#c42a1c", { rough: 0.35, metal: 0.35 }), white = this.mat("volcHeliWhite", "#f0f0ec", { rough: 0.35, metal: 0.3 });
+        const dark = this.mat("volcHeliDark", "#22272b", { rough: 0.5, metal: 0.55 }), glass = this.mat("volcHeliGlass", "#86c2e2", { alpha: 0.28, rough: 0.04, metal: 0.5 });
+        const steel = this.mat("volcHeliSteel", "#9aa3aa", { rough: 0.3, metal: 0.85 }), seat = this.mat("volcHeliSeat", "#33414f", { rough: 0.8 });
+        const glow = (n: string, c: string) => { const m = new StandardMaterial(n, sc); m.disableLighting = true; m.emissiveColor = Color3.FromHexString(c); return m; };
+        const put = (m: Mesh, mat: PBRMaterial | StandardMaterial, x: number, y: number, z: number, parent: TransformNode = h) => { m.material = mat; m.parent = parent; m.position.set(x, y, z); m.isPickable = false; return m; };
+        // ---- the hull: a rounded red belly and chin round an open cabin (floor at 0.6), a white stripe down each side
+        put(MeshBuilder.CreateSphere("hHull", { diameterX: 2.8, diameterY: 1.3, diameterZ: 6.0, segments: 20 }, sc), red, 0, 0.3, -0.3);
+        put(MeshBuilder.CreateSphere("hChin", { diameterX: 2.5, diameterY: 1.2, diameterZ: 2.2, segments: 16 }, sc), red, 0, 0.75, 1.5);
+        this.box("hFloor", 2.5, 0.16, 3.8, 0, 0.55, -0.4, dark, h);
+        for (const sd of [-1, 1]) this.box("hStripe", 0.04, 0.16, 5.0, sd * 1.38, 0.62, -0.4, white, h);
+        // the roof and the engine on top of it
+        put(MeshBuilder.CreateSphere("hRoof", { diameterX: 2.75, diameterY: 0.7, diameterZ: 4.4, segments: 18 }, sc), white, 0, 2.62, -0.35);
+        const cowl = put(MeshBuilder.CreateCapsule("hCowl", { radius: 0.55, height: 2.9, tessellation: 14, subdivisions: 2 }, sc), white, 0, 3.0, -0.7); cowl.rotation.x = Math.PI / 2;
+        this.box("hCowlStripe", 1.12, 0.12, 2.2, 0, 2.95, -0.7, red, h);
+        for (const sd of [-1, 1]) { const ex = put(MeshBuilder.CreateCylinder("hExhaust", { height: 0.5, diameter: 0.26, tessellation: 10 }, sc), dark, sd * 0.32, 3.05, -2.2); ex.rotation.x = Math.PI / 2 + 0.3; }
+        for (const sd of [-1, 1]) this.box("hIntake", 0.04, 0.26, 0.6, sd * 0.56, 3.05, 0.2, dark, h);
+        // the back wall with a round window, the door frames, and the sliding doors pushed back along the sides
+        this.box("hBack", 2.5, 2.0, 0.14, 0, 1.6, -2.3, white, h);
+        put(MeshBuilder.CreateDisc("hPort", { radius: 0.28, tessellation: 18 }, sc), dark, 0, 1.75, -2.38).rotation.y = Math.PI;
+        for (const sd of [-1, 1]) {
+            for (const z of [-2.25, 0.95]) this.box("hPillar", 0.12, 2.05, 0.14, sd * 1.25, 1.6, z, white, h);
+            const door = this.box("hDoor", 0.07, 1.85, 1.6, sd * 1.43, 1.55, -2.85, red, h);
+            void door;
+            this.box("hDoorWin", 0.08, 0.6, 0.9, sd * 1.43, 1.95, -2.85, dark, h);
+            this.box("hRail", 0.05, 0.05, 2.6, sd * 1.4, 2.5, -1.2, steel, h);
+            // (RESCUE on the doors, read from outside)
+            this.sign([["RESCUE", "#ffffff", 120]], 1.3, 0.34, "#c42a1c", h, sd * 1.475, 1.25, -2.85, sd > 0 ? Math.PI / 2 : -Math.PI / 2);
         }
-        // the main rotor
-        this.rotor.parent = h; this.rotor.position.set(0, 3.05, 0);
-        this.box("hMast", 0.2, 0.4, 0.2, 0, -0.15, 0, dark, this.rotor);
-        for (let i = 0; i < 4; i++) { const b = this.box("hBlade", 0.32, 0.05, 6.2, 0, 0.05, 3.1, dark, this.rotor); b.setPivotPoint(new Vector3(0, 0, -3.1)); b.rotation.y = (i * Math.PI) / 2; }
-        // benches
-        for (const s of [-1, 1]) this.box("hBench", 0.5, 0.4, 2.6, s * 0.95, 0.8, -0.5, dark, h);
-        this.sign([["RESCUE", "#ffffff", 120]], 1.8, 0.45, "#c8321e", h, 1.32, 2.2, -0.4, -Math.PI / 2);
-        this.sign([["RESCUE", "#ffffff", 120]], 1.8, 0.45, "#c8321e", h, -1.32, 2.2, -0.4, Math.PI / 2);
+        // the nose: a glass bubble over the cockpit, the instrument panel glowing behind it
+        const nose = put(MeshBuilder.CreateSphere("hNose", { diameterX: 2.55, diameterY: 2.1, diameterZ: 2.5, segments: 18, slice: 0.5 }, sc), glass, 0, 1.45, 1.0); nose.rotation.x = Math.PI / 2;
+        this.box("hDash", 2.0, 0.5, 0.45, 0, 1.05, 1.55, dark, h);
+        for (const x of [-0.55, 0, 0.55]) put(MeshBuilder.CreatePlane("hScreen", { width: 0.4, height: 0.24 }, sc), glow("hScreenM", x === 0 ? "#3fe0a0" : "#58b4ff"), x, 1.33, 1.32).rotation.x = -0.5;
+        this.box("hStick", 0.05, 0.5, 0.05, 0, 0.85, 1.1, dark, h);
+        // the benches, with backs
+        for (const sd of [-1, 1]) { this.box("hBench", 0.55, 0.12, 2.6, sd * 0.92, 0.95, -0.85, seat, h); this.box("hBenchBack", 0.1, 0.6, 2.6, sd * 1.17, 1.3, -0.85, seat, h); }
+        // ---- the tail: a tapered boom with a band, a swept fin, a tailplane with end plates, a two-blade rotor and a skid
+        const boom = put(MeshBuilder.CreateCylinder("hBoom", { height: 6.6, diameterTop: 0.32, diameterBottom: 0.95, tessellation: 14 }, sc), red, 0, 2.15, -5.3); boom.rotation.x = -Math.PI / 2 - 0.05;
+        const band = put(MeshBuilder.CreateCylinder("hBand", { height: 0.5, diameterTop: 0.62, diameterBottom: 0.7, tessellation: 14 }, sc), white, 0, 2.18, -4.6); band.rotation.x = -Math.PI / 2 - 0.05;
+        const fin = this.box("hFin", 0.1, 1.7, 0.95, 0, 2.95, -8.35, red, h); fin.rotation.x = -0.4;
+        this.box("hStab", 2.1, 0.08, 0.55, 0, 2.3, -7.6, white, h);
+        for (const sd of [-1, 1]) this.box("hEnd", 0.06, 0.45, 0.5, sd * 1.05, 2.35, -7.6, red, h);
+        this.box("hTailSkid", 0.05, 0.6, 0.05, 0, 1.75, -8.4, steel, h).rotation.x = 0.4;
+        this.tailRotor.parent = h; this.tailRotor.position.set(0.16, 3.1, -8.55);
+        put(MeshBuilder.CreateCylinder("hTailHub", { height: 0.12, diameter: 0.16, tessellation: 10 }, sc), dark, 0, 0, 0, this.tailRotor).rotation.z = Math.PI / 2;
+        for (const r of [0, Math.PI / 2]) { const bl = this.box("hTailBlade", 0.03, 1.5, 0.11, 0.04, 0, 0, dark, this.tailRotor); bl.rotation.x = r; }
+        // ---- skids: two long tubes turned up at the front, on curved legs
+        for (const sd of [-1, 1]) {
+            const sk = put(MeshBuilder.CreateCylinder("hSkid", { height: 4.0, diameter: 0.11, tessellation: 10 }, sc), steel, sd * 1.3, 0.06, -0.4); sk.rotation.x = Math.PI / 2;
+            const tip = put(MeshBuilder.CreateCylinder("hSkidTip", { height: 0.5, diameter: 0.11, tessellation: 10 }, sc), steel, sd * 1.3, 0.2, 1.75); tip.rotation.x = Math.PI / 2 - 0.6;
+            for (const z of [-1.5, 0.8]) { const leg = this.box("hLeg", 0.07, 0.75, 0.07, sd * 1.15, 0.38, z, steel, h); leg.rotation.z = sd * 0.35; }
+        }
+        // ---- lights: a red beacon on top (it blinks), red and green on the tailplane, a searchlight under the nose
+        this.beacon = put(MeshBuilder.CreateSphere("hBeacon", { diameter: 0.18, segments: 8 }, sc), glow("hBeaconM", "#ff2a1a"), 0, 3.55, -1.6);
+        put(MeshBuilder.CreateSphere("hNavR", { diameter: 0.12, segments: 6 }, sc), glow("hNavRM", "#ff2a1a"), -1.1, 2.32, -7.6);
+        put(MeshBuilder.CreateSphere("hNavG", { diameter: 0.12, segments: 6 }, sc), glow("hNavGM", "#2aff5a"), 1.1, 2.32, -7.6);
+        put(MeshBuilder.CreateCylinder("hSearch", { height: 0.2, diameterTop: 0.34, diameterBottom: 0.24, tessellation: 14 }, sc), glow("hSearchM", "#fff6d8"), 0, 0.12, 1.7);
+        // ---- the main rotor: a hub, four blades with a little droop, and the blur disc they turn into at speed
+        this.rotor.parent = h; this.rotor.position.set(0, 3.55, -0.5);
+        put(MeshBuilder.CreateCylinder("hMast", { height: 0.5, diameter: 0.2, tessellation: 10 }, sc), steel, 0, -0.2, 0, this.rotor);
+        put(MeshBuilder.CreateCylinder("hHub", { height: 0.18, diameter: 0.55, tessellation: 12 }, sc), dark, 0, 0.05, 0, this.rotor);
+        for (let i = 0; i < 4; i++) {
+            const arm = new TransformNode("hBladeArm", sc); arm.parent = this.rotor; arm.rotation.y = (i * Math.PI) / 2;
+            const bl = MeshBuilder.CreateBox("hBlade", { width: 0.34, height: 0.05, depth: 6.0 }, sc);
+            bl.material = dark; bl.parent = arm; bl.position.set(0, 0.0, 3.1); bl.rotation.x = 0.025; bl.isPickable = false;
+            this.blades.push(bl);
+        }
+        this.rotorDisc = MeshBuilder.CreateDisc("hRotorDisc", { radius: 6.2, tessellation: 40 }, sc);
+        const dm = new StandardMaterial("hRotorDiscM", sc); dm.disableLighting = true; dm.emissiveColor = new Color3(0.12, 0.13, 0.14); dm.alpha = 0.5; dm.backFaceCulling = false; dm.disableDepthWrite = true;
+        put(this.rotorDisc, dm, 0, 0.06, 0, this.rotor).rotation.x = Math.PI / 2;
+        this.rotorDisc.visibility = 0;
         for (const m of h.getChildMeshes()) m.isPickable = false;
         this.heliAt.copyFrom(this.padPos); this.heliYaw = this.padYaw;
     }
@@ -581,7 +681,8 @@ export class Volcano {
         if (this.phase !== "run") return -1.5;
         const t = this.el(), base = t < GRACE ? -1.5 : -1.5 + (TOP + 1.5) * Math.min(1, (t - GRACE) / RISE);
         const er = this.eruptAt();
-        if (t >= er) return TOP + 0.4;
+        // (brim-full when it blows: it goes up, not over the sides)
+        if (t >= er) return TOP - 0.25;
         if (this.heliT0 >= 0) {
             const h0 = this.heliT0 - this.t0 + 3;
             if (t > h0) { const k = Math.min(1, (t - h0) / Math.max(1, er - h0)); return Math.max(base, base + (TOP - 0.6 - base) * k * k * (3 - 2 * k)); }
@@ -595,7 +696,8 @@ export class Volcano {
     }
 
     // ---------------------------------------------------------------- the player's ground
-    contains(x: number, z: number) { return Math.hypot(x - VX, z - VZ) < 220; }
+    /** the level (wide enough for the helicopter's flight out over the sea) */
+    contains(x: number, z: number) { return Math.hypot(x - VX, z - VZ) < 600; }
     private bobTop(p: Plat) { return p.bob ? p.top + Math.sin((Date.now() / 1000 / p.bob.per) * Math.PI * 2 + p.bob.ph) * p.bob.amp : p.top; }
     private inPlat(p: Plat, lx: number, lz: number, pad: number) {
         if (p.kind === "pillar") return Math.hypot(lx - p.x, lz - p.z) <= p.hl + pad;
@@ -662,7 +764,7 @@ export class Volcano {
     private setVisible(on: boolean) {
         this.root.setEnabled(on);
         for (const g of this.geysers) g.ps.emitRate = 0;
-        if (!on) { this.fountain.emitRate = this.bombs.emitRate = this.smoke.emitRate = this.embers.emitRate = 0; this.sfx?.rotor(0, 0); }
+        if (!on) { this.fountain.emitRate = this.bombs.emitRate = this.smoke.emitRate = this.embers.emitRate = 0; if (this.stem) this.stem.emitRate = this.cap.emitRate = this.surge.emitRate = 0; this.sfx?.rotor(0, 0); }
     }
     enter(p: { teleport(x: number, y: number, z: number, yaw: number): void; cave: unknown }) {
         this.active = true; this.setVisible(true); p.cave = this;
@@ -819,7 +921,7 @@ export class Volcano {
         if (!mine && e.ph === "run" && this.now() - this.endedAt < 12 && (+e.el || 0) > 3) return;
         if (e.ph === "run" && (this.phase !== "run" || this.ended)) {
             // a new run
-            this.phase = "run"; this.ended = false; this.erupted = false; this.rumbled = false; this.heliT0 = -1; this.lastGeyser = -1;
+            this.phase = "run"; this.ended = false; this.erupted = false; this.fadeK = 0; this.fadeIn = false; this.rumbled = false; this.heliT0 = -1; this.lastGeyser = -1;
             this.results.clear(); this.seats.clear(); this.runners.clear(); this.finished = false; this.dead = false;
             if (this.mySeat >= 0) { this.mySeat = -1; if (this.player) this.player.ride = null; }
         }
@@ -865,6 +967,7 @@ export class Volcano {
     update(dt: number, p: { pos: Vector3; vel: Vector3; yaw: number; teleport(x: number, y: number, z: number, yaw: number): void; ride: ((dt: number) => boolean) | null }, sunUp: number) {
         this.player = p;
         this.time += dt;
+        this.fade(dt);
         if (!this.active) return;
         const el = this.el();
         // pistons
@@ -913,18 +1016,18 @@ export class Volcano {
             if (!this.rumbled && el > er - 6) { this.rumbled = true; this.sfx?.rumble(7, 0.6); this.say("The ground is shaking - it's going to blow!"); }
             if (!this.erupted && el >= er) {
                 this.erupted = true; this.sfx?.eruption(); this.shake?.(1.4); this.flash?.(0.6);
-                this.fountain.emitRate = 900; this.bombs.emitRate = 140; this.smoke.emitRate = 40;
+                this.fireball.setEnabled(true); this.fireball.scaling.setAll(1);
             }
             if (this.erupted) {
                 const k = el - er;
-                this.flowMat.setFloat("flowR", rIn(TOP) + Math.min(150, k * 11));
-                this.fountain.emitRate = k < 8 ? 900 : Math.max(0, 900 - (k - 8) * 300);
-                this.bombs.emitRate = k < 9 ? 140 : 0;
+                this.blow(k);
                 if (!this.dead && this.mySeat < 0 && k > 1.5) this.die("The volcano erupted - you didn't get away!");
+                // far enough away: everything goes dark, and you are home
+                this.fadeK = Math.max(this.fadeK, Math.min(1, Math.max(0, (k - (ERUPT_LEN - FADE_OUT)) / FADE_OUT)));
                 if (k > ERUPT_LEN && !this.ended) this.endRun();
-            } else this.flowMat.setFloat("flowR", 0);
+            }
         }
-        this.flow.setEnabled(this.erupted);
+        this.flow.setEnabled(false);
         // the screens and the readout
         this.drawScreens(el);
         let txt = "";
@@ -942,6 +1045,32 @@ export class Volcano {
         this.lastSec = sec;
         void sunUp;
     }
+    /** the mushroom cloud's top (world y), rising as it grows */
+    private capY = BASE + TOP + 40;
+    /** the eruption, `k` seconds in: fireball, fountain, column, cap and surge */
+    private blow(k: number) {
+        const fb = this.fireball, fm = fb.material as StandardMaterial;
+        if (k < 3.5) { fb.setEnabled(true); fb.scaling.setAll(6 + k * 24); fb.position.y = TOP + 6 + k * 10; fm.alpha = Math.max(0, 1 - k / 3.5); fm.emissiveColor.set(1, 0.55 - k * 0.08, 0.15); }
+        else fb.setEnabled(false);
+        this.fountain.emitRate = k < 6 ? 900 : Math.max(0, 900 - (k - 6) * 300);
+        this.bombs.emitRate = k < 7 ? 140 : 0;
+        this.smoke.emitRate = 0;
+        this.stem.emitRate = k < 11 ? 380 : Math.max(0, 380 - (k - 11) * 90);
+        // (the cap forms once the column has climbed: it sits on the column's top and keeps rising)
+        this.capY = BASE + TOP + Math.min(150, 25 + k * 16);
+        this.cap.emitRate = k > 2.2 ? Math.min(260, (k - 2.2) * 140) : 0;
+        this.surge.emitRate = k < 2.5 ? 600 : 0;
+    }
+    /** the dark bubble round your eyes: going dark at the end, coming back up at home */
+    private fade(dt: number) {
+        if (this.fadeIn) { this.fadeK -= dt / FADE_IN; if (this.fadeK <= 0) { this.fadeK = 0; this.fadeIn = false; } }
+        const on = this.fadeK > 0.002;
+        this.fadeSphere.setEnabled(on);
+        if (!on) return;
+        const cam = this.scene.activeCamera;
+        if (cam) this.fadeSphere.position.copyFrom(cam.globalPosition);
+        (this.fadeSphere.material as StandardMaterial).alpha = this.fadeK;
+    }
     /** the clock: it runs while anybody is still on the course, then stops at the last time in */
     private clockMs() {
         const el = this.el();
@@ -958,24 +1087,37 @@ export class Volcano {
         } else {
             const h = this.now() - this.heliT0;
             spin = Math.min(1, 0.35 + h * 0.4);
-            // up off the pad, then out over the crater to hover high above it, facing the middle
-            const hover = new Vector3(Math.cos(this.stationAng) * 78, TOP + 22, Math.sin(this.stationAng) * 78);
-            const lift = Math.min(1, Math.max(0, h - 1.2) / 2.5), go = Math.max(0, Math.min(1, (h - 3) / 7)), e = go * go * (3 - 2 * go);
-            const from = this.padPos.clone(); from.y = TOP + 0.25 + lift * 6;
-            Vector3.LerpToRef(from, hover, e, this.heliAt);
-            this.heliAt.y += Math.sin(h * 1.3) * 0.25 * go;
-            const face = Math.atan2(-this.heliAt.x, -this.heliAt.z);
-            let dy = face - this.padYaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
-            this.heliYaw = this.padYaw + dy * e;
+            // up off the pad and away, nose first, out over the sea; then it turns round to face the volcano and backs off
+            // slowly while it blows, so everybody aboard has it right in front of them
+            const out = new Vector3(Math.cos(this.stationAng), 0, Math.sin(this.stationAng));
+            const lift = Math.min(1, Math.max(0, h - 1.2) / 2.8);
+            const go = Math.max(0, Math.min(1, (h - 3.5) / 9)), e = go * go * (3 - 2 * go);
+            const back = Math.max(0, h - 13) * 6;
+            const dist = 43 + e * 190 + back, alt = TOP + 0.25 + lift * 8 + e * 40 + Math.min(20, back * 0.25);
+            this.heliAt.set(out.x * dist, alt + Math.sin(h * 1.3) * 0.3 * go, out.z * dist);
+            // (blend from the pad, which is a little round the rim from the station)
+            const fromPad = 1 - Math.min(1, Math.max(0, h - 2) / 3);
+            if (fromPad > 0) { this.heliAt.x += (this.padPos.x - out.x * 43) * fromPad; this.heliAt.z += (this.padPos.z - out.z * 43) * fromPad; }
+            const awayYaw = Math.atan2(out.x, out.z), faceYaw = awayYaw + Math.PI;
+            const turnK = Math.max(0, Math.min(1, (h - 10.5) / 3.5)), t2 = turnK * turnK * (3 - 2 * turnK);
+            const start = h < 4 ? this.padYaw + (awayYaw - this.padYaw) * Math.max(0, Math.min(1, (h - 2) / 2)) : awayYaw;
+            let dy = faceYaw - start; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
+            this.heliYaw = start + dy * t2;
+            // (nose down while it speeds away, level once it turns)
+            this.heliPitch = 0.16 * go * (1 - go) * 4 * (1 - t2);
         }
         this.heli.position.copyFrom(this.heliAt);
         this.heli.rotation.y = this.heliYaw;
-        this.heli.rotation.x = this.heliT0 >= 0 ? Math.sin((this.now() - this.heliT0) * 0.9) * 0.03 : 0;
+        this.heli.rotation.x = this.heliT0 >= 0 ? this.heliPitch + Math.sin((this.now() - this.heliT0) * 0.9) * 0.02 : 0;
         this.rotorSpin += dt * spin * 28;
         this.rotor.rotation.y = this.rotorSpin; this.tailRotor.rotation.x = this.rotorSpin * 1.6;
         const p = this.player;
         const d = p ? Math.hypot(p.pos.x - VX - this.heliAt.x, p.pos.y - BASE - this.heliAt.y, p.pos.z - VZ - this.heliAt.z) : 99;
         this.sfx?.rotor(spin > 0 ? Math.max(0.15, 1 - d / 120) * spin : 0, spin);
+        this.beacon.visibility = Math.sin(this.time * 7) > 0.55 ? 1 : 0.15;
+        // (a blur where the blades are, once they turn fast)
+        this.rotorDisc.visibility = Math.max(0, spin - 0.45) * 0.55;
+        for (const b of this.blades) b.visibility = 1 - Math.max(0, spin - 0.55) * 1.4;
     }
     private endRun() {
         this.ended = true; this.endedAt = this.now();
@@ -994,8 +1136,10 @@ export class Volcano {
         this.mySeat = -1;
         const summary = list.map((r) => `${r.name}: ${r.ms !== null ? fmt(r.ms) : "no time"} · ${r.heli ? "escaped" : "burned"}`).join(" | ");
         this.phase = "idle"; this.seats.clear(); this.heliT0 = -1; this.erupted = false;
-        this.fountain.emitRate = this.bombs.emitRate = this.smoke.emitRate = 0;
+        this.fountain.emitRate = this.bombs.emitRate = this.smoke.emitRate = this.stem.emitRate = this.cap.emitRate = this.surge.emitRate = 0;
+        this.fireball.setEnabled(false);
         this.goHome?.();
+        this.fadeK = 1; this.fadeIn = true;
         this.say(summary ? `Floris Lava - ${summary}` : "Floris Lava: the volcano has blown.");
     }
 
