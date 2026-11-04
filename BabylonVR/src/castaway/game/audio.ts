@@ -411,6 +411,51 @@ export class Sfx {
   whoosh() { this.burst(0.4, 900, 0.6, 0.3); }
   bell() { this.tone(988, 0.6, 'sine', 0.18, 0.98); setTimeout(() => this.tone(1319, 0.8, 'sine', 0.14, 0.98), 120); }
   zap() { this.tone(1600, 0.2, 'sawtooth', 0.12, 0.4); }
+  /** a deep rumble under the ground for `dur` seconds (the sand worm coming, the volcano stirring) */
+  rumble(dur: number, vol: number) {
+    const c = this.ctx; if (!c || !this.master || !this.noise || vol < 0.01) return;
+    const s = c.createBufferSource(); s.buffer = this.noise; s.loop = true; s.playbackRate.value = 0.25;
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 110;
+    const g = c.createGain(), at = c.currentTime;
+    g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(vol, at + dur * 0.6); g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    s.connect(lp); lp.connect(g); g.connect(this.master); s.start(at, Math.random()); s.stop(at + dur + 0.1);
+    const o = c.createOscillator(); o.type = 'sine'; o.frequency.value = 38; o.frequency.linearRampToValueAtTime(52, at + dur);
+    const og = c.createGain(); og.gain.setValueAtTime(0.0001, at); og.gain.exponentialRampToValueAtTime(vol * 0.8, at + dur * 0.7); og.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    o.connect(og); og.connect(this.master); o.start(at); o.stop(at + dur + 0.1);
+  }
+  /** the worm bursts out of the sand: a spray of sand and a low bellow */
+  roar(vol: number) {
+    if (vol < 0.01) return;
+    this.burst(1.6, 500, 0.5, 0.5 * vol, 'lowpass'); this.burst(0.9, 1600, 0.6, 0.18 * vol);
+    this.tone(64, 1.8, 'sawtooth', 0.22 * vol, 0.55); this.tone(92, 1.5, 'sawtooth', 0.12 * vol, 0.6);
+  }
+  /** a heavy body dives into sand (or lava spouts): a long hiss and a thud */
+  sandDive(vol: number) { if (vol < 0.01) return; this.burst(1.3, 700, 0.5, 0.45 * vol, 'lowpass'); this.tone(48, 0.8, 'sine', 0.4 * vol, 0.6); }
+  /** a lava geyser bursting `dist` metres away */
+  geyser(dist: number) { const v = Math.max(0, 1 - dist / 90); if (v < 0.02) return; this.burst(1.4, 420, 0.5, 0.45 * v, 'lowpass'); this.burst(1.0, 2600, 0.7, 0.1 * v); }
+  /** lava bubbling: one fat blub */
+  blub(v: number) { if (v < 0.02) return; this.tone(70 + Math.random() * 40, 0.25, 'sine', 0.25 * v, 1.8); this.burst(0.2, 300, 1, 0.12 * v, 'lowpass'); }
+  /** the volcano blows: a huge boom and a long roar */
+  eruption() { this.thunder(0); this.tone(36, 4, 'sine', 0.6, 0.5); this.burst(5, 260, 0.4, 0.6, 'lowpass'); setTimeout(() => this.rumble(9, 0.5), 300); }
+  /** the helicopter's rotor (0 off .. 1 close and loud): a looped chop */
+  private rotor: { g: GainNode; o: OscillatorNode; s: AudioBufferSourceNode } | null = null;
+  setRotor(v: number, rate = 1) {
+    const c = this.ctx; if (!c || !this.master || !this.noise) return;
+    if (!this.rotor) {
+      if (v < 0.01) return;
+      const s = c.createBufferSource(); s.buffer = this.noise; s.loop = true; s.playbackRate.value = 0.6;
+      const bp = c.createBiquadFilter(); bp.type = 'lowpass'; bp.frequency.value = 420;
+      const chop = c.createGain(); chop.gain.value = 0.5;
+      const o = c.createOscillator(); o.type = 'square'; o.frequency.value = 14;
+      const depth = c.createGain(); depth.gain.value = 0.5; o.connect(depth); depth.connect(chop.gain);
+      const g = c.createGain(); g.gain.value = 0;
+      s.connect(bp); bp.connect(chop); chop.connect(g); g.connect(this.master); s.start(); o.start();
+      this.rotor = { g, o, s };
+    }
+    this.rotor.g.gain.setTargetAtTime(Math.max(0, Math.min(1, v)) * 0.5, c.currentTime, 0.2);
+    this.rotor.o.frequency.setTargetAtTime(8 + 9 * rate, c.currentTime, 0.4);
+    if (v < 0.01) { const r = this.rotor; this.rotor = null; r.g.gain.setTargetAtTime(0, c.currentTime, 0.1); setTimeout(() => { try { r.s.stop(); r.o.stop(); } catch { /* gone */ } }, 600); }
+  }
   death() { this.tone(200, 1.2, 'sawtooth', 0.35, 0.25); }
 
   // ---- the guitar: plucked strings made with the Karplus-Strong method (a noise burst in a damped delay line),

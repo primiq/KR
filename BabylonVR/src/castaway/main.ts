@@ -81,6 +81,7 @@ import { CLASSIC, cutBounds, findSpawn, heightAt, SPAWN_THETA, TERRAIN_SIZE } fr
 import { Waterfall } from "./world/waterfall";
 import { Seabed } from "./world/seabed";
 import { Desert } from "./world/desert";
+import { SandWorm } from "./world/sandworm";
 import { Sandstorm } from "./world/sandstorm";
 import { inDesert, OASIS_WATER } from "./world/desertField";
 import { Player } from "./world/player";
@@ -567,9 +568,15 @@ async function main() {
     // the desert's sandstorms: the host says when; out in one you see a few metres and wade against it; a building shelters you
     const storm = new Sandstorm(scene, headset || q.name === "low");
     desert.storm = storm;
-    storm.onChange = (on, left) => sync?.session.sendEvent({ k: "sx", on: on ? 1 : 0, l: +left.toFixed(2) });
+    storm.onChange = (on, left) => sync?.session.sendEvent({ k: "sz", on: on ? 1 : 0, l: +left.toFixed(2) });
     storm.onTurn = (on) => { if (desert.active) game.hud.message(on ? "A sandstorm is blowing in! Get inside a building." : "The sandstorm has passed."); };
     let stormWind = 0;
+    // the sand worms: far out in the dunes now and then one bursts out ahead of you and dives back in further on
+    const worm = new SandWorm(scene);
+    desert.worm = worm;
+    worm.onStart = (w) => sync?.session.sendEvent({ k: "sw", ax: Math.round(w.ax), az: Math.round(w.az), bx: Math.round(w.bx), bz: Math.round(w.bz), h: +w.h.toFixed(1) });
+    worm.sfx = { rumble: (d, v) => game.sfx.rumble(d, v), roar: (v) => game.sfx.roar(v), dive: (v) => game.sfx.sandDive(v) };
+    worm.shake = (k) => { if (k > 0.02) { player.shake(k); game.vr.haptic?.(Math.min(1, k)); } };
     // (Settings > Developer: start or stop one now; the host's word, as always)
     devStorm = () => {
         if (sync && !sync.session.isHost) { game.hud.message("Only the host can call up a sandstorm"); return storm.on; }
@@ -832,6 +839,7 @@ async function main() {
                 if (sync) for (const a of sync.avatars.positions) { const st = sync.session.states.get(a.id); walkers.push({ id: a.id, x: a.x, y: a.y, z: a.z, run: !!st && (st.flags & 1) !== 0 }); }
                 desert.night = 1 - clock.day;
                 desert.update(dt, player.pos, walkers, camera.globalPosition, clock.hour);
+                worm.update(dt, player.pos, desert.active && !player.cave && !game.stats.dead, player.look);
                 {
                     const eye = scene.activeCamera?.globalPosition ?? camera.globalPosition;
                     const sh = desert.active && game.sheltered(dt);

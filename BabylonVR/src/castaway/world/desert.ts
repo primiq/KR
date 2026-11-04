@@ -12,6 +12,7 @@
 //   The sand itself: warm grains in a few tones, windward ripples, darker slip faces, darker where freshly dug or wet, and
 //   grains that catch the sun and glint. The oasis's palms, bushes and rocks are the island's (world/vegetation.ts): fell
 //   them, pick them, mine them.
+import type { SandWorm } from "./sandworm";
 import {
     Color3, Color4, Constants, DynamicTexture, type Effect, EffectRenderer, EffectWrapper, Mesh, ParticleSystem, PBRMaterial, RawTexture,
     RenderTargetTexture, type Scene, ShaderMaterial, Texture, ToHalfFloat, Vector3, VertexData,
@@ -132,6 +133,8 @@ export class Desert {
     active = false;
     /** the sandstorms (main makes it) */
     storm: Sandstorm | null = null;
+    /** the sand worms far out in the dunes (world/sandworm.ts) */
+    worm: SandWorm | null = null;
     /** 0 by day .. 1 at night (main sets it): the sand is darker by moonlight */
     night = 0;
     /** digging and heaping, the water and the green (the world's state: saved and shared) */
