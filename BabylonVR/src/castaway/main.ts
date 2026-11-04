@@ -44,6 +44,7 @@ import { CatHome } from "./world/catroom";
 import { HideIsle } from "./world/hideisle";
 import { TileTrial } from "./world/tiletrial";
 import { Volcano } from "./world/volcano";
+import { VRPanel } from "./vr/panel";
 import { LAVA_BOARD } from "./world/skyroom";
 import { FPPaws, PLAYER_COATS } from "./world/cats";
 import { HUMAN, CAT, GORILLA } from "./world/player";
@@ -389,8 +390,12 @@ async function main() {
     scene.activeCamera = camera;
 
     let started = false;
+    /** the board with the tabs (Bag, Craft, Map, Chat, Multiplayer, Graphics): the menu in a headset and on every screen */
+    let boardRef: VRPanel | null = null;
     const input = new Input(canvas, (locked) => {
         if (locked) { $("menu").classList.add("hidden"); $("hud").classList.remove("hidden"); }
+        // (the mouse let go, Escape: the board opens on its Multiplayer tab, as the menu does in a headset)
+        else if (input.enabled && !game.uiBlocking && !vrActive() && boardRef) { boardRef.flat = true; boardRef.open("menu"); }
         else if (input.enabled && !game.uiBlocking && !vrActive()) { $("menu").classList.remove("hidden"); $("hud").classList.add("hidden"); input.enabled = false; inGameMenu(); }
     });
     // (the shared environment's flat sun disc faced one way only and read as an ellipse: SkyDeco draws a round sun instead)
@@ -735,6 +740,20 @@ async function main() {
         };
     }
 
+    // ---- the board: one menu for every device
+    const board = new VRPanel(scene, game);
+    boardRef = board;
+    board.flat = true;
+    game.hud.boardMode = true;
+    game.menuBoard = (tab) => { board.flat = true; board.toggle(tab); };
+    // (the mouse wheel scrolls the crafting list while the board is up on a screen)
+    window.addEventListener("wheel", (e) => { if (board.flat && game.hud.inventoryOpen) board.scroll(Math.sign(e.deltaY), 0.12); }, { passive: true });
+    {
+        // (while it is up on a screen, the HUD and the touch controls step aside)
+        const st = document.createElement("style");
+        st.textContent = "body.board-open #hud{visibility:hidden}";
+        document.head.appendChild(st);
+    }
     progress(0.91, "Looking for a headset…");
     await nextFrame();
     // ---- VR
@@ -756,7 +775,7 @@ async function main() {
                 }
             }
             const { CastawayVR } = await import("./vr/vr");
-            vrMode = new CastawayVR(scene, xr, game, player, input, pipeline);
+            vrMode = new CastawayVR(scene, xr, game, player, input, pipeline, board);
             $("play-vr").classList.remove("hidden");
         } catch (e) {
             console.warn("VR unavailable", e);
@@ -833,6 +852,9 @@ async function main() {
                 player.look.set(-Math.sin(player.yaw) * cp, Math.sin(player.pitch), -Math.cos(player.yaw) * cp);
             }
             game.update(dt, true);
+            if (!vrActive()) { board.flat = true; board.update(dt); }
+            else board.flat = false;
+            document.body.classList.toggle("board-open", !vrActive() && game.hud.inventoryOpen);
             game.under.sites?.update(dt);
             hide.update(dt, player, now / 1000);
             if (sync) sync.avatars.three.labelsOff = hide.active;
@@ -1138,13 +1160,18 @@ async function main() {
         begin();
         try { await vrMode?.enter(); } catch (e) { game.hud.message(`Could not start VR: ${(e as Error)?.message ?? e}`); }
     });
-    $("btn-menu")?.addEventListener("click", () => {
+    /** the main menu over the game (Resume, New island, Multiplayer, Character, Settings, Save & back to the main menu) */
+    const openMainMenu = () => {
+        game.hud.setInventory(false);
+        input.uiOpen = false;
         inGameMenu();
         input.enabled = false;
         $("menu").classList.remove("hidden");
         $("hud").classList.add("hidden");
         if (document.pointerLockElement) document.exitPointerLock();
-    });
+    };
+    // (the menu button opens the board, as everywhere)
+    $("btn-menu")?.addEventListener("click", () => { board.flat = true; board.open("menu"); });
     $("quit-menu").addEventListener("click", () => {
         doSave();
         noSave = true;
@@ -1346,15 +1373,16 @@ async function main() {
             return m;
         }
     };
-    if (vrMode) {
+    {
         const vm = vrMode;
-        vm.panel.menuActions = {
+        board.menuActions = {
             status: () => (sync ? `${sync.session.isHost ? "Hosting" : "In"} room ${sync.session.code} · ${[...sync.session.players.values()].map((p) => p.name).join(", ")}` : "Playing solo. Host a room and share its code, or type a friend's code and join."),
             host: async () => (sync ? "You are already in a room" : (await doHost()) ?? `Room ${sync!.session.code} is open`),
             join: async (code) => (sync ? "Leave this room first" : (await doJoin(code)) ?? "Connected!"),
             leave: () => leave(),
             save: () => doSave(),
-            exitVR: () => void vm.exit(),
+            // (in a headset: back to the screen; on a screen: the main menu, with Character, Settings and Save & quit)
+            exitVR: () => { if (vm?.active) void vm.exit(); else openMainMenu(); },
             gfx: () => ({ pref: getPref("castaway.quality") ?? "auto", custom: { ...gfx } }),
             gfxPreview: (pref, custom) => pickQuality(pref, custom),
             dev: devMode ? devTools : undefined,

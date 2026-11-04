@@ -345,9 +345,14 @@ export class Hud {
     this.render();
   }
 
+  /** the board (vr/panel.ts) is the menu on every screen: the old bag window stays shut */
+  boardMode = false;
+  /** when the bag was last opened (an Escape that freed the mouse to open it must not shut it again) */
+  openedAt = 0;
   setInventory(open: boolean, tab: 'bag' | 'craft' = 'bag') {
     this.inventoryOpen = open;
-    $('inventory').classList.toggle('hidden', !open);
+    if (open) this.openedAt = performance.now();
+    $('inventory').classList.toggle('hidden', !open || this.boardMode);
     if (!open) { this.pick = null; this.closeContainer(false); }
     else this.setTab(this.cont ? 'bag' : tab);
     this.render();

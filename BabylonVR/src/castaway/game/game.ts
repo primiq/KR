@@ -477,7 +477,7 @@ export class Game {
             this.hud.flashHurt();
             if (this.hurtCd <= 0) { this.sfx.hurt(); this.hurtCd = 0.6; }
         };
-        window.addEventListener("keydown", (e) => { if (e.code === "Escape" && this.hud.inventoryOpen) this.setInventory(false); });
+        window.addEventListener("keydown", (e) => { if (e.code === "Escape" && this.hud.inventoryOpen && performance.now() - this.hud.openedAt > 400) this.setInventory(false); });
     }
 
     // ------------------------------------------------------------ armor
@@ -511,7 +511,10 @@ export class Game {
     }
 
     // ------------------------------------------------------------ menus
+    /** on a flat screen the board is the menu: the map is its Map tab (set by main) */
+    menuBoard: ((tab: "map" | "bag" | "craft") => void) | null = null;
     toggleMap(open = !this.map.open) {
+        if (this.menuBoard && !this.vr.active) { if (!this.stats.dead && !this.sleeping) this.menuBoard("map"); return; }
         if (open && (this.stats.dead || this.sleeping)) return;
         if (open && this.hud.inventoryOpen) this.setInventory(false);
         this.map.setOpen(open);
@@ -522,10 +525,12 @@ export class Game {
 
     toggleInventory() {
         if (this.stats.dead || this.sleeping) return;
+        if (this.menuBoard && !this.vr.active && !this.hud.inventoryOpen) { this.menuBoard("bag"); return; }
         this.setInventory(!this.hud.inventoryOpen);
     }
     toggleCraft() {
         if (this.stats.dead || this.sleeping) return;
+        if (this.menuBoard && !this.vr.active && !this.hud.inventoryOpen) { this.menuBoard("craft"); return; }
         if (this.hud.inventoryOpen && this.hud.tab === "craft") this.setInventory(false);
         else if (this.hud.inventoryOpen) this.hud.setTab("craft");
         else this.setInventory(true, "craft");

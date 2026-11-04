@@ -106,6 +106,8 @@ export class VRPanel {
     private chatPlayers!: TextBlock;
     private menuPane!: StackPanel;
     private menuStatus!: TextBlock;
+    /** "Leave VR" in a headset, "Main menu" on a screen */
+    private exitBtn: Button | null = null;
     private codeText!: TextBlock;
     private code = "";
     /** filled in by the page: multiplayer and session actions for the in-headset menu */
@@ -398,6 +400,18 @@ export class VRPanel {
         this.craftPane.barBackground = "#ffffff10";
         this.craftList = new StackPanel("craftList");
         this.craftPane.addControl(this.craftList);
+        // (a finger or the mouse can drag the list up and down, as on a phone)
+        {
+            let dragY: number | null = null;
+            this.craftPane.onPointerDownObservable.add((v) => { dragY = v.y; });
+            this.craftPane.onPointerMoveObservable.add((v) => {
+                if (dragY === null) return;
+                const bar = this.craftPane.verticalBar, dy = v.y - dragY; dragY = v.y;
+                bar.value = Math.max(0, Math.min(1, bar.value - dy / 2200));
+            });
+            this.craftPane.onPointerUpObservable.add(() => { dragY = null; });
+            this.craftPane.onPointerOutObservable.add(() => { dragY = null; });
+        }
         b.addControl(this.craftPane);
 
         this.buildMenu(b);
@@ -449,7 +463,7 @@ export class VRPanel {
         button(r1, "Host a room", 360, () => void this.menuActions?.host().then(say));
         button(r1, "Leave room", 330, () => this.menuActions?.leave());
         button(r1, "Save", 220, () => { this.menuActions?.save(); this.game.hud.message("Saved"); });
-        button(r1, "Leave VR", 300, () => this.menuActions?.exitVR(), "#7a3a3a");
+        this.exitBtn = button(r1, "Leave VR", 300, () => this.menuActions?.exitVR(), "#7a3a3a");
         this.codeText = new TextBlock("code", "");
         this.codeText.height = "90px";
         this.codeText.color = "#ffd166";
@@ -567,7 +581,7 @@ export class VRPanel {
             zrow.addControl(x);
         };
         zb("Zoom +", 1.5); zb("Zoom −", 1 / 1.5);
-        const help = new TextBlock("mapHelp", "You are the white arrow. North is up.\n\nIn a room with friends, point at the map and pull the trigger to ping that spot for everyone.");
+        const help = new TextBlock("mapHelp", "You are the white arrow. North is up.\n\nIn a room with friends, point at the map (or click it) to ping that spot for everyone.");
         help.height = "420px"; help.color = TXT; help.fontSize = 34; help.textWrapping = true;
         help.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
         side.addControl(help);
@@ -679,7 +693,23 @@ export class VRPanel {
     /** the board's place relative to your head: it travels with you (walking, on a boat) without turning as you look about */
     private boardOff = new Vector3();
     /** put the board in front of the head, at chest height */
+    /**
+     * On a flat screen (desktop, phone, tablet) the board is the game's menu too: right in front of the camera, square on,
+     * filling most of the view, and close (nearer than your own hands, so the mouse or a finger always reaches it).
+     */
+    flat = false;
+    private placeFlat() {
+        const cam = this.scene.activeCamera!;
+        const f = cam.getDirection(Vector3.Forward(true)).normalize();
+        const k = 0.3, fov = (cam as { fov?: number }).fov ?? 0.8, aspect = this.scene.getEngine().getAspectRatio(cam);
+        const t = Math.tan(fov / 2), d = Math.max((0.375 * k) / (t * 0.92), (0.55 * k) / (t * aspect * 0.94));
+        this.board.scaling.setAll(k);
+        this.board.position.copyFrom(cam.globalPosition.add(f.scale(d)));
+        this.board.rotation.set(-Math.asin(Math.max(-1, Math.min(1, f.y))), Math.atan2(-f.x, -f.z), 0);
+    }
     private placeBoard() {
+        if (this.flat) { this.placeFlat(); return; }
+        this.board.scaling.setAll(1);
         const cam = this.scene.activeCamera!;
         const f = cam.getDirection(Vector3.Forward(true));
         f.y = 0;
@@ -714,9 +744,12 @@ export class VRPanel {
         const open = hud.inventoryOpen;
         if (open !== this.board.isEnabled()) {
             if (open) this.placeBoard();
+            // (shut: next time it opens on the bag, unless it is opened on another tab on purpose)
+            else { this.menuOpen = false; this.gfxOpen = false; this.extra = null; }
             this.board.setEnabled(open);
             this.dirty = true;
-        } else if (open) this.board.position.copyFrom(this.drawnHead().add(this.boardOff));
+        } else if (open && this.flat) this.placeFlat();
+        else if (open) this.board.position.copyFrom(this.drawnHead().add(this.boardOff));
         if (open && this.extra === "map") {
             // the map redraws a few times a second while it shows (you, friends, pings move)
             this.mapT -= _dt;
@@ -757,6 +790,7 @@ export class VRPanel {
             for (const c of this.devRows) c.isVisible = !!this.menuActions?.dev;
             return;
         }
+        if (this.exitBtn?.textBlock) this.exitBtn.textBlock.text = this.flat ? "Main menu" : "Leave VR";
         if (this.menuOpen) { this.menuStatus.text = this.menuActions?.status() ?? ""; this.codeText.text = `Room code: ${this.code.padEnd(5, "_")}`; return; }
         if (craft) { this.renderCraft(); return; }
         const pick = hud.picked;
@@ -785,7 +819,9 @@ export class VRPanel {
             this.detail.text = d.desc;
         } else {
             this.detailName.text = "Your bag";
-            this.detail.text = "Point at an item and pull the trigger to pick it, then at another slot to move it. The top row (gold) is your hotbar.";
+            this.detail.text = this.flat
+                ? "Click (or tap) an item to pick it, then another slot to move it there. The top row (gold) is your hotbar."
+                : "Point at an item and pull the trigger to pick it, then at another slot to move it. The top row (gold) is your hotbar.";
         }
         const own = !!pick && pick.c === 0 && !!ps;
         const def = ps ? ITEMS[ps.id] : null;

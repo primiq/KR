@@ -93,9 +93,11 @@ export class CastawayVR {
         private readonly player: Player,
         private readonly input: Input,
         private readonly pipeline: DefaultRenderingPipeline | null,
+        panel?: VRPanel,
     ) {
         const base = xr.baseExperience;
-        this.panel = new VRPanel(scene, game);
+        // (the same board is the menu on a flat screen too: one for both)
+        this.panel = panel ?? new VRPanel(scene, game);
         this.paint = new VRPaint(scene);
         game.vr.paint = (p, done) => {
             // the palette goes on the right hand when both controllers are there (the left one points at it)
