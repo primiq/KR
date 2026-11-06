@@ -422,6 +422,7 @@ export class Game {
             canFit: (id, n) => this.inv.canFit(id, n),
             burst: (p, fx, n) => this.resources.burst(new Vector3(p.x, p.y, p.z), fx as HitFx, n),
             sfx: { hit: (k) => this.sfx.hit(k as never), denied: () => this.sfx.denied(), pickup: () => this.sfx.pickup(), creak: () => this.sfx.creak(), swing: () => this.sfx.swing() },
+            travel: (go) => (this.travel ? this.travel(go) : go()),
         });
         this.map = new MapView();
         this.map.onClose = () => this.toggleMap(false);
@@ -513,6 +514,8 @@ export class Game {
     // ------------------------------------------------------------ menus
     /** on a flat screen the board is the menu: the map is its Map tab (set by main) */
     menuBoard: ((tab: "map" | "bag" | "craft") => void) | null = null;
+    /** going through a door to another place: main puts the loading screen up around it */
+    travel: ((go: () => void) => void) | null = null;
     toggleMap(open = !this.map.open) {
         if (this.menuBoard && !this.vr.active) { if (!this.stats.dead && !this.sleeping) this.menuBoard("map"); return; }
         if (open && (this.stats.dead || this.sleeping)) return;

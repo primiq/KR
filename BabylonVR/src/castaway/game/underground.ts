@@ -40,7 +40,12 @@ export interface UgHost {
   canFit(id: ItemId, n: number): number;
   burst(p: V3, fx: 'stone' | 'ore' | 'wood' | 'leaf' | 'flesh' | 'ember' | 'water', n: number): void;
   sfx: { hit(k: string): void; denied(): void; pickup(): void; creak(): void; swing(): void };
+  /** going somewhere else (a door, a shaft): the loading screen goes up first, `go` moves you, and it stays up until the
+   *  new place is ready (main) */
+  travel?(go: () => void): void;
 }
+/** the doors and ways that take you somewhere else entirely */
+const TRAVEL = new Set(['rope', 'pit', 'locdoor', 'campdoor', 'hidedoor', 'desertdoor', 'desertexit', 'trialdoor', 'lavadoor', 'catdoor', 'catexit', 'airdoor', 'airexit', 'skydoor', 'skyexit', 'townexit']);
 
 export type UgTarget =
   | { kind: 'ore'; ore: Ore; chunk: any; dist: number }
@@ -335,6 +340,11 @@ export class Underground {
   }
 
   interact(t: UgTarget) {
+    const away = TRAVEL.has(t.kind) || (t.kind === 'lava' && t.t.w === 'exit') || (t.kind === 'trial' && t.t.w === 'exit');
+    if (away && this.h.travel) { this.h.travel(() => this.act(t)); return; }
+    this.act(t);
+  }
+  private act(t: UgTarget) {
     switch (t.kind) {
       case 'rope': this.exit(t.index); break;
       case 'pit': this.enter(t.index); break;

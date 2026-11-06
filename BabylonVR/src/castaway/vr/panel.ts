@@ -721,7 +721,12 @@ export class VRPanel {
     }
 
     update(_dt: number) {
-        this.followHead(_dt);
+        // (the wrist display is a headset's only: on a screen, just the board)
+        if (!this.flat) this.wristUpdate();
+        this.boardUpdate(_dt);
+    }
+    private wristUpdate() {
+        this.followHead(0);
         const g = this.game, hud = g.hud, s = g.stats;
         // wrist
         const vals = [s.health, s.hunger, s.thirst, s.stamina];
@@ -739,7 +744,9 @@ export class VRPanel {
         const nt = this.noteList.map((n) => n.t).join("\n");
         if (this.notes.text !== nt) this.notes.text = nt;
         if (s.dead && !this.notes.text) this.notes.text = `${s.deathCause}\nPull the trigger to respawn.`;
-
+    }
+    private boardUpdate(_dt: number) {
+        const g = this.game, hud = g.hud;
         // board
         const open = hud.inventoryOpen;
         if (open !== this.board.isEnabled()) {

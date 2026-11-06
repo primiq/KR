@@ -49,8 +49,14 @@ export class Atmosphere {
      * is the sky fill light flaring; and the sky lighting is re-captured less often (a stall each time on a headset).
      */
     private lean = false;
-    beLean() {
-        this.lean = true;
+    beLean() { this.lean = true; }
+    /**
+     * Two lights fewer for every lit pixel, on every device: the moon's light is the sun light turned round at night (they
+     * are never both bright), and the lightning is the sky fill light flaring.
+     */
+    private merged = false;
+    private mergeLights() {
+        this.merged = true;
         this.moon.setEnabled(false);
         this.flashLight.setEnabled(false);
     }
@@ -132,6 +138,7 @@ export class Atmosphere {
         this.flashLight.groundColor = new Color3(0.3, 0.32, 0.4);
         this.flashLight.specular = Color3.Black();
         this.flashLight.intensity = 0;
+        this.mergeLights();
         // (the old point stars and flat moon disc stay built but hidden: SkyDeco draws the night sky now)
         this.stars.setEnabled(false);
         this.moonDisc.setEnabled(false);
@@ -251,7 +258,7 @@ export class Atmosphere {
             this.scene.environmentIntensity += (0.6 - this.scene.environmentIntensity) * dw;
         }
         this.flashLight.intensity = this.flash * 1.6;
-        if (this.lean) {
+        if (this.merged) {
             if (this.moon.intensity > this.sun.intensity) {
                 this.sun.direction.copyFrom(this.moon.direction);
                 this.sun.diffuse = this.moon.diffuse;

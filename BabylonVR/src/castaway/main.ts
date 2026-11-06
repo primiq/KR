@@ -852,7 +852,7 @@ async function main() {
             if (locs.active && !locs.contains(player.pos.x, player.pos.z)) { locs.leave(player); player.teleport(player.pos.x, heightAt(player.pos.x, player.pos.z), player.pos.z, player.yaw); }
             if (air.driving && game.stats.dead) air.exitCar(player);
             if (air.active) air.pre(dt, { gas: Math.max(-1, Math.min(1, input.move.y)), steer: Math.max(-1, Math.min(1, input.move.x)), hand: input.jumpHeld, boost: input.wantsSprint }, player, vrActive());
-            if (!game.uiBlocking) player.update(dt, input);
+            if (!game.uiBlocking && !travelling) player.update(dt, input);
             else input.consumeLook();
             vrMode?.afterPlayer(dt);
             if (air.driving && !vrActive()) {
@@ -867,9 +867,14 @@ async function main() {
                 player.look.set(-Math.sin(player.yaw) * cp, Math.sin(player.pitch), -Math.cos(player.yaw) * cp);
             }
             game.update(dt, true);
+            if (!travelling && settled && Vector3.Distance(player.pos, lastSpot) > 300) travel(() => {});
+            lastSpot.copyFrom(player.pos);
             if (!vrActive()) { board.flat = true; board.update(dt); }
             else board.flat = false;
             document.body.classList.toggle("board-open", !vrActive() && game.hud.inventoryOpen);
+            // (Babylon ray-tests every mesh under the mouse on every move; only the menu board on a screen needs that. In a
+            //  headset the controllers point at things their own way)
+            { const pick = vrActive() || (board.flat && game.hud.inventoryOpen); scene.skipPointerMovePicking = !pick; }
             game.under.sites?.update(dt);
             hide.update(dt, player, now / 1000);
             if (sync) sync.avatars.three.labelsOff = hide.active;
@@ -1102,13 +1107,78 @@ async function main() {
             recent.push(dt); if (recent.length > 30) recent.shift();
             const usual = [...recent].sort((a, b) => a - b)[Math.floor(recent.length / 2)];
             smooth = dt < Math.max(100, usual * 1.6) ? smooth + 1 : 0;
-            if ((smooth >= 20 && performance.now() - t0 > 600) || performance.now() - t0 > 20000) {
+            if ((smooth >= 20 && performance.now() - t0 > 600 && engine.areAllEffectsReady()) || performance.now() - t0 > 25000) {
                 scene.onAfterRenderObservable.remove(obs);
                 $("loading").classList.add("hidden");
                 input.enabled = true;
             }
         });
     };
+    /**
+     * Going somewhere else (a door, a shaft, a far teleport): the loading screen goes up (in a headset, the view fades to
+     * black), and only then are you moved; it stays up, with you held still, while the new place builds and its shaders
+     * compile, until it draws smoothly. Then it lifts.
+     */
+    let travelling = false;
+    const travelFade = MeshBuilder.CreateSphere("travelFade", { diameter: 0.8, segments: 8, sideOrientation: Mesh.BACKSIDE }, scene);
+    {
+        const fm = new StandardMaterial("travelFadeM", scene);
+        fm.disableLighting = true; fm.emissiveColor = Color3.Black(); fm.diffuseColor = Color3.Black(); fm.backFaceCulling = false; fm.disableDepthWrite = true; fm.alpha = 0;
+        travelFade.material = fm; travelFade.renderingGroupId = 3; travelFade.isPickable = false; travelFade.alwaysSelectAsActiveMesh = true;
+        travelFade.metadata = { keepUnderground: true, skyroom: true }; travelFade.setEnabled(false);
+    }
+    let fadeK = 0, fadeWant = 0;
+    scene.onBeforeRenderObservable.add(() => {
+        const dt = Math.min(0.1, engine.getDeltaTime() / 1000);
+        fadeK += Math.sign(fadeWant - fadeK) * Math.min(Math.abs(fadeWant - fadeK), dt * 4);
+        travelFade.setEnabled(fadeK > 0.002);
+        if (fadeK > 0.002) { (travelFade.material as StandardMaterial).alpha = fadeK; const c = scene.activeCamera; if (c) travelFade.position.copyFrom(c.globalPosition); }
+    });
+    const frames = (n: number) => new Promise<void>((res) => { let k = 0; const o = scene.onAfterRenderObservable.add(() => { if (++k >= n) { scene.onAfterRenderObservable.remove(o); res(); } }); });
+    /** hold the loading screen until the place you are in draws smoothly (and its meshes are ready) */
+    let settleAgain = false;
+    const settleHere = () => new Promise<void>((res) => {
+        let t0 = performance.now();
+        const recent: number[] = [];
+        let smooth = 0;
+        const o = scene.onAfterRenderObservable.add(() => {
+            // (moved again meanwhile: start counting over)
+            if (settleAgain) { settleAgain = false; t0 = performance.now(); smooth = 0; }
+            const dt = engine.getDeltaTime();
+            recent.push(dt); if (recent.length > 30) recent.shift();
+            const usual = [...recent].sort((a, b) => a - b)[Math.floor(recent.length / 2)];
+            smooth = dt < Math.max(100, usual * 1.6) ? smooth + 1 : 0;
+            const t = performance.now() - t0;
+            // (smooth, and every shader compiled: the browser compiles them in the background, and anything waiting on one is
+            //  simply not drawn yet)
+            if ((smooth >= 15 && t > 500 && engine.areAllEffectsReady() && (smooth % 10 !== 0 || scene.isReady())) || t > 25000) { scene.onAfterRenderObservable.remove(o); res(); }
+        });
+    });
+    const travel = (go: () => void) => {
+        // (already behind the loading screen: just go, and wait for this place too)
+        if (travelling) { go(); lastSpot.copyFrom(player.pos); settleAgain = true; return; }
+        travelling = true;
+        $("loading").classList.remove("hidden");
+        progress(1, "Loading…");
+        fadeWant = 1;
+        void (async () => {
+            try {
+                // (let the loading screen show, and the headset's view go dark, before the heavy first frames)
+                await frames(vrActive() ? 16 : 2);
+                go();
+                lastSpot.copyFrom(player.pos);
+                await settleHere();
+            } finally {
+                $("loading").classList.add("hidden");
+                fadeWant = 0;
+                travelling = false;
+                lastSpot.copyFrom(player.pos);
+            }
+        })();
+    };
+    game.travel = travel;
+    /** where you were last frame: a far jump that did not come through a door (a respawn, a level's own way out) holds too */
+    const lastSpot = player.pos.clone();
     const begin = () => {
         started = true;
         setNameLocked(true);
