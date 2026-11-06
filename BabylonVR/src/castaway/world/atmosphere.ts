@@ -307,9 +307,11 @@ export class Atmosphere {
             }
         }
         if (Math.abs(ov - this.lastOvercast) > 0.15) { this.lastOvercast = ov; force = true; }
-        // re-capture the sky lighting every ~20 game minutes (or straight away when time jumps)
-        const step = Math.abs(this.hour - this.lastCapture);
-        if ((force || step > (this.lean ? 1.5 : 0.33)) && !this.capturing) void this.capture();
+        // re-capture the sky lighting every ~20 game minutes while the sun is near the horizon (the sky changes fast then),
+        // once a game hour when it is high or deep down (it hardly changes), or straight away when time jumps or the weather
+        // turns. (Each capture reads the sky back from the graphics card: a stall, so not more often than it shows.)
+        const step = Math.abs(this.hour - this.lastCapture), nearHorizon = Math.abs(this.sunDir.y) < 0.3;
+        if ((force || step > (this.lean ? 1.5 : nearHorizon ? 0.33 : 1.0)) && !this.capturing) void this.capture();
     }
 
     /**

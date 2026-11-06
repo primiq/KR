@@ -200,7 +200,12 @@ async function main() {
     const engine = new Engine(canvas, true, { xrCompatible: true, stencil: true, antialias: true, powerPreference: "high-performance" }, true);
     engine.enableOfflineSupport = false;
     // (how many pixels per CSS pixel on a high-density screen: high draws them all, up to 2; medium and low one per pixel, more or less)
-    engine.setHardwareScalingLevel(q.scale / Math.min(window.devicePixelRatio || 1, q.name === "high" ? 2 : q.name === "medium" ? 1.25 : 1));
+    // the drawing resolution: the screen's own pixels times up to `maxDpr` (a high-DPI screen's extra sharpness). On a screen
+    // that sharpness steps down a little while the frame rate struggles, and back up when there is room (never below the
+    // screen's normal resolution); see `adaptRes` below
+    let scaleBase = q.scale, maxDpr = Math.min(window.devicePixelRatio || 1, q.name === "high" ? 2 : q.name === "medium" ? 1.25 : 1), dprNow = maxDpr;
+    const applyScale = () => { engine.setHardwareScalingLevel(scaleBase / dprNow); engine.resize(); };
+    engine.setHardwareScalingLevel(scaleBase / dprNow);
     window.addEventListener("resize", () => engine.resize());
 
     const scene = new Scene(engine);
@@ -745,7 +750,7 @@ async function main() {
             const rebuild = nq.name !== cur.name || nq.terrainSegments !== cur.terrainSegments || nq.bushes !== cur.bushes || nq.grass !== cur.grass
                 || nq.treeCull !== cur.treeCull || nq.palmDetail !== cur.palmDetail || nq.grassTier !== cur.grassTier || (nq.shadows && !q.shadows);
             if (rebuild) return false;
-            if (nq.scale !== cur.scale) { engine.setHardwareScalingLevel(nq.scale / Math.min(window.devicePixelRatio || 1, nq.name === "high" ? 2 : nq.name === "medium" ? 1.25 : 1)); engine.resize(); }
+            if (nq.scale !== cur.scale) { scaleBase = nq.scale; maxDpr = Math.min(window.devicePixelRatio || 1, nq.name === "high" ? 2 : nq.name === "medium" ? 1.25 : 1); dprNow = maxDpr; applyScale(); }
             if (pipeline) pipeline.bloomEnabled = nq.bloom;
             if (nq.ao !== cur.ao) setAO(nq.ao);
             gfxNow.reflect = nq.reflect;
@@ -1195,6 +1200,18 @@ async function main() {
         })();
     };
     game.travel = travel;
+    {
+        // adaptive sharpness (screens only: a headset draws at its own resolution, already tuned)
+        let good = 0, lastStep = 0;
+        setInterval(() => {
+            if (!started || vrActive() || document.hidden || travelling || maxDpr <= 1.01) return;
+            const fps = engine.getFps(), now = performance.now();
+            if (now - lastStep < 3000) return;
+            if (fps < 48 && dprNow > 1.01) { dprNow = Math.max(1, dprNow - 0.15); applyScale(); lastStep = now; good = 0; }
+            else if (fps > 57 && dprNow < maxDpr - 0.01) { if (++good >= 3) { dprNow = Math.min(maxDpr, dprNow + 0.1); applyScale(); lastStep = now; good = 0; } }
+            else good = 0;
+        }, 1000);
+    }
     /** where you were last frame: a far jump that did not come through a door (a respawn, a level's own way out) holds too */
     const lastSpot = player.pos.clone();
     const begin = () => {
