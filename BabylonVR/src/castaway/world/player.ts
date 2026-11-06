@@ -67,7 +67,14 @@ export class Player {
         floor(x: number, z: number, y: number): number; resolve(x: number, z: number, r: number, feetY: number, out: { x: number; z: number }): void;
         /** cat house: a post you can cling to here (top = how high it goes), and the lowest ceiling above you */
         climbAt?(x: number, z: number, y: number): { top: number; cx: number; cz: number; hx?: number; hz?: number } | null; ceiling?(x: number, z: number, y: number): number;
+        /** a liquid to swim in here (the volcano's lava): its surface, or null where there is none */
+        liquidAt?(x: number, z: number): number | null;
     } | null = null;
+    /** the surface you swim at here: the sea or a lake, or the place's own liquid (null: none) */
+    private liquid(x: number, z: number): number | null {
+        if (this.cave) return this.cave.liquidAt ? this.cave.liquidAt(x, z) : null;
+        return this.surfaceAt(x, z);
+    }
     /** cat: clinging to a scratching post (hold jump near it, W/S to climb) */
     climbing = false;
     /** VR: a grip is squeezed (cling to a post), and how far the paws pulled the body this frame */
@@ -214,9 +221,9 @@ export class Player {
         this.groundGrace = this.onGround ? 0.12 : Math.max(0, this.groundGrace - dt);
 
         const ground = this.gnd(this.pos.x, this.pos.z);
-        const surface = this.surfaceAt(this.pos.x, this.pos.z);
+        const liq = this.liquid(this.pos.x, this.pos.z), surface = liq ?? -1e9;
         // (the sea is at 0; in the desert the only water is the oasis pond, higher up)
-        this.waterDepth = this.cave ? 0 : this.lakeAt(this.pos.x, this.pos.z) ? surface - ground : -ground;
+        this.waterDepth = this.cave ? (liq === null ? 0 : surface - ground) : this.lakeAt(this.pos.x, this.pos.z) ? surface - ground : -ground;
         const look = this.look;
 
         if (this.mode === "fly") {
@@ -397,6 +404,6 @@ export class Player {
             this.shakeY = 0;
             this.shakeAmp = 0;
         }
-        this.underwater = !this.cave && this.eye.y < this.surfaceAt(this.eye.x, this.eye.z) - 0.03 && this.waterDepth > 0;
+        { const sf = this.liquid(this.eye.x, this.eye.z); this.underwater = sf !== null && this.eye.y < sf - 0.03 && this.waterDepth > 0; }
     }
 }

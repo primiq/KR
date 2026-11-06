@@ -168,7 +168,7 @@ void main() {
     float crust = smoothstep(-0.08, 0.22, n + m * 0.35);
     float seam = 1.0 - smoothstep(0.0, 0.06, abs(n + m * 0.35 + 0.05));
     vec3 hot = mix(vec3(1.0, 0.36, 0.04), vec3(1.0, 0.78, 0.25), smoothstep(-0.4, 0.1, m));
-    vec3 col = mix(hot * 1.7, vec3(0.14, 0.045, 0.03), crust * 0.92);
+    vec3 col = mix(hot * 1.35, vec3(0.14, 0.045, 0.03), crust * 0.92);
     col += vec3(1.0, 0.5, 0.1) * seam * 2.0;
     // the flowing edge of an overflow glows brightest
     col += vec3(1.0, 0.45, 0.08) * smoothstep(flowR - 3.0, flowR, d) * 2.0;
@@ -727,6 +727,18 @@ export class Volcano {
         const dx = lx - p.x, dz = lz - p.z, c = Math.cos(p.rot), s = Math.sin(p.rot);
         return Math.abs(dx * c + dz * s) <= p.hl + pad && Math.abs(-dx * s + dz * c) <= p.hw + pad;
     }
+    /** the lava's surface to swim in (world y), inside the caldera while a run is on */
+    liquidAt(x: number, z: number): number | null {
+        if (this.phase !== "run") return null;
+        const L = this.lavaY();
+        if (L < 0.2) return null;
+        return Math.hypot(x - VX, z - VZ) < rIn(Math.min(TOP, Math.max(0, L))) + 0.5 ? BASE + L : null;
+    }
+    /** 0..1: how badly the lava has burned you (it fills while you are in it, cools off when you are out) */
+    heat = 0;
+    private warned = false;
+    /** your head is under the lava (main tints the view orange) */
+    get submerged() { const p = this.player; if (!p || !this.active) return false; const s = this.liquidAt(p.pos.x, p.pos.z); return s !== null && p.pos.y + 1.6 < s; }
     floor(x: number, z: number, y: number) {
         const lx = x - VX, lz = z - VZ, ly = y - BASE, r = Math.hypot(lx, lz);
         let best = -200;
@@ -945,7 +957,7 @@ export class Volcano {
         if (!mine && e.ph === "run" && this.now() - this.endedAt < 12 && (+e.el || 0) > 3) return;
         if (e.ph === "run" && (this.phase !== "run" || this.ended)) {
             // a new run
-            this.phase = "run"; this.ended = false; this.erupted = false; this.fadeK = 0; this.fadeIn = false; this.rumbled = false; this.heliT0 = -1; this.lastGeyser = -1;
+            this.phase = "run"; this.ended = false; this.erupted = false; this.fadeK = 0; this.fadeIn = false; this.heat = 0; this.rumbled = false; this.heliT0 = -1; this.lastGeyser = -1;
             this.results.clear(); this.seats.clear(); this.runners.clear(); this.finished = false; this.dead = false;
             if (this.mySeat >= 0) { this.mySeat = -1; if (this.player) this.player.ride = null; }
         }
@@ -1025,7 +1037,16 @@ export class Volcano {
             if (on && !this.dead && this.mySeat < 0 && Math.hypot(lx - g.x, lz - g.z) < 1.6 && ly < L + g.top) this.die("A lava geyser got you!");
         }
         // the lava itself
-        if (this.phase === "run" && !this.dead && this.mySeat < 0 && ly <= L + 0.12 && pr < rIn(Math.max(0, L)) + 1.5) this.die("You fell into the lava!");
+        // the lava: you can swim in it, but it burns - get out before it gets you
+        const inLava = this.phase === "run" && !this.dead && this.mySeat < 0 && L > 0.2 && ly <= L + 0.05 && pr < rIn(Math.max(0, L)) + 0.5;
+        if (inLava) {
+            this.heat = Math.min(1, this.heat + dt / 6);
+            if (!this.warned) { this.warned = true; this.say("It burns! Swim for a ledge and get out of the lava!"); this.sfx?.blub(1); this.shake?.(0.3); }
+            if (this.heat >= 1) this.die("The lava got you!");
+        } else {
+            this.heat = Math.max(0, this.heat - dt / 4);
+            if (this.heat === 0) this.warned = false;
+        }
         // the controller keeps everybody in step and lets the helicopter go
         if (this.phase === "run" && this.isCtl()) {
             this.stateBeat -= dt;
@@ -1060,6 +1081,7 @@ export class Volcano {
             if (el < GRACE) txt += ` · lava in ${Math.ceil(GRACE - el)}`;
             else if (!this.erupted) txt += ` · lava rising`;
             if (this.dead) txt += " · burned";
+            else if (this.heat > 0.02) txt += ` · 🔥 ${"▮".repeat(Math.ceil(this.heat * 10))}${"▯".repeat(10 - Math.ceil(this.heat * 10))}`;
             else if (this.finished) txt += this.mySeat >= 0 ? " · aboard the helicopter" : " · get to the helicopter!";
         }
         this.hud.textContent = txt; this.hud.style.display = txt ? "block" : "none";

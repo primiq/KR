@@ -318,16 +318,26 @@ async function main() {
     uwShell.material = uwMat; uwShell.isPickable = false; uwShell.infiniteDistance = false; uwShell.alwaysSelectAsActiveMesh = true;
     uwShell.metadata = { keepUnderground: true };
     uwShell.setEnabled(false);
-    const underwaterLook = (dt: number, under: boolean) => {
-        const was = uwK;
-        uwK += ((under ? 1 : 0) - uwK) * Math.min(1, dt * (under ? 6 : 3));
+    /**
+     * Under water: a blue grade and a haze close round you. Under the volcano's lava (`lava` 0..1: 1 with your head under, a
+     * glow growing with the heat while you swim on top), the same, burning orange.
+     */
+    let lavaLook = false;
+    const underwaterLook = (dt: number, under: boolean, lava = 0) => {
+        const was = uwK, want = lava > 0 ? lava : under ? 1 : 0;
+        if ((lava > 0) !== lavaLook) { lavaLook = lava > 0; uwK = Math.min(uwK, 0.4); }
+        uwK += (want - uwK) * Math.min(1, dt * (want > uwK ? 6 : 3));
         uwShell.setEnabled(uwK > 0.5);
-        if (uwShell.isEnabled()) { uwShell.position.copyFrom(scene.activeCamera!.globalPosition); uwMat.emissiveColor.copyFrom(scene.fogColor); }
+        if (uwShell.isEnabled()) {
+            uwShell.position.copyFrom(scene.activeCamera!.globalPosition);
+            // (in lava you see a few metres, not the sea's thirty)
+            if (lavaLook) { uwMat.emissiveColor.set(0.8, 0.42, 0.06); uwShell.scaling.setAll(0.1); } else { uwMat.emissiveColor.copyFrom(scene.fogColor); uwShell.scaling.setAll(1); }
+        }
         if (Math.abs(uwK - was) < 1e-4 && (uwK < 1e-3 || uwK > 0.999)) return;
-        curves.globalHue = 192;
-        curves.globalDensity = 55 * uwK;
-        curves.globalSaturation = 32 - 30 * uwK;
-        clock.underwater = uwK;
+        curves.globalHue = lavaLook ? 34 : 192;
+        curves.globalDensity = (lavaLook ? 38 : 55) * uwK;
+        curves.globalSaturation = lavaLook ? 32 - 12 * uwK : 32 - 30 * uwK;
+        clock.underwater = lavaLook ? 0 : uwK;
     };
 
     progress(0.2, "Raising the island…");
@@ -953,7 +963,7 @@ async function main() {
             waterfall?.update(dt, player.pos.x, player.pos.z, game.under.active);
             {
                 const onIsland = !game.under.active && Math.abs(player.pos.x) < 600 && Math.abs(player.pos.z) < 600 && player.pos.y < 120;
-                underwaterLook(dt, player.underwater);
+                underwaterLook(dt, player.underwater && !lava.active, lava.active ? (lava.submerged ? 1 : lava.heat * 0.45) : 0);
                 seabed.update(dt, player.pos.x, player.pos.z, camera.position, player.underwater, onIsland && (player.underwater || heightAt(player.pos.x, player.pos.z) < 8));
             }
             dolphins.update(dt, player.pos.x, player.pos.z, player.yaw, game.under.active);
