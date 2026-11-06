@@ -867,6 +867,7 @@ async function main() {
                 player.look.set(-Math.sin(player.yaw) * cp, Math.sin(player.pitch), -Math.cos(player.yaw) * cp);
             }
             game.update(dt, true);
+            game.structures.updatePointLights(dt);
             if (!travelling && settled && Vector3.Distance(player.pos, lastSpot) > 300) travel(() => {});
             lastSpot.copyFrom(player.pos);
             if (!vrActive()) { board.flat = true; board.update(dt); }
@@ -1011,23 +1012,29 @@ async function main() {
     // ---- shaders: the first frames compile hundreds of them (a long freeze with nothing on screen): it happens here instead,
     //      behind the loading bar, while the render loop draws under it and the bar follows how many meshes are ready
     {
-        const t0 = performance.now();
-        let bestOk = -1, tBest = t0;
-        scene.materials.forEach(roomForLights);
-        for (;;) {
-            // (the hidden ones too: the island's far-away versions, the rain, the lightning... else they compile, a freeze each,
-            // the first time they show; not thin-instanced meshes with no instances yet, which would compile a broken shader)
-            const ms = scene.meshes.filter((m) => m.subMeshes?.length && m.material && !(m instanceof Mesh && m.hasThinInstances && m.thinInstanceCount === 0));
-            const ok = ms.filter((m) => m.isReady(true)).length;
-            progress(0.92 + 0.08 * (ok / Math.max(1, ms.length)), `Preparing the island… ${Math.round((100 * ok) / Math.max(1, ms.length))}%`);
-            // (all of them: the last few are often the ones that would show first far out at sea; unless it stalls)
-            if (ok > bestOk) { bestOk = ok; tBest = performance.now(); }
-            if (ok >= ms.length || performance.now() - tBest > 6000 || performance.now() - t0 > 60000) {
-                if (ok < ms.length) console.warn("castaway: not ready after warm-up:", ms.filter((m) => !m.isReady(true)).map((m) => m.name).slice(0, 20).join(", "));
-                break;
+        // (twice: with the fire and torch lights on, and with them off, so either way every shader is ready; see
+        //  StructureManager.updatePointLights)
+        const warm = async (pass: number) => {
+            const t0 = performance.now();
+            let bestOk = -1, tBest = t0;
+            for (;;) {
+                const ms = scene.meshes.filter((m) => m.subMeshes?.length && m.material && !(m instanceof Mesh && m.hasThinInstances && m.thinInstanceCount === 0));
+                const ok = ms.filter((m) => m.isReady(true)).length;
+                const f = ok / Math.max(1, ms.length);
+                progress(0.92 + 0.04 * pass + 0.04 * f, `Preparing the island… ${Math.round(50 * pass + 50 * f)}%`);
+                if (ok > bestOk) { bestOk = ok; tBest = performance.now(); }
+                if (ok >= ms.length || performance.now() - tBest > 6000 || performance.now() - t0 > 60000) {
+                    if (ok < ms.length) console.warn("castaway: not ready after warm-up:", ms.filter((m) => !m.isReady(true)).map((m) => m.name).slice(0, 20).join(", "));
+                    break;
+                }
+                await new Promise((r) => setTimeout(r, 100));
             }
-            await new Promise((r) => setTimeout(r, 100));
-        }
+        };
+        scene.materials.forEach(roomForLights);
+        game.structures.setPointLights(true);
+        await warm(0);
+        game.structures.setPointLights(false);
+        await warm(1);
         progress(1, "Ready");
     }
 
@@ -1098,6 +1105,17 @@ async function main() {
         input.enabled = false;
         $("loading").classList.remove("hidden");
         progress(1, "Almost there…");
+        // (what was made after the warm-up, your own hands for one: its shaders with the fire and torch lights on as well
+        //  as off, so a torch coming out later costs nothing)
+        void (async () => {
+            // (every mesh, seen or not: only what is drawn would compile otherwise)
+            const allReady = () => scene.meshes.filter((m) => m.subMeshes?.length && m.material && !(m instanceof Mesh && m.hasThinInstances && m.thinInstanceCount === 0)).every((m) => m.isReady(true));
+            for (const on of [true, false]) {
+                game.structures.setPointLights(on);
+                await frames(2);
+                for (let i = 0; i < 150 && !(allReady() && engine.areAllEffectsReady()); i++) await frames(2);
+            }
+        })();
         const t0 = performance.now();
         let smooth = 0;
         const recent: number[] = [];
