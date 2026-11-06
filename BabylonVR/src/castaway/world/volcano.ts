@@ -4,7 +4,7 @@
 // whatever is below you, or right back at the bottom.
 //   On the caldera floor a big red button starts a run. The clock starts, and after a short head start the caldera
 // begins to fill with lava: slowly at first, then lava geysers burst up from it, and it keeps rising until it reaches
-// the rim. Touch it and you burn. At the top a research station shows the clock (a big screen over its door, seen from
+// the rim. You can swim in it and the geysers only throw lava about: neither hurts you (only the eruption does). At the top a research station shows the clock (a big screen over its door, seen from
 // the whole caldera); in it, the STOP button records your time for everyone to see. The clock runs on while anybody is
 // still on the course. You can walk the whole rim and watch the others struggle.
 //   By the station a helicopter waits. Board it, and press to say you are ready: once everybody on board is ready it
@@ -734,9 +734,8 @@ export class Volcano {
         if (L < 0.2) return null;
         return Math.hypot(x - VX, z - VZ) < rIn(Math.min(TOP, Math.max(0, L))) + 0.5 ? BASE + L : null;
     }
-    /** 0..1: how badly the lava has burned you (it fills while you are in it, cools off when you are out) */
+    /** 0..1: the warm glow while you swim in the lava (it does not hurt) */
     heat = 0;
-    private warned = false;
     /** your head is under the lava (main tints the view orange) */
     get submerged() { const p = this.player; if (!p || !this.active) return false; const s = this.liquidAt(p.pos.x, p.pos.z); return s !== null && p.pos.y + 1.6 < s; }
     floor(x: number, z: number, y: number) {
@@ -1034,19 +1033,11 @@ export class Volcano {
         for (const g of this.geysers) {
             const on = this.phase === "run" && el < g.until;
             g.ps.emitRate = on ? 260 : 0;
-            if (on && !this.dead && this.mySeat < 0 && Math.hypot(lx - g.x, lz - g.z) < 1.6 && ly < L + g.top) this.die("A lava geyser got you!");
         }
         // the lava itself
-        // the lava: you can swim in it, but it burns - get out before it gets you
+        // the lava: you can swim in it (it does not hurt you); just a glow while you are in it
         const inLava = this.phase === "run" && !this.dead && this.mySeat < 0 && L > 0.2 && ly <= L + 0.05 && pr < rIn(Math.max(0, L)) + 0.5;
-        if (inLava) {
-            this.heat = Math.min(1, this.heat + dt / 6);
-            if (!this.warned) { this.warned = true; this.say("It burns! Swim for a ledge and get out of the lava!"); this.sfx?.blub(1); this.shake?.(0.3); }
-            if (this.heat >= 1) this.die("The lava got you!");
-        } else {
-            this.heat = Math.max(0, this.heat - dt / 4);
-            if (this.heat === 0) this.warned = false;
-        }
+        this.heat += ((inLava ? 0.6 : 0) - this.heat) * Math.min(1, dt * 2);
         // the controller keeps everybody in step and lets the helicopter go
         if (this.phase === "run" && this.isCtl()) {
             this.stateBeat -= dt;
@@ -1081,7 +1072,6 @@ export class Volcano {
             if (el < GRACE) txt += ` · lava in ${Math.ceil(GRACE - el)}`;
             else if (!this.erupted) txt += ` · lava rising`;
             if (this.dead) txt += " · burned";
-            else if (this.heat > 0.02) txt += ` · 🔥 ${"▮".repeat(Math.ceil(this.heat * 10))}${"▯".repeat(10 - Math.ceil(this.heat * 10))}`;
             else if (this.finished) txt += this.mySeat >= 0 ? " · aboard the helicopter" : " · get to the helicopter!";
         }
         this.hud.textContent = txt; this.hud.style.display = txt ? "block" : "none";
