@@ -44,6 +44,7 @@ import { CatHome } from "./world/catroom";
 import { HideIsle } from "./world/hideisle";
 import { TileTrial } from "./world/tiletrial";
 import { Volcano } from "./world/volcano";
+import { LATEST, renderWhatsNew } from "./ui/whatsnew";
 import { VRPanel } from "./vr/panel";
 import { LAVA_BOARD } from "./world/skyroom";
 import { FPPaws, PLAYER_COATS } from "./world/cats";
@@ -186,8 +187,12 @@ async function main() {
     // the menu's pages: the main column, multiplayer, settings
     const page = (id: string | null) => {
         $("menu-main").classList.toggle("hidden", !!id);
-        for (const p of ["mp-panel", "settings"]) $(p).classList.toggle("hidden", p !== id);
+        for (const p of ["mp-panel", "settings", "whatsnew"]) $(p).classList.toggle("hidden", p !== id);
     };
+    // What's new: the updates, newest first; a dot on the button until the newest has been seen
+    renderWhatsNew($("wn-list"));
+    $("wn-dot").classList.toggle("hidden", getPref("wnSeen") === LATEST);
+    $("whatsnew-open").addEventListener("click", () => { page("whatsnew"); setPref("wnSeen", LATEST); $("wn-dot").classList.add("hidden"); });
     for (const b of document.querySelectorAll<HTMLButtonElement>("#menu [data-back]")) b.addEventListener("click", () => page(null));
     $("settings-open").addEventListener("click", () => page("settings"));
 

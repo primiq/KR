@@ -364,3 +364,17 @@ body.inwarp #bottom, body.inwarp #compass, body.inwarp #prompt, body.inwarp #cro
 .slot.flash { animation: craftedGlow .8s ease-out 2; background: rgba(255,209,102,.22) !important; }
 .craft-row.fresh { animation: craftedGlow .8s ease-out 2; background: rgba(255,209,102,.16); border-radius: 12px; }
 .craft-row.fresh button { background: #ffd166 !important; }
+
+/* What's new: the game's updates, newest first */
+#menu .wn-btn { width: 100%; margin-top: 4px; position: relative; }
+#menu .wn-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ffcf5a; margin-left: 8px; vertical-align: middle; box-shadow: 0 0 8px rgba(255,207,90,.8); }
+#menu .wn-dot.hidden { display: none; }
+#menu .wn-list { max-height: min(60vh, 520px); overflow-y: auto; padding-right: 4px; display: flex; flex-direction: column; gap: 12px; }
+#menu .wn-entry { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); border-radius: 14px; padding: 12px 14px; }
+#menu .wn-entry.latest { border-color: rgba(47,213,196,.55); background: rgba(47,213,196,.08); }
+#menu .wn-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; }
+#menu .wn-head h3 { margin: 0; font-size: 16px; letter-spacing: 0; text-transform: none; opacity: 1; }
+#menu .wn-date { font-size: 12px; opacity: .65; font-variant-numeric: tabular-nums; }
+#menu .wn-entry.latest .wn-date { color: var(--accent); opacity: 1; font-weight: 700; }
+#menu .wn-entry ul { margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.45; }
+#menu .wn-entry li + li { margin-top: 4px; }

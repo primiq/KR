@@ -41,6 +41,7 @@
           <button id="customise" type="button" class="ghost-btn">Character</button>
           <button id="settings-open" type="button" class="ghost-btn">Settings</button>
         </div>
+        <button id="whatsnew-open" type="button" class="ghost-btn wn-btn">What's new<span id="wn-dot" class="wn-dot hidden"></span></button>
         <button id="quit-menu" class="hidden ghost-btn">Save &amp; back to main menu</button>
       </div>
 
@@ -71,6 +72,11 @@
             <input id="mp-turn-pass" placeholder="password" type="password" autocomplete="off" />
           </details>
           <div id="mp-status" class="mp-status" aria-live="polite"></div>
+      </div>
+
+      <div id="whatsnew" class="menu-sub hidden">
+        <div class="sub-head"><button type="button" class="back" data-back>‹ Back</button><h2>What's new</h2></div>
+        <div id="wn-list" class="wn-list"></div>
       </div>
 
       <div id="settings" class="menu-sub hidden">
