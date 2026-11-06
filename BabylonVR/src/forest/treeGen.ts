@@ -1,5 +1,5 @@
 // Procedural tree geometry, ported from ez-tree by Daniel Greenheck (MIT)
-// https://github.com/dgreenheck/ez-tree — the branching/leaf algorithm is kept as in the
+// https://github.com/dgreenheck/ez-tree - the branching/leaf algorithm is kept as in the
 // original (it uses three.js' Euler/Quaternion conventions, so those math classes are reused);
 // output is plain arrays converted to Babylon's left-handed system by `toBabylon`.
 import { Euler, Quaternion, Vector3 } from "three";

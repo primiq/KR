@@ -75,7 +75,7 @@ async function main(): Promise<void> {
     const canvas = $<HTMLCanvasElement>("renderCanvas");
     const engine = new Engine(canvas, true, { xrCompatible: true, stencil: true, antialias: true, powerPreference: "high-performance" }, true);
     engine.enableOfflineSupport = false;
-    // Phones report device-pixel ratios of 2.5–4; rendering at that size is far beyond their fill rate.
+    // Phones report device-pixel ratios of 2.5-4; rendering at that size is far beyond their fill rate.
     if (quality === "mobile") engine.setHardwareScalingLevel(1 / Math.min(window.devicePixelRatio || 1, 1.25));
     window.addEventListener("resize", () => engine.resize());
 
@@ -190,7 +190,7 @@ async function main(): Promise<void> {
             await document.documentElement.requestFullscreen?.({ navigationUI: "hide" });
             await (screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }).lock?.("landscape");
         } catch {
-            // Not supported (e.g. iOS Safari) – portrait still works.
+            // Not supported (e.g. iOS Safari) - portrait still works.
         }
         engine.resize();
     };
@@ -211,7 +211,7 @@ async function main(): Promise<void> {
     $("enter-touch").addEventListener("click", () => void enterTouch());
     $("enter-desktop").addEventListener("click", enterDesktop);
     $("xr-status").textContent = xrSupported
-        ? "VR headset detected — hand tracking and controllers are supported."
+        ? "VR headset detected - hand tracking and controllers are supported."
         : touch
           ? "Touch controls: left thumb moves, right thumb looks. Rotate to landscape for the best view."
           : "No WebXR VR device found. Use a headset browser (Quest, Pico, Vision Pro…) over HTTPS for VR.";

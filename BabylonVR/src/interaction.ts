@@ -14,7 +14,7 @@ import { ALL_LAYERS, Interaction as I, Layer } from "./config";
 import type { Grabbable, Props } from "./props";
 import { waterProbes } from "./waterProbes";
 
-const MAX_FOLLOW_SPEED = 25; // m/s – keeps held objects from tunnelling through the world.
+const MAX_FOLLOW_SPEED = 25; // m/s - keeps held objects from tunnelling through the world.
 
 /**
  * Anything that can hold an object: a mouse/camera, a controller grip or a tracked hand.

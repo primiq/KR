@@ -377,7 +377,7 @@ export class Underground {
       const rate = tool.gather.ore ?? 0;
       if (rate <= 0) { this.h.sfx.denied(); return true; }
       const o = t.ore;
-      if (o.kind === 'diamond' && tool.model !== 'pickaxe') { this.h.message('Too hard for that — you need a pickaxe.'); this.h.sfx.denied(); return true; }
+      if (o.kind === 'diamond' && tool.model !== 'pickaxe') { this.h.message('Too hard for that - you need a pickaxe.'); this.h.sfx.denied(); return true; }
       const item: ItemId = o.kind === 'iron' ? 'metal_ore' : o.kind === 'coal' ? 'coal' : 'diamond';
       let n = o.kind === 'diamond' ? 1 : Math.max(1, Math.round((rate / 6) * (0.8 + Math.random() * 0.4)));
       n = Math.min(n, this.h.canFit(item, n));
@@ -411,7 +411,7 @@ export class Underground {
         this.opened.add(idx); this.refreshMarks(); this.dig.delete(k);
         this.onEvent?.({ k: 'ce', i: idx });
         this.h.burst(pt, 'stone', 18); this.h.sfx.creak();
-        this.h.message('The ground gives way — a shaft leads down into the dark!');
+        this.h.message('The ground gives way - a shaft leads down into the dark!');
       }
     } else {
       const k = `${Math.floor(g.x / 2.5)},${Math.floor(g.z / 2.5)}`, n = (this.dig.get(k) ?? 0) + 1;

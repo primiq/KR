@@ -1407,7 +1407,7 @@ async function main() {
             players: () => {
                 if (!sync) return null;
                 const s = sync.session;
-                return `Room ${s.code}\n\n` + [...s.players.values()].map((p) => `${p.name}${p.id === s.myId ? " (you)" : ""}${p.id === 0 ? "  · host" : ""}  —  ${Math.round(s.states.get(p.id)?.hp ?? (p.id === s.myId ? game.stats.health : 0))} hp`).join("\n");
+                return `Room ${s.code}\n\n` + [...s.players.values()].map((p) => `${p.name}${p.id === s.myId ? " (you)" : ""}${p.id === 0 ? "  · host" : ""}  -  ${Math.round(s.states.get(p.id)?.hp ?? (p.id === s.myId ? game.stats.health : 0))} hp`).join("\n");
             },
         };
     }

@@ -82,7 +82,7 @@ export class Graphics {
 
         this.glow = new GlowLayer("glow", scene, { mainTextureSamples: profile === "mobile" ? 1 : 4, blurKernelSize: profile === "mobile" ? 24 : 48 });
         this.glow.intensity = 0.65;
-        // Only emissive props glow – keeps Sponza out of the glow pass.
+        // Only emissive props glow - keeps Sponza out of the glow pass.
         this.glow.customEmissiveColorSelector = (mesh, _sub, material, result) => {
             const m = material as { emissiveColor?: { r: number; g: number; b: number }; emissiveTexture?: unknown };
             if (m.emissiveColor && !m.emissiveTexture && mesh.name !== "sunDisc") result.set(m.emissiveColor.r, m.emissiveColor.g, m.emissiveColor.b, 1);
