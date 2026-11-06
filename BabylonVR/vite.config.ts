@@ -3,12 +3,20 @@ import basicSsl from "@vitejs/plugin-basic-ssl";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
 
-// the game's version, shown on the main menu: 1.<number of commits> and the day it was built, so a new build is easy to spot
+// the game's version, shown on the main menu: 1.<number of commits>, the day it was built and the commit, so every new
+// build is easy to spot. (Hosted builds - Cloudflare's - clone just the last commit, which made the count 1 every time:
+// the full history is fetched first when it is missing, and if that is not possible the build's own date and the commit
+// still tell one build from the next.)
 const version = (() => {
+    const cwd = fileURLToPath(new URL(".", import.meta.url));
+    const git = (c: string) => execSync(`git ${c}`, { cwd, stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
     try {
-        const n = execSync("git rev-list --count HEAD", { cwd: fileURLToPath(new URL(".", import.meta.url)) }).toString().trim();
-        const d = execSync("git log -1 --format=%cs", { cwd: fileURLToPath(new URL(".", import.meta.url)) }).toString().trim();
-        return `v1.${n} · ${d}`;
+        if (git("rev-parse --is-shallow-repository") === "true") { try { git("fetch --unshallow --quiet"); } catch { /* no access: see below */ } }
+        const shallow = git("rev-parse --is-shallow-repository") === "true";
+        const sha = (process.env.WORKERS_CI_COMMIT_SHA || git("rev-parse HEAD")).slice(0, 7);
+        if (!shallow) return `v1.${git("rev-list --count HEAD")} · ${git("log -1 --format=%cs")} · ${sha}`;
+        const now = new Date().toISOString();
+        return `v1 · ${now.slice(0, 10)} ${now.slice(11, 16)} · ${sha}`;
     } catch { return "v1 · dev"; }
 })();
 
