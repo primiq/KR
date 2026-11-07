@@ -200,12 +200,7 @@ async function main() {
     const engine = new Engine(canvas, true, { xrCompatible: true, stencil: true, antialias: true, powerPreference: "high-performance" }, true);
     engine.enableOfflineSupport = false;
     // (how many pixels per CSS pixel on a high-density screen: high draws them all, up to 2; medium and low one per pixel, more or less)
-    // the drawing resolution: the screen's own pixels times up to `maxDpr` (a high-DPI screen's extra sharpness). On a screen
-    // that sharpness steps down a little while the frame rate struggles, and back up when there is room (never below the
-    // screen's normal resolution); see `adaptRes` below
-    let scaleBase = q.scale, maxDpr = Math.min(window.devicePixelRatio || 1, q.name === "high" ? 2 : q.name === "medium" ? 1.25 : 1), dprNow = maxDpr;
-    const applyScale = () => { engine.setHardwareScalingLevel(scaleBase / dprNow); engine.resize(); };
-    engine.setHardwareScalingLevel(scaleBase / dprNow);
+    engine.setHardwareScalingLevel(q.scale / Math.min(window.devicePixelRatio || 1, q.name === "high" ? 2 : q.name === "medium" ? 1.25 : 1));
     window.addEventListener("resize", () => engine.resize());
 
     const scene = new Scene(engine);
@@ -750,7 +745,7 @@ async function main() {
             const rebuild = nq.name !== cur.name || nq.terrainSegments !== cur.terrainSegments || nq.bushes !== cur.bushes || nq.grass !== cur.grass
                 || nq.treeCull !== cur.treeCull || nq.palmDetail !== cur.palmDetail || nq.grassTier !== cur.grassTier || (nq.shadows && !q.shadows);
             if (rebuild) return false;
-            if (nq.scale !== cur.scale) { scaleBase = nq.scale; maxDpr = Math.min(window.devicePixelRatio || 1, nq.name === "high" ? 2 : nq.name === "medium" ? 1.25 : 1); dprNow = maxDpr; applyScale(); }
+            if (nq.scale !== cur.scale) { engine.setHardwareScalingLevel(nq.scale / Math.min(window.devicePixelRatio || 1, nq.name === "high" ? 2 : nq.name === "medium" ? 1.25 : 1)); engine.resize(); }
             if (pipeline) pipeline.bloomEnabled = nq.bloom;
             if (nq.ao !== cur.ao) setAO(nq.ao);
             gfxNow.reflect = nq.reflect;
@@ -872,15 +867,11 @@ async function main() {
                 player.look.set(-Math.sin(player.yaw) * cp, Math.sin(player.pitch), -Math.cos(player.yaw) * cp);
             }
             game.update(dt, true);
-            game.structures.updatePointLights(dt);
             if (!travelling && settled && Vector3.Distance(player.pos, lastSpot) > 300) travel(() => {});
             lastSpot.copyFrom(player.pos);
             if (!vrActive()) { board.flat = true; board.update(dt); }
             else board.flat = false;
             document.body.classList.toggle("board-open", !vrActive() && game.hud.inventoryOpen);
-            // (Babylon ray-tests every mesh under the mouse on every move; only the menu board on a screen needs that. In a
-            //  headset the controllers point at things their own way)
-            { const pick = vrActive() || (board.flat && game.hud.inventoryOpen); scene.skipPointerMovePicking = !pick; }
             game.under.sites?.update(dt);
             hide.update(dt, player, now / 1000);
             if (sync) sync.avatars.three.labelsOff = hide.active;
@@ -1017,29 +1008,23 @@ async function main() {
     // ---- shaders: the first frames compile hundreds of them (a long freeze with nothing on screen): it happens here instead,
     //      behind the loading bar, while the render loop draws under it and the bar follows how many meshes are ready
     {
-        // (twice: with the fire and torch lights on, and with them off, so either way every shader is ready; see
-        //  StructureManager.updatePointLights)
-        const warm = async (pass: number) => {
-            const t0 = performance.now();
-            let bestOk = -1, tBest = t0;
-            for (;;) {
-                const ms = scene.meshes.filter((m) => m.subMeshes?.length && m.material && !(m instanceof Mesh && m.hasThinInstances && m.thinInstanceCount === 0));
-                const ok = ms.filter((m) => m.isReady(true)).length;
-                const f = ok / Math.max(1, ms.length);
-                progress(0.92 + 0.04 * pass + 0.04 * f, `Preparing the island… ${Math.round(50 * pass + 50 * f)}%`);
-                if (ok > bestOk) { bestOk = ok; tBest = performance.now(); }
-                if (ok >= ms.length || performance.now() - tBest > 6000 || performance.now() - t0 > 60000) {
-                    if (ok < ms.length) console.warn("castaway: not ready after warm-up:", ms.filter((m) => !m.isReady(true)).map((m) => m.name).slice(0, 20).join(", "));
-                    break;
-                }
-                await new Promise((r) => setTimeout(r, 100));
-            }
-        };
+        const t0 = performance.now();
+        let bestOk = -1, tBest = t0;
         scene.materials.forEach(roomForLights);
-        game.structures.setPointLights(true);
-        await warm(0);
-        game.structures.setPointLights(false);
-        await warm(1);
+        for (;;) {
+            // (the hidden ones too: the island's far-away versions, the rain, the lightning... else they compile, a freeze each,
+            // the first time they show; not thin-instanced meshes with no instances yet, which would compile a broken shader)
+            const ms = scene.meshes.filter((m) => m.subMeshes?.length && m.material && !(m instanceof Mesh && m.hasThinInstances && m.thinInstanceCount === 0));
+            const ok = ms.filter((m) => m.isReady(true)).length;
+            progress(0.92 + 0.08 * (ok / Math.max(1, ms.length)), `Preparing the island… ${Math.round((100 * ok) / Math.max(1, ms.length))}%`);
+            // (all of them: the last few are often the ones that would show first far out at sea; unless it stalls)
+            if (ok > bestOk) { bestOk = ok; tBest = performance.now(); }
+            if (ok >= ms.length || performance.now() - tBest > 6000 || performance.now() - t0 > 60000) {
+                if (ok < ms.length) console.warn("castaway: not ready after warm-up:", ms.filter((m) => !m.isReady(true)).map((m) => m.name).slice(0, 20).join(", "));
+                break;
+            }
+            await new Promise((r) => setTimeout(r, 100));
+        }
         progress(1, "Ready");
     }
 
@@ -1110,17 +1095,6 @@ async function main() {
         input.enabled = false;
         $("loading").classList.remove("hidden");
         progress(1, "Almost there…");
-        // (what was made after the warm-up, your own hands for one: its shaders with the fire and torch lights on as well
-        //  as off, so a torch coming out later costs nothing)
-        void (async () => {
-            // (every mesh, seen or not: only what is drawn would compile otherwise)
-            const allReady = () => scene.meshes.filter((m) => m.subMeshes?.length && m.material && !(m instanceof Mesh && m.hasThinInstances && m.thinInstanceCount === 0)).every((m) => m.isReady(true));
-            for (const on of [true, false]) {
-                game.structures.setPointLights(on);
-                await frames(2);
-                for (let i = 0; i < 150 && !(allReady() && engine.areAllEffectsReady()); i++) await frames(2);
-            }
-        })();
         const t0 = performance.now();
         let smooth = 0;
         const recent: number[] = [];
@@ -1200,18 +1174,6 @@ async function main() {
         })();
     };
     game.travel = travel;
-    {
-        // adaptive sharpness (screens only: a headset draws at its own resolution, already tuned)
-        let good = 0, lastStep = 0;
-        setInterval(() => {
-            if (!started || vrActive() || document.hidden || travelling || maxDpr <= 1.01) return;
-            const fps = engine.getFps(), now = performance.now();
-            if (now - lastStep < 3000) return;
-            if (fps < 48 && dprNow > 1.01) { dprNow = Math.max(1, dprNow - 0.15); applyScale(); lastStep = now; good = 0; }
-            else if (fps > 57 && dprNow < maxDpr - 0.01) { if (++good >= 3) { dprNow = Math.min(maxDpr, dprNow + 0.1); applyScale(); lastStep = now; good = 0; } }
-            else good = 0;
-        }, 1000);
-    }
     /** where you were last frame: a far jump that did not come through a door (a respawn, a level's own way out) holds too */
     const lastSpot = player.pos.clone();
     const begin = () => {

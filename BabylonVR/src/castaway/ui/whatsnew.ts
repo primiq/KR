@@ -6,11 +6,10 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
-        date: "2026-11-06", title: "Smoother travel and a faster game",
+        date: "2026-11-06", title: "Loading screens between places",
         items: [
             "Going through a door (the desert, the volcano, the caves...) now shows a loading screen until the new place is fully ready, instead of dropping you in while it is still loading.",
             "The start-up loading screen also waits for every shader, so nothing pops in after it lifts.",
-            "Fewer lights for every pixel on every device, and no wasted work when you move the mouse: the same picture, drawn faster.",
         ],
     },
     {

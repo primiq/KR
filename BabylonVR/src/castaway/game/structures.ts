@@ -865,7 +865,6 @@ export class StructureManager {
 
     // pooled lights: keep a source's light while it stays among the nearest, give free lights to newcomers
     cands.sort((p, q) => p.d - q.d);
-    this.firesNear = cands.length > 0;
     const top = cands.slice(0, StructureManager.POOL).map((c) => c.s);
     const used = new Set<Structure>();
     for (let i = 0; i < this.lights.length; i++) {
@@ -902,31 +901,8 @@ export class StructureManager {
     this.handLight.includedOnlyMeshes = list;
   }
 
-  /**
-   * The fire and torch lights all go off together while nothing burns near you (most of the day): then no lit pixel pays
-   * for them. Both versions of every shader (with them and without) are compiled at start-up, so switching is instant.
-   */
-  private firesNear = false;
-  private torchOut = false;
-  private pointsOn = true;
-  private pointsIdle = 0;
-  setPointLights(on: boolean) {
-    if (on === this.pointsOn) return;
-    this.pointsOn = on;
-    for (const l of this.lights) l.setEnabled(on);
-    this.heldLight.setEnabled(on);
-    this.handLight.setEnabled(on);
-  }
-  /** every frame: on as soon as a fire is near or a torch is out, off a few seconds after the last one goes */
-  updatePointLights(dt: number) {
-    const need = this.firesNear || this.torchOut || this.heldFade > 0.01 || this.lightFade.some((f) => f > 0.01);
-    if (need) { this.pointsIdle = 0; this.setPointLights(true); }
-    else { this.pointsIdle += dt; if (this.pointsIdle > 3) this.setPointLights(false); }
-  }
-
   /** The torch in your hand. */
   setHeldLight(on: boolean, at: Vector3, dt: number, k = 1) {
-    this.torchOut = on;
     this.heldLight.position.copyFrom(at);
     const target = on ? 30 * k * (0.86 + 0.14 * Math.sin(this.time * 12.7) + 0.07 * Math.sin(this.time * 31.1)) : 0;
     this.heldFade += (target - this.heldFade) * Math.min(1, dt * 8);

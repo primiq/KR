@@ -49,14 +49,8 @@ export class Atmosphere {
      * is the sky fill light flaring; and the sky lighting is re-captured less often (a stall each time on a headset).
      */
     private lean = false;
-    beLean() { this.lean = true; }
-    /**
-     * Two lights fewer for every lit pixel, on every device: the moon's light is the sun light turned round at night (they
-     * are never both bright), and the lightning is the sky fill light flaring.
-     */
-    private merged = false;
-    private mergeLights() {
-        this.merged = true;
+    beLean() {
+        this.lean = true;
         this.moon.setEnabled(false);
         this.flashLight.setEnabled(false);
     }
@@ -138,7 +132,6 @@ export class Atmosphere {
         this.flashLight.groundColor = new Color3(0.3, 0.32, 0.4);
         this.flashLight.specular = Color3.Black();
         this.flashLight.intensity = 0;
-        this.mergeLights();
         // (the old point stars and flat moon disc stay built but hidden: SkyDeco draws the night sky now)
         this.stars.setEnabled(false);
         this.moonDisc.setEnabled(false);
@@ -258,7 +251,7 @@ export class Atmosphere {
             this.scene.environmentIntensity += (0.6 - this.scene.environmentIntensity) * dw;
         }
         this.flashLight.intensity = this.flash * 1.6;
-        if (this.merged) {
+        if (this.lean) {
             if (this.moon.intensity > this.sun.intensity) {
                 this.sun.direction.copyFrom(this.moon.direction);
                 this.sun.diffuse = this.moon.diffuse;
@@ -307,11 +300,9 @@ export class Atmosphere {
             }
         }
         if (Math.abs(ov - this.lastOvercast) > 0.15) { this.lastOvercast = ov; force = true; }
-        // re-capture the sky lighting every ~20 game minutes while the sun is near the horizon (the sky changes fast then),
-        // once a game hour when it is high or deep down (it hardly changes), or straight away when time jumps or the weather
-        // turns. (Each capture reads the sky back from the graphics card: a stall, so not more often than it shows.)
-        const step = Math.abs(this.hour - this.lastCapture), nearHorizon = Math.abs(this.sunDir.y) < 0.3;
-        if ((force || step > (this.lean ? 1.5 : nearHorizon ? 0.33 : 1.0)) && !this.capturing) void this.capture();
+        // re-capture the sky lighting every ~20 game minutes (or straight away when time jumps)
+        const step = Math.abs(this.hour - this.lastCapture);
+        if ((force || step > (this.lean ? 1.5 : 0.33)) && !this.capturing) void this.capture();
     }
 
     /**
