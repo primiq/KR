@@ -254,13 +254,16 @@ export class Game {
         this.building = new BuildingSystem(o.scene, o.vegetation.colliders, o.shadows);
         this.structures.ceilingAt = (x, y, z) => {
             const e = new Vector3(x, y + 0.4, z), hit = this.building.findPiece(e, new Vector3(0, 1, 0), 4.5);
-            return hit && (hit.piece.kind === "roof" || hit.piece.kind === "floor" || hit.piece.kind === "foundation") ? e.y + hit.dist : null;
+            if (hit && (hit.piece.kind === "roof" || hit.piece.kind === "floor" || hit.piece.kind === "foundation")) return e.y + hit.dist;
+            // (under a raft's upper floor)
+            return this.boats?.raftCeiling(x, y, z) ?? null;
         };
         // (boats' decks count as ground for setting things down: a drum on deck)
         this.structures.ground = (x, z, y) => Math.max(this.building.ground(x, z, y), this.boats ? this.boats.ground(x, z, y ?? 1e9) : -1e9);
-        this.structures.touchesBuilding = (x, z, r, y) => this.building.touches(x, z, r, y);
-        this.structures.railPosts = () => this.building.railPosts();
-        this.structures.railPostAt = (x, z, y) => this.building.railPostAt(x, z, y);
+        this.structures.touchesBuilding = (x, z, r, y) => this.building.touches(x, z, r, y) || !!this.boats?.raftTouches(x, z, r, y);
+        // (the posts of railings on rafts too: a torch on a raft's railing sails with it)
+        this.structures.railPosts = () => this.boats ? [...this.building.railPosts(), ...this.boats.raftRailPosts()] : this.building.railPosts();
+        this.structures.railPostAt = (x, z, y) => this.building.railPostAt(x, z, y) || !!this.boats?.raftRailPosts().some((o) => Math.abs(o.x - x) < 0.06 && Math.abs(o.z - z) < 0.06 && Math.abs(o.y - y) < 0.08);
         this.building.blockedByStructures = this.structures.blockedBox;
         this.structures.onEmber = (x, y, z) => this.resources.burst(new Vector3(x, y, z), "ember", 1, 1.5);
         this.view.onHit = () => this.swingHit();
@@ -371,6 +374,7 @@ export class Game {
         this.stalkers.nearFire = (x, z, r) => this.structures.list.some((q) => q.lit && Math.hypot(q.x - x, q.z - z) < r);
         this.doors = new Doors(o.scene, this.building, o.shadows);
         this.paintings = new Paintings(o.scene, o.shadows);
+        this.paintings.raftWorld = (n, key, l, out) => this.boats.raftWallWorld(n, key, l, out);
         this.building.afterRemove = (p, silent) => {
             // a doorway came down: its door drops out; pictures on a wall fall off
             const d = this.doors.wallGone(p.key);
@@ -786,6 +790,7 @@ export class Game {
         this.resources.update(dt, player.pos.x, player.pos.z);
         this.saplings.update(dt);
         this.doors.update(dt);
+        this.paintings.update();
         this.building.update(dt);
         const ug = this.under;
         this.structures.update(dt, player.pos.x + (ug.active ? 1e6 : 0), player.pos.y, player.pos.z);
@@ -1027,12 +1032,21 @@ export class Game {
         const dt0 = ug.active ? null : this.doors.target(eye, dir, 3.2);
         const useDoor = !!dt0 && (!!dt0.door || def?.id === "door") && (!t || dt0.dist < t.dist + 0.3) && (!st || dt0.dist < st.dist);
         this.doors.showGhost(useDoor && dt0 && !dt0.door && def?.id === "door" ? dt0.piece : null);
+        // ... and in rafts' doorways
+        const rf0 = ug.active || useDoor ? null : this.boats.raftFind(eye, dir, 3.2);
+        const rdoor = rf0 && rf0.p[0] === "e" && rf0.p[5] === "doorway" ? { b: rf0.b, key: `${rf0.p[1]}${rf0.p[2]},${rf0.p[3]},${rf0.p[4]}`, dist: rf0.dist } : null;
+        const rdState = rdoor ? rdoor.b.raft!.doors.get(rdoor.key) : undefined;
+        const useRaftDoor = !!rdoor && (rdState !== undefined || def?.id === "door") && (!t || rdoor.dist < t.dist + 0.3) && (!st || rdoor.dist < st.dist);
         const wh = ug.active || useDoor ? null : this.building.findPiece(eye, dir, 3.2);
         const useWin = !!wh && wh.piece.kind === "window" && (!t || wh.dist < t.dist + 0.3) && (!st || wh.dist < st.dist);
         // pictures on the walls; holding a frame shows where it would hang
         const pt = ug.active ? null : this.paintings.findTarget(eye, dir, 3.4);
         const usePaint = !!pt && (!t || pt.dist < t.dist) && (!st || pt.dist < st.dist) && !useUg;
-        this.frameAim = def?.frame && !ug.active && !usePaint ? this.paintings.aim(eye, dir, this.building.findPiece(eye, dir, 3.6)) : null;
+        if (def?.frame && !ug.active && !usePaint) {
+            // (a raft's wall, if that is nearer than a house's)
+            const bh = this.building.findPiece(eye, dir, 3.6), rw = this.boats.raftWall(eye, dir, 3.6, 1.0, 0.78);
+            this.frameAim = rw && (!bh || rw.dist < bh.dist) ? this.paintings.aimRaft(rw) : this.paintings.aim(eye, dir, bh);
+        } else this.frameAim = null;
         this.paintings.showGhost(this.frameAim);
         // the standing stones on the hilltop
         const dz = ug.active ? null : this.druids.target(eye, dir, 3.2);
@@ -1061,6 +1075,17 @@ export class Game {
             hud.setPrompt(pr.name, pr.hint.replace(/^E /, `${this.keyLabel("E")} `), this.druids.phase === "idle");
             this.runHold(dt, null, () => {}, () => {});
             if (input.interactQueued && this.druids.phase === "idle") { input.interactQueued = false; this.druids.touch(dz.i); this.vr.haptic?.(0.5); }
+        } else if (useRaftDoor && rdoor) {
+            const { b, key } = rdoor, clk = `<b>${this.vr.active ? "Trigger" : this.input.touch ? "HIT" : "Click"}</b>`, me = player.pos;
+            if (rdState !== undefined) {
+                hud.setPrompt("Door", `${this.keyLabel("E")} ${rdState ? "close" : "open"} &nbsp;·&nbsp; hold ${this.keyLabel("E")} take it out`, true);
+                this.runHold(dt, (b.nid + key) as never, () => { this.boats.raftDoor(b, key, rdState ? 0 : this.boats.raftDoorSwing(b, key, me.x, me.y, me.z)); this.sfx.creak(); },
+                    () => { this.boats.raftDoor(b, key, null); this.give("door", 1); this.sfx.remove(); });
+            } else {
+                hud.setPrompt("Doorway", `${clk} hang the door here`, true);
+                this.runHold(dt, null, () => {}, () => {});
+                if (input.attackQueued) { input.attackQueued = false; this.boats.raftDoor(b, key, 0); this.inv.takeAt(hud.selected, 1); this.sfx.place(); view.place(); hud.message("Door hung. E opens and closes it."); }
+            }
         } else if (useDoor && dt0) {
             const d = dt0.door, clk = `<b>${this.vr.active ? "Trigger" : this.input.touch ? "HIT" : "Click"}</b>`;
             if (d) {
@@ -1253,9 +1278,25 @@ export class Game {
                 this.boats.raftRemove(hit.b, hit.p);
                 this.give("wood", Math.floor(PIECE_INFO.find((q) => q.kind === k)!.cost / 2));
                 this.sfx.remove();
+                // pictures on a wall that came down, and anything left with nothing under it, come back to you
+                if (hit.p[0] === "e") for (const q of this.paintings.wallGone(`raft:${hit.b.nid}:${hit.p[1]}${hit.p[2]},${hit.p[3]},${hit.p[4]}`)) { this.give("picture_frame", 1); void q; }
+                this.raftSettle(hit.b.nid);
             });
         } else { hud.setPrompt(null); this.runHold(dt, null, () => {}, () => {}); }
         input.interactQueued = false;
+    }
+    /** things set down on a raft that lost what they stood on (a floor, a railing's post) come back to whoever took it down */
+    private raftSettle(n: string) {
+        const posts = this.boats.raftRailPosts();
+        for (const s of [...this.structures.list]) {
+            if (s.deck?.n !== n) continue;
+            const onPost = s.kind === "torch" && posts.some((o) => Math.hypot(o.x - s.x, o.z - s.z) < 0.08 && Math.abs(o.y - (s.y + StructureManager.POST_SINK)) < 0.1);
+            if (onPost || this.boats.ground(s.x, s.z, s.y + 0.3) > s.y - 0.2) continue;
+            if (s.inv) for (const it of s.inv.slots) if (it) this.give(it.id, it.count);
+            this.structures.remove(s);
+            if (this.bed === s) this.bed = null;
+            this.give(s.kind as ItemId, 1);
+        }
     }
     private hideBuildUi() {
         this.boats.showRaftGhost(null);
@@ -1411,7 +1452,14 @@ export class Game {
         const hip = at(hipZ), head = at(hipZ - Math.sin(back) * 0.72 + 0.12);
         this.lounger = s; this.loungeYaw = s.yaw + Math.PI; this.loungeT = 0;
         p.eyeAt = { x: head.x, y: s.y + seatY + 0.22 + Math.cos(back) * 0.72, z: head.z };
-        p.ride = () => { if (this.lounger !== s) return false; p.pos.set(hip.x, s.y, hip.z); return true; };
+        p.ride = () => {
+            if (this.lounger !== s) return false;
+            // (a lounger on a raft sails with it: follow it)
+            const sn2 = Math.sin(s.yaw), cs2 = Math.cos(s.yaw), hx = s.x + sn2 * hipZ, hz = s.z + cs2 * hipZ, d = -Math.sin(back) * 0.72 + 0.12;
+            p.pos.set(hx, s.y, hz);
+            if (p.eyeAt) { p.eyeAt.x = hx + sn2 * d; p.eyeAt.z = hz + cs2 * d; p.eyeAt.y = s.y + seatY + 0.22 + Math.cos(back) * 0.72; }
+            return true;
+        };
         p.pos.set(hip.x, s.y, hip.z);
         p.yaw = this.loungeYaw; p.pitch = -0.15;
         this.sfx.creak();
@@ -1639,6 +1687,8 @@ export class Game {
             let wood = 0;
             for (const p of this.boats.raftPieces(b)) { const k = p[0] === "t" ? "foundation" : p[0] === "f" ? "floor" : p[0] === "s" ? "stairs" : (p[5] as PieceKind); wood += Math.floor((PIECE_INFO.find((q) => q.kind === k)?.cost ?? 0) / 2); }
             if (wood) this.give("wood", wood);
+            for (const p of this.boats.raftPieces(b)) if (p[0] === "d") this.give("door", 1);
+            for (const q of this.paintings.onRaft(b.nid)) { this.paintings.remove(q); this.give("picture_frame", 1); }
             this.boats.remove(b); this.sfx.pickup(); this.hud.message(wood ? `Raft packed up (and ${wood} wood back)` : "Raft packed up");
             return;
         }

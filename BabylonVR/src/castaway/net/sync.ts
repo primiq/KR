@@ -64,7 +64,7 @@ export class WorldSync {
         game.under.onEvent = (e) => session.sendEvent(e);
         game.flowers.idPrefix = `f${id}-`;
         game.paintings.idPrefix = `pt${id}-`;
-        game.paintings.onPlace = (p) => session.sendEvent({ k: "ga", n: p.nid, w: p.wall, x: +p.x.toFixed(3), y: +p.y.toFixed(3), z: +p.z.toFixed(3), r: +p.yaw.toFixed(4), d: p.data });
+        game.paintings.onPlace = (p) => { const [x, y, z, r] = p.raft ? p.raft.l : [p.x, p.y, p.z, p.yaw]; session.sendEvent({ k: "ga", n: p.nid, w: p.wall, x: +x.toFixed(3), y: +y.toFixed(3), z: +z.toFixed(3), r: +r.toFixed(4), d: p.data }); };
         game.paintings.onRemove = (p) => session.sendEvent({ k: "gd", n: p.nid });
         game.paintings.onPaint = (p) => session.sendEvent({ k: "gp", n: p.nid, d: p.data });
         game.doors.onHang = (d) => session.sendEvent({ k: "da", key: d.key, o: d.open ? 1 : 0, s: d.sign });

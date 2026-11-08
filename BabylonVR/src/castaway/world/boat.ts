@@ -372,7 +372,9 @@ class Wave {
 // (an upper deck or a roof) above, stairs up to it. Everything sits on the raft's own grid and sails with it. An oar at the
 // back steers it. Raft space: origin on the waterline in the middle of the first section, +z the stern (the bow is -z).
 /** a piece of a raft: a log section, an edge (wall, doorway, window, railing) on level L, an upper floor, a staircase */
-export type RaftPiece = ['t', number, number] | ['e', 'x' | 'z', number, number, number, string] | ['f', number, number, number] | ['s', number, number, number, number];
+export type RaftPiece = ['t', number, number] | ['e', 'x' | 'z', number, number, number, string] | ['f', number, number, number] | ['s', number, number, number, number]
+  /** a door in a doorway: 0 shut, or open swung to +1 / -1 */
+  | ['d', 'x' | 'z', number, number, number, number];
 /** the deck of the logs, above the waterline */
 const RDECK = 0.45;
 const RC = CELL, RWH = WALL_H;
@@ -383,6 +385,10 @@ export class Raft {
   edges = new Map<string, string>();
   floors = new Set<string>();
   stairs = new Map<string, number>();
+  /** doors hung in doorways (by the doorway's key): 0 shut, +1 / -1 open that way */
+  doors = new Map<string, number>();
+  /** the doors' hinges, as drawn, and how far each is swung now */
+  doorPivots = new Map<string, { g: THREE.Group; ang: number }>();
   oar: THREE.Group | null = null;
   /** the section the oar is on (the back of the raft), its extent in raft space, how far it reaches from the origin */
   hi = 0; hj = 0;
@@ -394,10 +400,10 @@ export class Raft {
     if (!this.tiles.size) this.tiles.add('0,0');
     this.refresh();
   }
-  static key(p: RaftPiece) { return p[0] === 't' ? `${p[1]},${p[2]}` : p[0] === 'e' ? `${p[1]}${p[2]},${p[3]},${p[4]}` : `${p[1]},${p[2]},${p[3]}`; }
+  static key(p: RaftPiece) { return p[0] === 't' ? `${p[1]},${p[2]}` : p[0] === 'e' || p[0] === 'd' ? `${p[1]}${p[2]},${p[3]},${p[4]}` : `${p[1]},${p[2]},${p[3]}`; }
   has(p: RaftPiece) {
     const k = Raft.key(p);
-    return p[0] === 't' ? this.tiles.has(k) : p[0] === 'e' ? this.edges.has(k) : p[0] === 'f' ? this.floors.has(k) : this.stairs.has(k);
+    return p[0] === 't' ? this.tiles.has(k) : p[0] === 'e' ? this.edges.has(k) : p[0] === 'f' ? this.floors.has(k) : p[0] === 'd' ? this.doors.has(k) : this.stairs.has(k);
   }
   put(p: RaftPiece) {
     const k = Raft.key(p), n = (v: unknown) => Number.isInteger(v) && Math.abs(v as number) < 40;
@@ -405,10 +411,11 @@ export class Raft {
     else if (p[0] === 'e' && (p[1] === 'x' || p[1] === 'z') && n(p[2]) && n(p[3]) && n(p[4]) && EDGE_KINDS.includes(p[5])) this.edges.set(k, p[5]);
     else if (p[0] === 'f' && n(p[1]) && n(p[2]) && n(p[3])) this.floors.add(k);
     else if (p[0] === 's' && n(p[1]) && n(p[2]) && n(p[3]) && n(p[4])) this.stairs.set(k, ((p[4] % 4) + 4) % 4);
+    else if (p[0] === 'd' && this.edges.get(k) === 'doorway') this.doors.set(k, Math.sign(+p[5] || 0));
   }
   del(p: RaftPiece) {
     const k = Raft.key(p);
-    if (p[0] === 't') this.tiles.delete(k); else if (p[0] === 'e') this.edges.delete(k); else if (p[0] === 'f') this.floors.delete(k); else this.stairs.delete(k);
+    if (p[0] === 't') this.tiles.delete(k); else if (p[0] === 'e') { this.edges.delete(k); this.doors.delete(k); } else if (p[0] === 'f') this.floors.delete(k); else if (p[0] === 'd') this.doors.delete(k); else this.stairs.delete(k);
   }
   list(): RaftPiece[] {
     const out: RaftPiece[] = [];
@@ -417,6 +424,7 @@ export class Raft {
     for (const [k, kind] of this.edges) { const [i, j, L] = nums(k.slice(1)); out.push(['e', k[0] as 'x' | 'z', i, j, L, kind]); }
     for (const k of this.floors) { const [i, j, L] = nums(k); out.push(['f', i, j, L]); }
     for (const [k, d] of this.stairs) { const [i, j, L] = nums(k); out.push(['s', i, j, L, d]); }
+    for (const [k, d] of this.doors) { const [i, j, L] = nums(k.slice(1)); out.push(['d', k[0] as 'x' | 'z', i, j, L, d]); }
     return out;
   }
   tile(i: number, j: number) { return this.tiles.has(`${i},${j}`); }
@@ -441,6 +449,13 @@ export class Raft {
         if (k[0] === 'x') { const z = (j - 0.5) * RC, x = i * RC; this.boxes.push({ x0: x + a, x1: x + b, z0: z - T, z1: z + T, y0, y1 }); }
         else { const x = (i - 0.5) * RC, z = j * RC; this.boxes.push({ x0: x - T, x1: x + T, z0: z + a, z1: z + b, y0, y1 }); }
       }
+    }
+    // a shut door fills its doorway
+    for (const [k, st] of this.doors) {
+      if (st) continue;
+      const [i, j, L] = k.slice(1).split(',').map(Number), y0 = RDECK + L * RWH, y1 = y0 + 2.3;
+      if (k[0] === 'x') { const z = (j - 0.5) * RC, x = i * RC; this.boxes.push({ x0: x - 0.6, x1: x + 0.6, z0: z - 0.08, z1: z + 0.08, y0, y1 }); }
+      else { const x = (i - 0.5) * RC, z = j * RC; this.boxes.push({ x0: x - 0.08, x1: x + 0.08, z0: z - 0.6, z1: z + 0.6, y0, y1 }); }
     }
     const [hx, , hz] = this.oarPost();
     this.boxes.push({ x0: hx - 0.12, x1: hx + 0.12, z0: hz - 0.12, z1: hz + 0.12, y0: RDECK, y1: RDECK + 1.1 });
@@ -477,6 +492,16 @@ export class Raft {
   }
 }
 
+/** a door's leaf (the same as a house door's) */
+const DOOR_W = 1.16, DOOR_H = 2.27;
+let LEAF: THREE.BufferGeometry | null = null;
+function doorLeaf() {
+  if (LEAF) return LEAF;
+  const parts: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < 6; i++) parts.push(new THREE.BoxGeometry(DOOR_W / 6 - 0.006, DOOR_H, 0.06).translate(-DOOR_W / 2 + (i + 0.5) * (DOOR_W / 6), 0, 0));
+  for (const y of [-0.75, 0.75]) for (const z of [-0.045, 0.045]) parts.push(new THREE.BoxGeometry(DOOR_W - 0.06, 0.12, 0.03).translate(0, y, z));
+  return (LEAF = mergeGeometries(parts.map(clean))!);
+}
 let RMATS: Record<'log' | 'end' | 'rope' | 'wall' | 'beam' | 'pile', THREE.Material> | null = null;
 function raftMats() {
   if (RMATS) return RMATS;
@@ -510,7 +535,13 @@ function raftParts(r: Raft, only?: RaftPiece): Map<THREE.Material, THREE.BufferG
   };
   const each = (p: RaftPiece) => {
     if (p[0] === 't') logs(p[1], p[2]);
-    else if (p[0] === 'e') { const [, ax, i, j, L, kind] = p; if (ax === 'x') piece(kind as PieceKind, i * RC, RDECK + L * RWH, (j - 0.5) * RC, 0); else piece(kind as PieceKind, (i - 0.5) * RC, RDECK + L * RWH, j * RC, Math.PI / 2); }
+    else if (p[0] === 'e') {
+      const [, ax, i, j, L, kind] = p, x = ax === 'x' ? i * RC : (i - 0.5) * RC, z = ax === 'x' ? (j - 0.5) * RC : j * RC, ry = ax === 'x' ? 0 : Math.PI / 2;
+      piece(kind as PieceKind, x, RDECK + L * RWH, z, ry);
+      // on the logs: a squared sill under it, down between the round logs (no gap under the wall)
+      if (L === 0) put(RM.beam, new THREE.BoxGeometry(RC + 0.02, 0.4, 0.34).rotateY(ry).translate(x, RDECK - 0.2 + 0.005, z));
+    }
+    else if (p[0] === 'd') return;
     else if (p[0] === 'f') piece('floor', p[1] * RC, RDECK + p[3] * RWH, p[2] * RC, 0);
     else { const [dx, dz] = STAIR_DIRS[p[4]]; piece('stairs', p[1] * RC, RDECK + p[3] * RWH, p[2] * RC, Math.atan2(dx, dz)); }
   };
@@ -536,6 +567,16 @@ function makeRaft(r: Raft, shadows: boolean, ghost: THREE.Material | null = null
   blade.position.copy(b).add(b.clone().sub(a).normalize().multiplyScalar(-0.35)); blade.quaternion.copy(pole.quaternion).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2)); pv.add(blade);
   const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.3, 7).rotateZ(Math.PI / 2).translate(a.x, a.y, a.z), RM.beam); pv.add(grip);
   r.oar = pv;
+  // the doors: a leaf on a hinge in each doorway that has one
+  r.doorPivots.clear();
+  for (const [k, st] of r.doors) {
+    const [i, j, L] = k.slice(1).split(',').map(Number), ax = k[0] === 'x';
+    const frame = new THREE.Group(); frame.position.set(ax ? i * RC : (i - 0.5) * RC, RDECK + L * RWH, ax ? (j - 0.5) * RC : j * RC); frame.rotation.y = ax ? 0 : Math.PI / 2; g.add(frame);
+    const hinge = new THREE.Group(); hinge.position.set(-0.6, 0, 0); frame.add(hinge);
+    const leaf = new THREE.Mesh(doorLeaf(), woodMaterials().slab); leaf.position.set(DOOR_W / 2 + 0.02, DOOR_H / 2 + 0.01, 0); leaf.castShadow = shadows; leaf.receiveShadow = shadows; hinge.add(leaf);
+    const ang = st ? st * Math.PI / 2 * 0.92 : 0; hinge.rotation.y = ang;
+    r.doorPivots.set(k, { g: hinge, ang });
+  }
   return g;
 }
 /** the raft's sections all clear of the bottom at (x, z, yaw)? (`extra`: one more section, to try) */
@@ -709,7 +750,9 @@ export class Boats {
       if (Math.abs(b.x - x) > LEN || Math.abs(b.z - z) > LEN) continue;
       const l = toLocal(pose(b), x, y, z, L1);
       if (b.raft) {
-        const f = b.raft.floorAt(l.x, l.y, l.z);
+        // (a torch on a railing's post stands right on the raft's edge)
+        let f = b.raft.floorAt(l.x, l.y, l.z);
+        if (f < -1e8 && b.raft.nearest(l.x, l.z, 0)[2] < 0.4) f = RDECK;
         if (f > -1e8 && l.y > f - 0.6 && l.y < f + 3) return { n: b.nid, l: [+l.x.toFixed(3), +l.y.toFixed(3), +l.z.toFixed(3), +(yaw - b.yaw).toFixed(3)] };
         continue;
       }
@@ -1106,6 +1149,10 @@ export class Boats {
   private animate(b: Boat, dt: number, time: number) {
     if (b.raft) {
       // the oar sweeps to steer, and paddles along while under way
+      for (const [k, d] of b.raft.doorPivots) {
+        const st = b.raft.doors.get(k) ?? 0, want = st * Math.PI / 2 * 0.92;
+        if (Math.abs(want - d.ang) > 1e-3) { d.ang += Math.sign(want - d.ang) * Math.min(Math.abs(want - d.ang), dt * 3.2); d.g.rotation.y = d.ang; }
+      }
       const o = b.raft.oar;
       if (o) {
         const row = Math.abs(b.v) > 0.3 ? Math.sin(time * 2.2) * Math.min(1, Math.abs(b.v) / 3) : 0;
@@ -1261,6 +1308,7 @@ export class Boats {
       };
       const take = (pc: RaftPiece, t: number) => { if (t >= 0 && (!best || t < best.dist)) best = { b, p: pc, dist: t }; };
       for (const pc of rf.list()) {
+        if (pc[0] === 'd') continue;
         const h = RC / 2;
         if (pc[0] === 't') { const x = pc[1] * RC, z = pc[2] * RC; take(pc, hit([x - h, -0.4, z - h], [x + h, RDECK, z + h])); }
         else if (pc[0] === 'f') { const x = pc[1] * RC, z = pc[2] * RC, y = RDECK + pc[3] * RWH; take(pc, hit([x - h, y - 0.35, z - h], [x + h, y, z + h])); }
@@ -1293,6 +1341,8 @@ export class Boats {
       const left = [...rf.tiles].filter((k) => k !== `${i},${j}`), seen = new Set([left[0]]), q = [left[0]];
       while (q.length) { const [a, c] = q.pop()!.split(',').map(Number); for (const n of [`${a + 1},${c}`, `${a - 1},${c}`, `${a},${c + 1}`, `${a},${c - 1}`]) if (left.includes(n) && !seen.has(n)) { seen.add(n); q.push(n); } }
       if (seen.size !== left.length) return 'That would cut the raft in two';
+    } else if (pc[0] === 'e' && rf.doors.has(Raft.key(pc))) {
+      return 'Take the door out first';
     } else if (pc[0] === 'f') {
       const [, i, j, L] = pc;
       if (rf.floors.has(`${i},${j},${L + 1}`) || rf.stairs.has(`${i},${j},${L}`)) return 'Take down what is built on it first';
@@ -1312,6 +1362,81 @@ export class Boats {
   }
   /** what a raft is worth in wood beyond the raft itself (the pieces built on it, at the building plan's prices) */
   raftPieces(b: Boat): RaftPiece[] { return b.raft ? b.raft.list().filter((p) => !(p[0] === 't' && p[1] === 0 && p[2] === 0)) : []; }
+
+  /** hang a door in a raft's doorway, open or shut one (state 0 shut, +1 / -1 open), or take it out (null) */
+  raftDoor(b: Boat, key: string, state: number | null) {
+    const rf = b.raft; if (!rf || rf.edges.get(key) !== 'doorway') return;
+    const ax = key[0] as 'x' | 'z', [i, j, L] = key.slice(1).split(',').map(Number), had = rf.doors.has(key);
+    const pc: RaftPiece = ['d', ax, i, j, L, state ?? 0];
+    if (state === null) { if (!had) return; rf.del(pc); this.remodel(b); this.onEvent?.({ op: 'rp', n: b.nid, a: 0, p: pc }); return; }
+    rf.put(pc);
+    if (had) rf.refresh(); else this.remodel(b);
+    this.onEvent?.({ op: 'rp', n: b.nid, a: 1, p: pc });
+  }
+  /** which way a raft's door swings open, away from someone at (x, y, z) */
+  raftDoorSwing(b: Boat, key: string, x: number, y: number, z: number) {
+    const l = toLocal(pose(b), x, y, z, L1), [i, j] = key.slice(1).split(',').map(Number);
+    return (key[0] === 'x' ? Math.sign(l.z - (j - 0.5) * RC) : Math.sign(l.x - (i - 0.5) * RC)) >= 0 ? 1 : -1;
+  }
+  /** a plain wall of a raft I'm looking at, for hanging a picture: where on it (raft space, and in the world for the preview) */
+  raftWall(eye: { x: number; y: number; z: number }, dir: { x: number; y: number; z: number }, max: number, fw: number, fh: number): { b: Boat; key: string; kind: string; dist: number; l: [number, number, number, number]; w: { x: number; y: number; z: number; yaw: number } } | null {
+    const h = this.raftFind(eye, dir, max);
+    if (!h || h.p[0] !== 'e') return null;
+    const [, ax, i, j, L, kind] = h.p, b = h.b, p = pose(b), o = toLocal(p, eye.x, eye.y, eye.z, L1).clone(), d = toLocal(p, eye.x + dir.x, eye.y + dir.y, eye.z + dir.z, L2).sub(o);
+    const hx = o.x + d.x * h.dist, hy = o.y + d.y * h.dist, hz = o.z + d.z * h.dist, y0 = RDECK + L * RWH;
+    let lx: number, lz: number, yaw: number;
+    if (ax === 'x') { const ez = (j - 0.5) * RC, front = o.z > ez; lz = ez + (front ? 0.1 : -0.1); yaw = front ? 0 : Math.PI; lx = Math.max(i * RC - RC / 2 + fw / 2 + 0.05, Math.min(i * RC + RC / 2 - fw / 2 - 0.05, hx)); }
+    else { const ex = (i - 0.5) * RC, front = o.x > ex; lx = ex + (front ? 0.1 : -0.1); yaw = front ? Math.PI / 2 : -Math.PI / 2; lz = Math.max(j * RC - RC / 2 + fw / 2 + 0.05, Math.min(j * RC + RC / 2 - fw / 2 - 0.05, hz)); }
+    const ly = Math.max(y0 + fh / 2 + 0.25, Math.min(y0 + RWH - fh / 2 - 0.1, hy));
+    const w = toWorld(p, lx, ly, lz, new THREE.Vector3());
+    return { b, key: Raft.key(h.p), kind, dist: h.dist, l: [lx, ly, lz, yaw], w: { x: w.x, y: w.y, z: w.z, yaw: b.yaw + yaw } };
+  }
+  /** where a picture on a raft's wall is now: false once that wall (or the raft) is gone */
+  raftWallWorld(n: string, key: string, l: [number, number, number, number], out: { x: number; y: number; z: number; yaw: number; q: THREE.Quaternion }) {
+    const b = this.byId(n);
+    return !!b?.raft && b.raft.edges.get(key) === 'wall' && this.deckWorld(n, l, out);
+  }
+  /** the tops of rafts' railing posts (a torch stands on one), in the world */
+  raftRailPosts(): { x: number; y: number; z: number }[] {
+    const out: { x: number; y: number; z: number }[] = [];
+    for (const b of this.list) {
+      if (!b.raft) continue;
+      const p = pose(b);
+      for (const [k, kind] of b.raft.edges) {
+        if (kind !== 'railing') continue;
+        const [i, j, L] = k.slice(1).split(',').map(Number), y = RDECK + L * RWH + RAIL_H + 0.11;
+        const ends = k[0] === 'x' ? [[i * RC - RC / 2, (j - 0.5) * RC], [i * RC + RC / 2, (j - 0.5) * RC]] : [[(i - 0.5) * RC, j * RC - RC / 2], [(i - 0.5) * RC, j * RC + RC / 2]];
+        for (const [x, z] of ends) { const w = toWorld(p, x, y, z, new THREE.Vector3()); if (!out.some((q) => Math.hypot(q.x - w.x, q.z - w.z) < 0.05 && Math.abs(q.y - w.y) < 0.05)) out.push({ x: w.x, y: w.y, z: w.z }); }
+      }
+    }
+    return out;
+  }
+  /** the underside of a raft's upper floor above (x, y, z) (a lantern hangs from it), or null */
+  raftCeiling(x: number, y: number, z: number): number | null {
+    for (const b of this.list) {
+      if (!b.raft || Math.hypot(b.x - x, b.z - z) > b.raft.rad + 1) continue;
+      const p = pose(b), l = toLocal(p, x, y, z, L1), i = Math.round(l.x / RC), j = Math.round(l.z / RC);
+      if (!b.raft.tile(i, j)) continue;
+      for (let L = 1; L <= RAFT_LEVELS; L++) {
+        const under = RDECK + L * RWH - 0.16;
+        if (under > l.y + 0.3 && b.raft.floors.has(`${i},${j},${L}`)) return toWorld(p, l.x, under, l.z, L2).y;
+      }
+    }
+    return null;
+  }
+  /** would something round (radius r, standing at y) bump into a raft's walls? */
+  raftTouches(x: number, z: number, r: number, y: number): boolean {
+    for (const b of this.list) {
+      if (!b.raft || Math.hypot(b.x - x, b.z - z) > b.raft.rad + r + 1) continue;
+      const l = toLocal(pose(b), x, y, z, L1);
+      for (const bx of b.raft.boxes) {
+        if (bx.y1 < l.y + 0.1 || bx.y0 > l.y + 1.6) continue;
+        const cx = Math.max(bx.x0, Math.min(l.x, bx.x1)), cz = Math.max(bx.z0, Math.min(l.z, bx.z1));
+        if (Math.hypot(l.x - cx, l.z - cz) < r) return true;
+      }
+    }
+    return false;
+  }
 
   // -------------------------------------------------------------- a raft after the giant wave
   /** washed back near the island: out from the beach the way it went, in water deep enough for all of it, bow to the sea */
@@ -1349,7 +1474,13 @@ export class Boats {
     const b = typeof e.n === 'string' ? this.byId(e.n) : null;
     switch (e.op) {
       case 'add': if (!b && Number.isFinite(+e.x) && Number.isFinite(+e.z)) this.add(e.n, +e.x, +e.z, +e.r || 0, true, Array.isArray(e.p) ? e.p : undefined); break;
-      case 'rp': if (b?.raft && Array.isArray(e.p)) { if (e.a) b.raft.put(e.p as RaftPiece); else b.raft.del(e.p as RaftPiece); this.remodel(b); } break;
+      case 'rp': if (b?.raft && Array.isArray(e.p)) {
+        const pc = e.p as RaftPiece;
+        // (a door opening or shutting: just swing it)
+        if (pc[0] === 'd' && e.a && b.raft.doors.has(Raft.key(pc))) { b.raft.put(pc); b.raft.refresh(); break; }
+        if (e.a) b.raft.put(pc); else b.raft.del(pc);
+        this.remodel(b);
+      } break;
       case 'warp': if (b && Number.isFinite(+e.x) && Number.isFinite(+e.z)) this.warp(b, +e.x, +e.z, +e.r || 0); break;
       case 'del': if (b) this.remove(b, true); break;
       case 'helm': {

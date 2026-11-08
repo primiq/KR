@@ -1,7 +1,7 @@
 // Pictures in frames, hung on the walls players build. A new one is a blank canvas; open it (E) to paint on it.
 // The picture is kept as a small PNG (data URL): that is what is saved with the world and sent to the other players.
 // Ported from Castaway: the same logic, drawn with Babylon (the picture is a DynamicTexture over the canvas).
-import { Color3, DynamicTexture, Matrix, type Mesh, MeshBuilder, PBRMaterial, type Scene, Texture, TransformNode, Vector3 } from "@babylonjs/core";
+import { Color3, DynamicTexture, Matrix, type Mesh, MeshBuilder, PBRMaterial, Quaternion, type Scene, Texture, TransformNode, Vector3 } from "@babylonjs/core";
 import * as THREE from "three";
 import { meshFromThree } from "../render/geometry";
 import { shadowCasters } from "../render/inst";
@@ -26,8 +26,12 @@ export interface Painting {
     group: TransformNode;
     canvas: HTMLCanvasElement;
     tex: DynamicTexture;
+    /** on a raft's wall ("raft:<raft>:<wall>" in `wall`): where on the raft (raft space), it sails with it */
+    raft?: { n: string; key: string; l: [number, number, number, number] };
 }
-export interface FrameAim { ok: boolean; reason: string; x: number; y: number; z: number; yaw: number; wall: string }
+/** (`ghost`: where the preview goes in the world, when x, y, z are on a raft) */
+export interface FrameAim { ok: boolean; reason: string; x: number; y: number; z: number; yaw: number; wall: string; ghost?: { x: number; y: number; z: number; yaw: number } }
+const RAFT_WALL = /^raft:(.+):([xz]-?\d+,-?\d+,-?\d+)$/;
 
 let FRAME_GEO: THREE.BufferGeometry | null = null;
 function frameGeometry() {
@@ -112,11 +116,41 @@ export class Paintings {
         return { ok: true, reason: "", x, y, z, yaw, wall: p.key };
     }
 
+    /** a frame on a raft's plain wall (found by the boats): raft-space x, y, z, yaw; the preview in the world */
+    aimRaft(h: { b: { nid: string }; key: string; kind: string; l: [number, number, number, number]; w: { x: number; y: number; z: number; yaw: number } }): FrameAim {
+        const [x, y, z, yaw] = h.l, wall = `raft:${h.b.nid}:${h.key}`;
+        if (h.kind !== "wall") return { ok: false, reason: h.kind === "railing" ? "Pictures hang on walls" : "Not on a doorway or a window: pick a plain wall", x, y, z, yaw, wall: "" };
+        for (const q of this.list) {
+            if (!q.raft || q.raft.n !== h.b.nid) continue;
+            const [qx, qy, qz, qr] = q.raft.l;
+            if (Math.abs(Math.atan2(Math.sin(qr - yaw), Math.cos(qr - yaw))) > 0.1) continue;
+            if (Math.hypot(qx - x, qz - z) < FW + 0.02 && Math.abs(qy - y) < FH + 0.02) return { ok: false, reason: "There is a picture there already", x, y, z, yaw, wall, ghost: h.w };
+        }
+        return { ok: true, reason: "", x, y, z, yaw, wall, ghost: h.w };
+    }
+
+    /** (set by the game) where a spot on a raft's wall is now; false once the wall is gone */
+    raftWorld: ((n: string, key: string, l: [number, number, number, number], out: { x: number; y: number; z: number; yaw: number; q: THREE.Quaternion }) => boolean) | null = null;
+    private tmp = { x: 0, y: 0, z: 0, yaw: 0, q: new THREE.Quaternion() };
+    /** pictures on rafts sail with them (and fall off when their wall comes down) */
+    update() {
+        for (const p of [...this.list]) {
+            if (!p.raft || !this.raftWorld) continue;
+            const w = this.tmp;
+            if (!this.raftWorld(p.raft.n, p.raft.key, p.raft.l, w)) { this.remove(p, true); continue; }
+            p.x = w.x; p.y = w.y; p.z = w.z; p.yaw = w.yaw;
+            p.group.position.set(w.x, w.y, w.z);
+            if (!p.group.rotationQuaternion) p.group.rotationQuaternion = new Quaternion();
+            p.group.rotationQuaternion.set(w.q.x, w.q.y, w.q.z, w.q.w);
+        }
+    }
+
     showGhost(a: FrameAim | null) {
         if (!a || (!a.ok && !a.wall)) { this.ghost.setEnabled(false); return; }
         this.ghost.setEnabled(true);
-        this.ghost.position.set(a.x, a.y, a.z);
-        this.ghost.rotation.set(0, a.yaw, 0);
+        const g = a.ghost ?? a;
+        this.ghost.position.set(g.x, g.y, g.z);
+        this.ghost.rotation.set(0, g.yaw, 0);
         setGhostOk(this.ghostMat, a.ok);
     }
 
@@ -153,7 +187,10 @@ export class Paintings {
         g.position.set(a.x, a.y, a.z);
         g.rotation.y = a.yaw;
         const p: Painting = { nid: opts.nid ?? `${this.idPrefix}${Date.now().toString(36)}-${this.ids++}`, wall: a.wall, x: a.x, y: a.y, z: a.z, yaw: a.yaw, data: "", group: g, canvas, tex };
+        const rw = RAFT_WALL.exec(a.wall);
+        if (rw) { p.raft = { n: rw[1], key: rw[2], l: [a.x, a.y, a.z, a.yaw] }; g.setEnabled(false); }
         this.list.push(p);
+        if (p.raft) { this.update(); if (this.list.includes(p)) g.setEnabled(true); else return null; }
         if (opts.data) this.setData(p, opts.data, true);
         if (!opts.remote) this.onPlace?.(p);
         return p;
@@ -229,7 +266,9 @@ export class Paintings {
     /** metres per canvas pixel */
     static readonly PX = (FW - BORDER * 2) / CANVAS_W;
 
-    capture() { return this.list.map((p) => [p.nid, p.wall, +p.x.toFixed(3), +p.y.toFixed(3), +p.z.toFixed(3), +p.yaw.toFixed(4), p.data]); }
+    capture() { return this.list.map((p) => { const [x, y, z, yaw] = p.raft ? p.raft.l : [p.x, p.y, p.z, p.yaw]; return [p.nid, p.wall, +x.toFixed(3), +y.toFixed(3), +z.toFixed(3), +yaw.toFixed(4), p.data]; }); }
+    /** the pictures hanging on a raft */
+    onRaft(n: string) { return this.list.filter((p) => p.raft?.n === n); }
     restore(rows: unknown[] | undefined) {
         for (const p of [...this.list]) this.remove(p, true);
         for (const [nid, wall, x, y, z, yaw, data] of (rows ?? []) as [string, string, number, number, number, number, string][]) this.place({ x, y, z, yaw, wall }, { nid, data, remote: true });
