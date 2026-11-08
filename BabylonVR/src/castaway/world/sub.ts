@@ -42,7 +42,7 @@ export class Sub {
 }
 
 // ------------------------------------------------------------------ the model
-let MATS: Record<'hull' | 'steel' | 'dark' | 'glass' | 'seat' | 'floor' | 'screen' | 'lamp', THREE.Material> | null = null;
+let MATS: Record<'hull' | 'lining' | 'steel' | 'dark' | 'glass' | 'seat' | 'floor' | 'screen' | 'lamp', THREE.Material> | null = null;
 function mats() {
   if (MATS) return MATS;
   const std = (c: string, r: number, m = 0, extra: Partial<THREE.MeshStandardMaterialParameters> = {}) => {
@@ -51,7 +51,7 @@ function mats() {
     return mt;
   };
   MATS = {
-    hull: std('#f2b705', 0.45, 0.2), steel: std('#c3cbd1', 0.3, 0.8), dark: std('#2f3438', 0.6, 0.4),
+    hull: std('#f2b705', 0.45, 0.2), lining: std('#6d767d', 0.6, 0.5, { side: THREE.DoubleSide }), steel: std('#c3cbd1', 0.3, 0.8), dark: std('#2f3438', 0.6, 0.4),
     glass: new THREE.MeshStandardMaterial({ name: 'glass', color: '#cfe8f0', transparent: true, opacity: 0.3 }),
     seat: std('#2e5b8a', 0.8), floor: std('#4a5157', 0.7, 0.5),
     screen: new THREE.MeshBasicMaterial({ color: '#5ef2c0' }), lamp: new THREE.MeshBasicMaterial({ color: '#fff6c8' }),
@@ -70,12 +70,15 @@ function makeModel(ghost: THREE.Material | null, shadows: boolean, s: Sub | null
   const tBelt = Math.acos(BELT / SAY);
   add(new THREE.SphereGeometry(1, 36, 12, 0, Math.PI * 2, tBelt, Math.PI - tBelt).scale(SAX, SAY, SAZ), M.hull);
   add(new THREE.SphereGeometry(0.995, 40, 20, 0, Math.PI * 2, 0, tBelt + 0.02).scale(SAX, SAY, SAZ), M.glass);
+  // ... lined with grey steel inside, from the belt down to the floor (no seeing out through the bottom)
+  add(new THREE.SphereGeometry(0.985, 36, 12, 0, Math.PI * 2, tBelt - 0.03, Math.PI - tBelt + 0.03).scale(SAX, SAY, SAZ), M.lining);
   // a steel belt round it, ribs over the dome, and a spine
   const ring = (rx: number, rz: number, r: number) => new THREE.TorusGeometry(1, r, 6, 56).rotateX(Math.PI / 2).scale(rx, 1, rz);
   add(ring(halfX(BELT, 0) + 0.02, SAZ * Math.sqrt(1 - (BELT / SAY) ** 2) + 0.02, 0.06).translate(0, BELT, 0), M.steel);
+  // (each rib runs from the belt on one side, over the top, down to the belt on the other)
   for (const z of [-0.4, 1.6]) {
-    const hx = halfX(0, z), hy = SAY * Math.sqrt(1 - (z / SAZ) ** 2);
-    add(new THREE.TorusGeometry(1, 0.035, 5, 40, Math.PI).scale(hx + 0.01, hy + 0.01, 1).translate(0, 0, z), M.steel);
+    const hx = halfX(0, z) + 0.01, hy = SAY * Math.sqrt(1 - (z / SAZ) ** 2) + 0.01, a0 = Math.asin(Math.max(-1, BELT / hy));
+    add(new THREE.TorusGeometry(1, 0.035, 5, 48, Math.PI - 2 * a0).rotateZ(a0).scale(hx, hy, 1).translate(0, 0, z), M.steel);
   }
   // the hatch on top: a collar, and its lid on a hinge
   add(new THREE.CylinderGeometry(0.5, 0.52, 0.16, 24, 1, true).translate(0, SAY - 0.02, 0), M.steel);
