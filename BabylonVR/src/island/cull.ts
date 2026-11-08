@@ -9,6 +9,8 @@ import { type AbstractMesh, Frustum, type Plane, type RenderTargetTexture, type 
  * still throw their shadow into it).
  */
 export function cullRenderTarget(rtt: RenderTargetTexture, scene: Scene, keepNear = false) {
+    // (?nocull: draw the whole list as before, to compare)
+    if (typeof location !== "undefined" && /[?&]nocull\b/.test(location.search)) return;
     const out: AbstractMesh[] = [];
     const planes: Plane[] = Frustum.GetPlanes(scene.getTransformMatrix());
     rtt.getCustomRenderList = (_pass, list, len) => {
