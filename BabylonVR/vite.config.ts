@@ -3,16 +3,18 @@ import basicSsl from "@vitejs/plugin-basic-ssl";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
 
-// the game's version, shown on the main menu: 1.<number of commits>, the day and the commit, so every new build is easy
-// to spot. Hosted builds (Cloudflare's) clone only the last commit, where a count means nothing: there the build's own
-// date and time and the commit tell one build from the next. (No fetching of the history during a build: the repository
-// is large, and that made deploys slow or fail.)
+// the game's version, shown on the main menu: 1.<number of commits>, the day it was built and the commit, so every new
+// build is easy to spot. (Hosted builds - Cloudflare's - clone just the last commit, which made the count 1 every time:
+// the full history is fetched first when it is missing, and if that is not possible the build's own date and the commit
+// still tell one build from the next.)
 const version = (() => {
     const cwd = fileURLToPath(new URL(".", import.meta.url));
-    const git = (c: string) => execSync(`git ${c}`, { cwd, stdio: ["ignore", "pipe", "ignore"], timeout: 5000 }).toString().trim();
+    const git = (c: string) => execSync(`git ${c}`, { cwd, stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
     try {
+        if (git("rev-parse --is-shallow-repository") === "true") { try { git("fetch --unshallow --quiet"); } catch { /* no access: see below */ } }
+        const shallow = git("rev-parse --is-shallow-repository") === "true";
         const sha = (process.env.WORKERS_CI_COMMIT_SHA || git("rev-parse HEAD")).slice(0, 7);
-        if (git("rev-parse --is-shallow-repository") !== "true") return `v1.${git("rev-list --count HEAD")} · ${git("log -1 --format=%cs")} · ${sha}`;
+        if (!shallow) return `v1.${git("rev-list --count HEAD")} · ${git("log -1 --format=%cs")} · ${sha}`;
         const now = new Date().toISOString();
         return `v1 · ${now.slice(0, 10)} ${now.slice(11, 16)} · ${sha}`;
     } catch { return "v1 · dev"; }
