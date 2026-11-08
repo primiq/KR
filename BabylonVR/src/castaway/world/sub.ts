@@ -38,6 +38,8 @@ export class Sub {
   /** how far below its floating depth it is (m) */
   depth = 0;
   y = 0; v = 0; yawV = 0; vy = 0; pitch = 0; roll = 0;
+  /** sliding sideways (+ to starboard), m/s */
+  vs = 0;
   /** remote: where the driver says it is */
   tx: number; tz: number; tyaw: number; tv = 0; tdepth = 0;
   /** the moving parts */
@@ -355,7 +357,7 @@ export class Subs {
 
   // -------------------------------------------------------------- every frame
   /** `ctl`: my stick / keys (if I drive): x turn, y ahead, rise up (+) or down (-) */
-  update(dt: number, time: number, ctl: { x: number; y: number; rise: number; boost: boolean }) {
+  update(dt: number, time: number, ctl: { x: number; y: number; rise: number; boost: boolean; strafe?: number }) {
     for (const s of this.list) {
       for (let i = 0; i < 4; i++) { const p = s.seats[i]; if (p !== null && p !== this.myId && !this.present(p)) s.seats[i] = null; }
       const driver = s.seats[0];
@@ -391,7 +393,7 @@ export class Subs {
     }
   }
   /** the controls: ahead and astern, turning, diving and rising; it won't go aground or dig into the bottom */
-  private drive(s: Sub, dt: number, ctl: { x: number; y: number; rise: number; boost: boolean }) {
+  private drive(s: Sub, dt: number, ctl: { x: number; y: number; rise: number; boost: boolean; strafe?: number }) {
     const maxV = ctl.boost ? 6.5 : 4.5;
     const want = ctl.y >= 0 ? ctl.y * maxV : ctl.y * 2;
     s.v += (want - s.v) * Math.min(1, dt * (Math.abs(want) > Math.abs(s.v) ? 0.5 : 0.8));
@@ -406,13 +408,16 @@ export class Subs {
     if (nd > 1.5 && Math.hypot(s.x, s.z) > DEEP_R) { nd = Math.min(nd, s.depth); if (nd > 1.5) s.vy = Math.max(s.vy, 0.8); }
     if (nd > s.depth && !this.clear(s.x, s.z, s.yaw, nd + 0.3, sea)) { nd = s.depth; s.vy = 0; }
     s.depth = nd;
-    const nx = s.x - Math.sin(s.yaw) * s.v * dt, nz = s.z - Math.cos(s.yaw) * s.v * dt;
+    // sideways (VR: the left stick), slowly
+    s.vs += ((ctl.strafe ?? 0) * 2 - s.vs) * Math.min(1, dt * 1.5);
+    const cs = Math.cos(s.yaw), sn = Math.sin(s.yaw);
+    const nx = s.x - sn * s.v * dt + cs * s.vs * dt, nz = s.z - cs * s.v * dt - sn * s.vs * dt;
     const ok = this.clear(nx, nz, s.yaw, s.depth, sea) && Math.hypot(nx, nz) < WRECK_R + 60 && !(s.depth > 1.5 && Math.hypot(nx, nz) > DEEP_R && Math.hypot(nx, nz) > Math.hypot(s.x, s.z)) && !this.list.some((o) => o !== s && Math.hypot(o.x - nx, o.z - nz) < 7);
     if (ok) { s.x = nx; s.z = nz; }
     else {
       const edge = s.depth > 1.5 && Math.hypot(nx, nz) > DEEP_R;
       if (Math.abs(s.v) > 1.2 || edge) { if (!edge) { this.sfx?.bonk(); this.shake?.(0.25); } this.sayOnce(edge ? 'Past here the sea has no floor: surface to go on.' : s.depth > 1 ? 'Bump! The bottom is too close: rise (Space) or back off (S).' : 'Too shallow here. Back off with S.'); }
-      s.v *= -0.25;
+      s.v *= -0.25; s.vs = 0;
     }
     s.tx = s.x; s.tz = s.z; s.tyaw = s.yaw; s.tv = s.v; s.tdepth = s.depth;
   }

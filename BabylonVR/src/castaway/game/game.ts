@@ -136,6 +136,8 @@ export class Game {
     private pokeWas = false;
     /** (VR) the left stick up / down while driving a submarine */
     subRise = 0;
+    /** (VR) the left stick left / right while driving a submarine: slide sideways */
+    subStrafe = 0;
     private subAim: { ok: boolean; why: string; x: number; z: number; yaw: number } | null = null;
     private boatAim: { ok: boolean; why: string; x: number; z: number; yaw: number } | null = null;
     private boatTurn = 0;
@@ -1780,7 +1782,7 @@ export class Game {
     }
     private subHint() {
         const vr = this.vr.active, touch = this.input.touch;
-        if (this.subs.seat === 0) this.hud.message(vr ? "At the controls: left stick steers and goes up and down, right trigger ahead, left trigger astern · A climb out at the surface" : touch ? "At the controls: the stick drives, JUMP rises, hold HIT to dive · USE climb out at the surface" : "At the controls: W / S ahead and astern, A / D steer, Space up, Ctrl or X down, Shift full speed · E climb out at the surface");
+        if (this.subs.seat === 0) this.hud.message(vr ? "At the controls: left stick up and down and slides sideways, right stick steers and drives (or the triggers) · A climb out at the surface" : touch ? "At the controls: the stick drives, JUMP rises, hold HIT to dive · USE climb out at the surface" : "At the controls: W / S ahead and astern, A / D steer, Space up, Ctrl or X down, Shift full speed · E climb out at the surface");
         else this.hud.message(`You sit down in the submarine. ${vr ? "X" : touch ? "⟳" : "R"} takes the controls if nobody has them.`);
     }
     private leaveSub(force = false) {
@@ -1813,7 +1815,7 @@ export class Game {
         if (this.subs.mine && this.stats.dead) this.leaveSub(true);
         const drv = this.subHelm && !this.hud.inventoryOpen;
         const rise = this.vr.active ? this.subRise : (i.jumpHeld ? 1 : 0) - (i.wantsDive || i.attackHeld ? 1 : 0);
-        this.subs.update(dt, performance.now() / 1000, drv ? { x: i.move.x, y: i.move.y, rise, boost: i.wantsSprint } : { x: 0, y: 0, rise: 0, boost: false });
+        this.subs.update(dt, performance.now() / 1000, drv ? { x: i.move.x, y: i.move.y, rise, boost: i.wantsSprint, strafe: this.vr.active ? this.subStrafe : 0 } : { x: 0, y: 0, rise: 0, boost: false, strafe: 0 });
         if (this.subs.mine) i.jumpQueued = false;
         // the floodlights: the nearest sub with them on gets the two spot lights (bow, stern)
         let best: Sub | null = null, bd = 90;

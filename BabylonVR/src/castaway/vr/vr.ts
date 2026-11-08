@@ -294,9 +294,18 @@ export class CastawayVR {
         // ---- driving a car or steering a boat: left stick steers, right trigger is gas, left trigger brakes / reverses
         if (game.under.air?.driving || game.boatHelm || game.subHelm) {
             input.move.x = sx;
-            // (a submarine: the stick's up and down takes it up and down instead; the triggers go ahead and astern)
-            input.move.y = game.subHelm ? val(R, 0) - val(L, 0) : Math.max(val(R, 0), -sy) - val(L, 0);
-            game.subRise = game.subHelm && Math.abs(sy) > 0.25 ? -sy : 0;
+            input.move.y = Math.max(val(R, 0), -sy) - val(L, 0);
+            game.subRise = 0; game.subStrafe = 0;
+            if (game.subHelm) {
+                // a submarine: the left stick moves it straight up and down and slides it sideways; the right stick aims it
+                // (left and right turn it, forward and back drive it); the triggers drive it too
+                let rx = axis(R, 2) || axis(R, 0), ry = axis(R, 3) || axis(R, 1);
+                if (Math.hypot(rx, ry) < 0.2) { rx = 0; ry = 0; }
+                input.move.x = rx;
+                input.move.y = Math.max(-1, Math.min(1, -ry + val(R, 0) - val(L, 0)));
+                game.subRise = -sy;
+                game.subStrafe = sx;
+            }
             input.sprint = lGrip;
             if (R) {
                 const a = btn(R, 4), sq = btn(R, 1), b = btn(R, 5), used = a || sq;

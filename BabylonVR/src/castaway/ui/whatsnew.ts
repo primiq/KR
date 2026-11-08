@@ -11,6 +11,7 @@ export const UPDATES: Update[] = [
             "Past the reef the sea floor now drops down a wall into the abyss, about 100 m deep, where the daylight dies away to black.",
             "Submarines have floodlights at the bow and stern: press the button at the top left of the console to switch them on.",
             "Deep sea life that glows in the dark: lantern fish, jellyfish, squid and anglerfish.",
+            "VR: drive the submarine with the sticks. The left stick takes it up and down and slides it sideways, the right stick steers and drives it.",
             "Treasure chests lie on the floor of the abyss. Bring the submarine close and anyone inside can press E to loot it. They fill up again after a while.",
         ],
     },
