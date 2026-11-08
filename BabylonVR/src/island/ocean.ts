@@ -315,9 +315,15 @@ export class Ocean {
         const mt = new MirrorTexture("oceanReflection", { ratio }, this.scene, false, Constants.TEXTURETYPE_HALF_FLOAT);
         mt.mirrorPlane = new Plane(0, -1, 0, -0.05);
         mt.refreshRate = refreshRate;
-        mt.renderListPredicate = (m) => m !== this.mesh && m.isEnabled() && include(m);
-        // (only what the mirrored view can see: Babylon would draw the whole list every frame)
-        cullRenderTarget(mt, this.scene);
+        // The list: every mesh but the sea, kept up to date as meshes come and go. (Not Babylon's renderListPredicate: with
+        // one, it empties and refills the list every frame, and an emptied list marks every material in the scene as
+        // needing its lights worked out again, so every material was re-prepared every frame: a large share of the CPU.)
+        // What `include` picks, and only what the mirrored view can see, is chosen each frame from it.
+        const list: AbstractMesh[] = this.scene.meshes.filter((m) => m !== this.mesh);
+        mt.renderList = list;
+        this.scene.onNewMeshAddedObservable.add((m) => { if (m !== this.mesh) list.push(m); });
+        this.scene.onMeshRemovedObservable.add((m) => { const i = list.indexOf(m); if (i >= 0) list.splice(i, 1); });
+        cullRenderTarget(mt, this.scene, false, include);
         mt.clearColor = new Color4(0, 0, 0, 1);
         this.reflection = mt;
         this.scene.customRenderTargets.push(mt);

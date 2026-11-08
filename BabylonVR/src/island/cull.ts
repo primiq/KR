@@ -8,9 +8,9 @@ import { type AbstractMesh, Frustum, type Plane, type RenderTargetTexture, type 
  * `keepNear`: ignore the near plane (a shadow cascade with depth clamping: casters between the sun and the cascade
  * still throw their shadow into it).
  */
-export function cullRenderTarget(rtt: RenderTargetTexture, scene: Scene, keepNear = false) {
-    // (?nocull: draw the whole list as before, to compare)
-    if (typeof location !== "undefined" && /[?&]nocull\b/.test(location.search)) return;
+export function cullRenderTarget(rtt: RenderTargetTexture, scene: Scene, keepNear = false, include?: (m: AbstractMesh) => boolean) {
+    // (?nocull: no frustum test, to compare)
+    const noCull = typeof location !== "undefined" && /[?&]nocull\b/.test(location.search);
     const out: AbstractMesh[] = [];
     const planes: Plane[] = Frustum.GetPlanes(scene.getTransformMatrix());
     rtt.getCustomRenderList = (_pass, list, len) => {
@@ -22,8 +22,8 @@ export function cullRenderTarget(rtt: RenderTargetTexture, scene: Scene, keepNea
         if (!list) return null;
         for (let i = 0; i < len; i++) {
             const m = list[i] as AbstractMesh;
-            if (!m.isEnabled() || !m.isVisible) continue;
-            if (m.alwaysSelectAsActiveMesh || m.isInFrustum(planes)) out.push(m);
+            if (!m.isEnabled() || !m.isVisible || (include && !include(m))) continue;
+            if (noCull || m.alwaysSelectAsActiveMesh || m.isInFrustum(planes)) out.push(m);
         }
         return out;
     };

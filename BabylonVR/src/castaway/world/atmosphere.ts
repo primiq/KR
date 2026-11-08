@@ -206,7 +206,7 @@ export class Atmosphere {
         }
         if (this.ug) {
             this.sun.intensity = 0;
-            this.sun.setEnabled(false);
+            if (this.sun.isEnabled()) this.sun.setEnabled(false);
             this.moon.intensity = 0;
             this.scene.environmentIntensity = 0;
             this.caveFill.intensity = 0.3;
@@ -218,7 +218,7 @@ export class Atmosphere {
             this.scene.fogColor = new Color3(0.012, 0.016, 0.03);
             return;
         }
-        this.sun.setEnabled(true);
+        if (!this.sun.isEnabled()) this.sun.setEnabled(true);
         // ---- the weather: a grey sky lets less sun and sky light through; lightning lights everything up for a moment
         const ov = this.overcast;
         this.sun.intensity *= 1 - 0.85 * ov;
@@ -247,7 +247,7 @@ export class Atmosphere {
             const ce = this.cloudMat.emissiveColor;
             ce.set(ce.r + (1.0 * 0.85 - ce.r) * dw, ce.g + (0.32 * 0.85 - ce.g) * dw, ce.b + (0.14 * 0.85 - ce.b) * dw);
             this.cloudMat.alpha = Math.max(this.cloudMat.alpha * (ov > 0.01 || cu > 0.01 ? 1 : 0), dw * 0.9);
-            this.sun.setEnabled(true);
+            if (!this.sun.isEnabled()) this.sun.setEnabled(true);
             this.sun.diffuse = Color3.Lerp(this.sun.diffuse, new Color3(1.0, 0.55, 0.28), dw * 0.8);
             this.sun.intensity += (2.2 - this.sun.intensity) * dw;
             this.scene.environmentIntensity += (0.6 - this.scene.environmentIntensity) * dw;
