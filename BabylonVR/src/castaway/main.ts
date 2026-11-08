@@ -81,6 +81,7 @@ import { Game } from "./game/game";
 import { planSprings } from "./game/resources";
 import { driveWind, Wind } from "./render/foliage";
 import { shadowCasters, shadowEpoch } from "./render/inst";
+import { cullRenderTarget } from "../island/cull";
 import { CLASSIC, cutBounds, findSpawn, heightAt, SPAWN_THETA, TERRAIN_SIZE } from "./world/island";
 import { Waterfall } from "./world/waterfall";
 import { Seabed } from "./world/seabed";
@@ -300,6 +301,8 @@ async function main() {
     sun.diffuse = new Color3(1, 0.9, 0.76);
     if (!q.shadows) shadows.getShadowMap()!.refreshRate = 0;
     // medium: lighter shadows than high (two cascades, softer filtering, over a shorter distance)
+    // (each cascade draws only the casters that can reach it, not every caster on the island four times over)
+    cullRenderTarget(shadows.getShadowMap()!, scene, true);
     if (q.name === "medium") { shadows.numCascades = 2; shadows.filteringQuality = CascadedShadowGenerator.QUALITY_MEDIUM; shadows.shadowMaxZ = 45; }
     scene.environmentIntensity = 1;
 

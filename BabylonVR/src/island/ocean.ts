@@ -1,3 +1,4 @@
+import { cullRenderTarget } from "./cull";
 import {
     type AbstractMesh,
     type BaseTexture,
@@ -315,6 +316,8 @@ export class Ocean {
         mt.mirrorPlane = new Plane(0, -1, 0, -0.05);
         mt.refreshRate = refreshRate;
         mt.renderListPredicate = (m) => m !== this.mesh && m.isEnabled() && include(m);
+        // (only what the mirrored view can see: Babylon would draw the whole list every frame)
+        cullRenderTarget(mt, this.scene);
         mt.clearColor = new Color4(0, 0, 0, 1);
         this.reflection = mt;
         this.scene.customRenderTargets.push(mt);
