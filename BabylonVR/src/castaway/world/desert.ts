@@ -273,7 +273,7 @@ float dOffset(vec2 w) { vec4 s = dDefAt(w); return s.g - s.r; }
         m.Fragment_Custom_Albedo(`
             vec3 wp = vPositionW;
             // (no sand inside a pool's basin)
-            if (poolN > 0.5 && inPool(wp.xz)) discard;
+            if (poolN > 0.5 && inPool(wp.xyz)) discard;
             // the coarse grid leaves a hole where the fine one is
             if (dWin.w < 0.5 && all(lessThan(abs(wp.xz - dFine.xy), vec2(dFine.z - 0.15)))) discard;
             // the dug and heaped sand and the footprints, shaped per pixel (sharper than either grid can show)

@@ -663,7 +663,8 @@ export class StructureManager {
     if (kind === "rug") {
       const rugNode = [...baked.kept.values()][0];
       const rm = rugMaterial(this.scene, Math.round(a.x * 97) * 31 + Math.round(a.z * 89) * 17);
-      for (const c of rugNode.getChildMeshes()) c.material = rm;
+      // (the rug is itself the mesh: give it, and anything under it, the pattern)
+      for (const c of [rugNode, ...rugNode.getChildMeshes()]) if ((c as AbstractMesh).getTotalVertices?.()) (c as AbstractMesh).material = rm;
     }
     const cols: Collider[] = this.worldCircles(kind, a.x, a.z, a.yaw).map((c) => ({ x: c.x, z: c.z, r: c.r }));
     if (!onTop) cols.forEach((c) => this.colliders.add(c));

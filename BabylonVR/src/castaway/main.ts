@@ -80,7 +80,7 @@ import { type GfxCustom, pickQuality } from "./core/quality";
 import { Game } from "./game/game";
 import { planSprings } from "./game/resources";
 import { driveWind, Wind } from "./render/foliage";
-import { shadowCasters } from "./render/inst";
+import { shadowCasters, shadowEpoch } from "./render/inst";
 import { CLASSIC, cutBounds, findSpawn, heightAt, SPAWN_THETA, TERRAIN_SIZE } from "./world/island";
 import { Waterfall } from "./world/waterfall";
 import { Seabed } from "./world/seabed";
@@ -683,10 +683,10 @@ async function main() {
     vegetation.update(spawn.x, spawn.z, true);
 
     // ---- shadows follow the set of casters (trees felled, pieces built)
-    let casterCount = -1;
+    let casterCount = -1, casterEpoch = -1;
     const syncCasters = () => {
-        if (!q.shadows || casterCount === shadowCasters.size) return;
-        casterCount = shadowCasters.size;
+        if (!q.shadows || (casterCount === shadowCasters.size && casterEpoch === shadowEpoch.n)) return;
+        casterCount = shadowCasters.size; casterEpoch = shadowEpoch.n;
         const list = shadows.getShadowMap()!.renderList!;
         list.length = 0;
         for (const m of shadowCasters) list.push(m as Mesh);

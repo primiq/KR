@@ -99,7 +99,7 @@ export class Terrain {
         m.AddUniform("poolN", "float", 0);
         m.Fragment_Custom_Albedo(`
             // (no ground inside a pool's basin: its tiled walls and floor are there instead)
-            if (poolN > 0.5 && inPool(vPositionW.xz)) discard;
+            if (poolN > 0.5 && inPool(vPositionW)) discard;
             vec2 wxz = vPositionW.xz;
             float hgt = vPositionW.y;
             vec3 nW = normalize(vNormalW);

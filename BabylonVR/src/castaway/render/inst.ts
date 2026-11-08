@@ -7,6 +7,8 @@ let hooked: Scene | null = null;
 
 /** Every mesh that should cast shadows registers here; the sun's shadow generator picks them up. */
 export const shadowCasters = new Set<Mesh>();
+/** bumped whenever the casters change in a way their count would not show (one swapped for another) */
+export const shadowEpoch = { n: 0 };
 
 /**
  * A Babylon mesh drawn with thin instances, behind the same small API as three's InstancedMesh (setMatrixAt /

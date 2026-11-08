@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { PBRCustomMaterial } from "@babylonjs/materials";
 import { meshFromThree } from "../render/geometry";
-import { shadowCasters } from "../render/inst";
+import { shadowCasters, shadowEpoch } from "../render/inst";
 import { ghostMaterial, glassMaterial, NOISE_GLSL, setGhostOk, stoneMaterials, woodMaterials } from "../render/materials";
 import { addCut, baseHeightAt, cutBounds, heightAt, removeCut, type Cut } from "../world/island";
 import type { ColliderGrid } from "../world/vegetation";
@@ -72,7 +72,8 @@ export const POOL_RIM = 0.45, POOL_WATER = 0.1, POOL_DEPTH = 2.0;
 let POOL_SEA: Material | null = null;
 export function setPoolWater(m: Material) { POOL_SEA = m; }
 /** every pool's open water (world x0, z0, x1, z1 per cell, up to 24): the ground is not drawn inside, where the basin is */
-export const POOL_RECTS = { data: new Float32Array(24 * 4), n: 0, version: 0 };
+/** pools' open water rectangles (row 0: x0, z0, x1, z1) and their basin floors (row 1: y), for the ground shaders */
+export const POOL_RECTS = { data: new Float32Array(24 * 4 * 2), n: 0, version: 0 };
 /** a pool's water surface for the sea's shader (island/ocean.ts makeLake): small ripples, its "seabed" `seeDepth` below */
 export const POOL_VS = `
 precision highp float;
@@ -106,18 +107,19 @@ let POOL_TEX: RawTexture | null = null;
 /** POOL_RECTS as a 24 x 1 float texture (kept up to date) for the ground shaders: `if (inPool(xz)) discard;` */
 export function poolRectsTexture(scene: Scene): RawTexture {
     if (POOL_TEX) return POOL_TEX;
-    const t = RawTexture.CreateRGBATexture(new Float32Array(24 * 4), 24, 1, scene, false, false, Texture.NEAREST_SAMPLINGMODE, Constants.TEXTURETYPE_FLOAT);
+    const t = RawTexture.CreateRGBATexture(new Float32Array(24 * 4 * 2), 24, 2, scene, false, false, Texture.NEAREST_SAMPLINGMODE, Constants.TEXTURETYPE_FLOAT);
     let v = -1;
     scene.onBeforeRenderObservable.add(() => { if (v !== POOL_RECTS.version) { v = POOL_RECTS.version; t.update(POOL_RECTS.data); } });
     return (POOL_TEX = t);
 }
 /** GLSL: is this ground point inside a pool's basin (uniforms poolTex, poolN) */
 export const POOL_GLSL = `
-bool inPool(vec2 w) {
+bool inPool(vec3 w) {
     for (int i = 0; i < 24; i++) {
         if (float(i) >= poolN) break;
         vec4 r = texelFetch(poolTex, ivec2(i, 0), 0);
-        if (w.x > r.x && w.y > r.y && w.x < r.z && w.y < r.w) return true;
+        // (only ground at or above the basin's floor: a pool built up on a floor or a deck leaves the ground under it alone)
+        if (w.x > r.x && w.z > r.y && w.x < r.z && w.z < r.w && w.y > texelFetch(poolTex, ivec2(i, 1), 0).x - 0.15) return true;
     }
     return false;
 }`;
@@ -421,7 +423,73 @@ export function rayGround(
   return { x: eye.x + dir.x * max, y: eye.y + dir.y * max, z: eye.z + dir.z * max, hit: false, t: max };
 }
 
+/**
+ * Batching: a house is hundreds of small meshes (each piece has one per material), and every one of them was its own
+ * draw call, drawn again for the shadows and again for the sea's reflection, so a big house slowed everything down.
+ * Pieces are grouped by area (AREA x AREA cells); each area's static parts are merged into one mesh per material, and
+ * the pieces' own meshes are hidden (they stay, for the game). An area is merged again whenever a piece in it changes.
+ * Window casements (they swing), glass and pool water are left as they are.
+ */
+const AREA = 4;
+const NO_MERGE = /_(glass|pool)$/;
+class Batcher {
+    private areas = new Map<string, { pieces: Set<Piece>; merged: Mesh[] }>();
+    private dirty = new Set<string>();
+    constructor(private readonly shadows: boolean) {}
+    private keyOf(p: Piece) { return `${Math.floor(p.i / AREA)},${Math.floor(p.j / AREA)}`; }
+    add(p: Piece) {
+        const k = this.keyOf(p);
+        let a = this.areas.get(k);
+        if (!a) this.areas.set(k, (a = { pieces: new Set(), merged: [] }));
+        a.pieces.add(p);
+        this.dirty.add(k);
+    }
+    remove(p: Piece) { const k = this.keyOf(p); this.areas.get(k)?.pieces.delete(p); this.dirty.add(k); }
+    changed(p: Piece) { this.dirty.add(this.keyOf(p)); }
+    /** the meshes of a piece that can be merged (not a casement under its hinge, not glass or water) */
+    private parts(p: Piece): Mesh[] {
+        const sash = new Set<unknown>((p.group.metadata?.sash ?? []) as unknown[]);
+        return (p.group.getChildren().filter((c) => c instanceof Mesh && !sash.has(c)) as Mesh[]).filter((m) => !NO_MERGE.test(m.name) && m.getTotalVertices() > 0 && !m.isDisposed());
+    }
+    /** every frame: merge a few changed areas (a big save loading spreads its work over a few frames) */
+    update(max = 3) {
+        let n = 0;
+        for (const k of this.dirty) {
+            if (n++ >= max) break;
+            this.dirty.delete(k);
+            this.mergeArea(k);
+        }
+    }
+    private mergeArea(k: string) {
+        const a = this.areas.get(k);
+        if (!a) return;
+        for (const m of a.merged) { shadowCasters.delete(m); m.dispose(); }
+        a.merged = [];
+        const byMat = new Map<Material, Mesh[]>();
+        for (const p of a.pieces) {
+            for (const m of this.parts(p)) {
+                const mat = m.material; if (!mat) continue;
+                let l = byMat.get(mat); if (!l) byMat.set(mat, (l = [])); l.push(m);
+            }
+        }
+        for (const [mat, list] of byMat) {
+            for (const m of list) m.computeWorldMatrix(true);
+            const merged = Mesh.MergeMeshes(list, false, true, undefined, false, false);
+            if (!merged) continue;
+            merged.name = `houseArea_${k}`;
+            merged.material = mat; merged.isPickable = false; merged.receiveShadows = true;
+            if (this.shadows) shadowCasters.add(merged);
+            for (const m of list) { m.isVisible = false; shadowCasters.delete(m); }
+            a.merged.push(merged);
+        }
+        if (!a.pieces.size) this.areas.delete(k);
+        shadowEpoch.n++;
+    }
+}
+
 export class BuildingSystem {
+    /** see Batcher */
+    private batch: Batcher;
   readonly pieces = new Set<Piece>();
   private cells = new Map<string, Piece>();   // foundations and upper floors
   private roofs = new Map<string, Piece>();
@@ -462,6 +530,7 @@ export class BuildingSystem {
       buildInto(p.group, p.kind, this.shadows, 0.6, (lx, lz) => Math.min(30, Math.max(0.4, H - 0.3 - baseHeightAt(cx + lx, cz + lz) + 0.35)), st && p.kind === 'foundation', p.mask ?? 0);
     } else buildInto(p.group, p.kind, this.shadows, 0.6, undefined, st);
     const w = this.windows.get(p.key); if (w) this.poseWindow(p, w.ang);
+    this.batch.changed(p);
   }
 
   // ---- windows: the glazed casements open and shut (E); open ones are remembered by the window's key
@@ -487,6 +556,7 @@ export class BuildingSystem {
   }
   /** per frame: swing the casements */
   update(dt: number) {
+    this.batch.update();
     for (const [key, w] of this.windows) {
       const to = w.open ? w.sign * 1.35 : 0;
       if (Math.abs(to - w.ang) < 1e-3) { if (!w.open) this.windows.delete(key); continue; }
@@ -506,6 +576,7 @@ export class BuildingSystem {
 
   constructor(scene: Scene, private colliders: ColliderGrid, private shadows: boolean) {
     SCENE = scene;
+    this.batch = new Batcher(shadows);
     this.ghostMat = ghostMaterial(scene, 'buildGhost');
     for (const p of PIECES) {
       const gh = new TransformNode(`ghost_${p.kind}`, scene);
@@ -822,6 +893,7 @@ export class BuildingSystem {
 
   private register(p: Piece) {
     this.pieces.add(p);
+    this.batch.add(p);
     if (p.kind === 'foundation' || p.kind === 'pool' || p.kind === 'floor' || p.kind === 'stairs' || p.kind === 'roof') {
       const k = `${p.i},${p.j}`; let l = this.colAt.get(k); if (!l) this.colAt.set(k, (l = []));
       l.push(p);
@@ -974,6 +1046,7 @@ export class BuildingSystem {
     const col = this.colAt.get(`${p.i},${p.j}`);
     if (col) { const k = col.indexOf(p); if (k >= 0) col.splice(k, 1); }
     if (p.cut) { removeCut(p.cut); const b = cutBounds(p.cut); this.onTerrain?.(b.x0, b.z0, b.x1, b.z1); }
+    this.batch.remove(p);
     clearNode(p.group); p.group.dispose();
     for (const b of p.solid) {
       for (const l of this.boxCells.values()) { const k = l.indexOf(b); if (k >= 0) l.splice(k, 1); }
@@ -1016,6 +1089,7 @@ export class BuildingSystem {
       const m = p.mask ?? 0, x0 = p.i * CELL, z0 = p.j * CELL;
       d[n * 4] = x0 + (bit(m, 0) ? 0 : r) - 0.02; d[n * 4 + 1] = z0 + (bit(m, 2) ? 0 : r) - 0.02;
       d[n * 4 + 2] = x0 + CELL - (bit(m, 1) ? 0 : r) + 0.02; d[n * 4 + 3] = z0 + CELL - (bit(m, 3) ? 0 : r) + 0.02;
+      d[24 * 4 + n * 4] = p.H - POOL_DEPTH;
       n++;
     }
     POOL_RECTS.n = n; POOL_RECTS.version++;
