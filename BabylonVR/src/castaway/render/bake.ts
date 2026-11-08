@@ -30,7 +30,8 @@ export function bakeGroup(name: string, g: THREE.Group, scene: Scene, mat: (key:
     const toLocal = (m: THREE.Mesh, rel: THREE.Matrix4) => {
         let geo = m.geometry.clone();
         if (geo.index) geo = geo.toNonIndexed();
-        geo.deleteAttribute("uv");
+        // (texture coordinates only where a part asks for them, `userData.uv`: everything else is plain colour)
+        if (!m.userData.uv) geo.deleteAttribute("uv");
         geo.applyMatrix4(rel);
         return geo;
     };

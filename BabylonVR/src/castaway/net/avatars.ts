@@ -341,7 +341,9 @@ class Avatar {
     this.vel.x += (vx - this.vel.x) * kv; this.vel.y += (vy - this.vel.y) * kv; this.vel.z += (vz - this.vel.z) * kv;
     const fwd = -this.vel.x * Math.sin(this.yaw) - this.vel.z * Math.cos(this.yaw);
     const side = this.vel.x * Math.cos(this.yaw) - this.vel.z * Math.sin(this.yaw);
-    const hs = Math.hypot(fwd, side);
+    // (how fast the legs go: never more than the player's own walking speed, so someone standing on a moving boat, carried
+    //  along by it, stands still instead of walking on the spot)
+    const hs = Math.min(Math.hypot(fwd, side), this.spd * 1.15 + 0.15);
     let ang = hs > 0.35 ? Math.atan2(side, fwd) : 0, rev = 1;
     if (Math.abs(ang) > Math.PI / 2) { ang = ang > 0 ? ang - Math.PI : ang + Math.PI; rev = -1; }
     this.turn += (Math.max(-0.75, Math.min(0.75, ang * 0.55)) - this.turn) * Math.min(1, dt * 7);

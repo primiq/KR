@@ -787,6 +787,10 @@ async function main() {
                     ps.laserPointerDefaultColor = new Color3(1, 0.08, 0.05); ps.laserPointerPickedColor = new Color3(1, 0.35, 0.25);
                     ps.selectionMeshDefaultColor = new Color3(1, 0.1, 0.05); ps.selectionMeshPickedColor = new Color3(1, 0.4, 0.3);
                     ps.displayLaserPointer = true; ps.displaySelectionMesh = true;
+                    // (the laser and its dot draw after the menu board, which has its own pass so walls never hide it:
+                    //  otherwise the board covered them. Pass 2 keeps the depth of what came before, so the dot sits on the board)
+                    scene.setRenderingAutoClearDepthStencil(2, false, false, false);
+                    scene.onNewMeshAddedObservable.add((m) => { if (m.name === "laserPointer" || m.name === "gazeTracker") m.renderingGroupId = 2; });
                 }
             }
             const { CastawayVR } = await import("./vr/vr");
@@ -904,7 +908,8 @@ async function main() {
                 if (!player.cave) walkers.push({ id: "me", x: player.pos.x, y: player.pos.y, z: player.pos.z, run: player.sprinting });
                 if (sync) for (const a of sync.avatars.positions) { const st = sync.session.states.get(a.id); walkers.push({ id: a.id, x: a.x, y: a.y, z: a.z, run: !!st && (st.flags & 1) !== 0 }); }
                 desert.night = 1 - clock.day;
-                desert.update(dt, player.pos, walkers, camera.globalPosition, clock.hour);
+                // (the eye that is drawing: in a headset that is the headset's camera, not the screen one, which stays behind)
+                desert.update(dt, player.pos, walkers, (scene.activeCamera ?? camera).globalPosition, clock.hour);
                 worm.update(dt, player.pos, desert.active && !player.cave && !game.stats.dead, player.look);
                 {
                     const eye = scene.activeCamera?.globalPosition ?? camera.globalPosition;

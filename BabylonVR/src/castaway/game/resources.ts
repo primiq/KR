@@ -237,6 +237,8 @@ const FX_COLORS: Record<HitFx, number[]> = {
 const DRY_LEAF = [0x6f9a2a, 0x8fb83a, 0xa8b84a, 0x7a6a2a, 0x5a8a24];
 
 // ---------------------------------------------------------------- ground pickups
+/** a tag for this run of the game, so ids made now never match ids saved earlier */
+const SESSION = `${Math.floor(Math.random() * 36 ** 3).toString(36)}.`;
 export interface Pickup { nid: string; id: ItemId; count: number; dur?: number; x: number; y: number; z: number; mesh: Inst; index: number }
 
 type GeoFn = () => THREE.BufferGeometry;
@@ -360,7 +362,11 @@ export class PickupField {
         m.instanceMatrix.needsUpdate = true;
         this.used.get(id)![index] = 1;
         if (index + 1 > m.count) m.count = index + 1;
-        const p: Pickup = { nid: nid ?? `${this.idPrefix}${this.idCount++}`, id, count, x, y, z, mesh: m, index, dur };
+        // (a fresh id: never one an item already on the ground has; a saved world keeps its items' ids, and the counter starts
+        //  over each time the game loads, so a reused id made another player think they already had the new item)
+        let fresh = nid;
+        if (!fresh) { do fresh = `${this.idPrefix}${SESSION}${this.idCount++}`; while (this.byId.has(fresh)); }
+        const p: Pickup = { nid: fresh, id, count, x, y, z, mesh: m, index, dur };
         this.items.add(p);
         this.byId.set(p.nid, p);
         if (!silent) this.onSpawn?.(p);

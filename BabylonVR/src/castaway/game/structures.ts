@@ -310,7 +310,7 @@ function buildModel(kind: PlaceKind, shadows: boolean, hook = 0): { group: THREE
     case 'rug': {
       // the pattern is painted in by `rugPattern` once the rug knows where it lies (so everyone sees the same one)
       const m = mesh(new RoundedBoxGeometry(1.7, 0.02, 1.1, 2, 0.008), S.cream, 0, 0.012, 0, false);
-      m.name = 'rug'; m.receiveShadow = shadows; m.userData.keep = true;
+      m.name = 'rug'; m.receiveShadow = shadows; m.userData.keep = true; m.userData.uv = true;
       add(m);
       break;
     }
@@ -680,7 +680,7 @@ export class StructureManager {
     }
     const lamp = (m.group.userData.lamp as THREE.Vector3 | undefined) ?? null;
     const s: Structure = {
-      id: this.nextId++, nid: nid ?? `${this.idPrefix}${this.nextId}`, kind, x: a.x, y: a.y, z: a.z, yaw: a.yaw, node, cols, hits, inv,
+      id: this.nextId++, nid: nid ?? this.freshNid(), kind, x: a.x, y: a.y, z: a.z, yaw: a.yaw, node, cols, hits, inv,
       // a new campfire is built with a few logs already burning
       deck,
       fuel: kind === "campfire" ? 3 * WOOD_BURN.campfire : 0, lit: kind === "torch" || kind === "lantern" || kind === "campfire", prog: 0, flames, glow, lamp, phase: Math.random() * 10, emberT: 0,
@@ -900,6 +900,15 @@ export class StructureManager {
     const cur = this.handLight.includedOnlyMeshes;
     if (cur.length === list.length && list.every((m, i) => cur[i] === m)) return;
     this.handLight.includedOnlyMeshes = list;
+  }
+
+  /** a network id no structure has yet: tagged with this run of the game (a saved world keeps its structures' ids, and
+   *  the counter starts over on loading, so a reused id made another player think they already had the new one) */
+  private session = `${Math.floor(Math.random() * 36 ** 3).toString(36)}.`;
+  private freshNid() {
+    let n: string;
+    do n = `${this.idPrefix}${this.session}${this.nextId++}`; while (this.list.some((s) => s.nid === n));
+    return n;
   }
 
   /** The torch in your hand. */
