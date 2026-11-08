@@ -8,7 +8,7 @@ import { groundAt } from "../world/desertField";
 import type { Player } from "../world/player";
 import type { Vegetation, Zone } from "../world/vegetation";
 import { Sfx } from "./audio";
-import { BuildingSystem, CELL, PIECE_INFO, PIECES, type Piece, RAIL_H, STONE_COST } from "./building";
+import { BuildingSystem, CELL, PIECE_INFO, PIECES, type Piece, type PieceKind, RAIL_H, STONE_COST } from "./building";
 import { Inventory } from "./inventory";
 import { ARMOR_SLOTS, type GatherKind, GATHER_ITEM, GATHER_LABEL, ITEMS, type ItemId, type PlaceKind } from "./items";
 import { BENCH_REACH, COAL_BURN, MAX_FUEL, type Recipe, craft } from "./recipes";
@@ -35,7 +35,7 @@ import { Invaders } from "../world/invaders";
 import { CHORDS, Guitar } from "./guitar";
 import { Drum } from "./drum";
 import { Slide } from "../world/slide";
-import { type Boat, Boats } from "../world/boat";
+import { type Boat, Boats, type RaftAim } from "../world/boat";
 import { skyMirrorMaterial } from "../world/skyView";
 import type { Skydive } from "../world/skydive";
 import { Twins } from "./twins";
@@ -44,7 +44,7 @@ import { type FrameAim, type Painting, Paintings } from "./paintings";
 import { Painter } from "../ui/painter";
 import type { Weather } from "../world/weather";
 import { FISH_WIGGLE, SeaLife } from "../world/sealife";
-import { deckMaterial, fishMaterial, glassMaterial } from "../render/materials";
+import { deckMaterial, deckWallMaterial, fishMaterial, glassMaterial } from "../render/materials";
 import { Flowers } from "../world/flowers";
 import { isProbablyHeadset } from "../../config";
 import { FLOWERS } from "../world/flowerKinds";
@@ -136,6 +136,7 @@ export class Game {
     eyeBlur = 0;
     private wreckStage = 0;
     private wakeAt = { x: 0, z: 0, yaw: 0 };
+    private wreckRaft = false;
     private lidsEl: HTMLElement | null = null;
     private ivDir = new THREE.Vector3();
     /** doors hung in doorways, and pictures on the walls (with the paint editor) */
@@ -401,7 +402,7 @@ export class Game {
         this.sealife = new SeaLife(this.natureRoot, !o.shadows);
         this.natureMirror = new ThreeMirror(o.scene, this.natureRoot, null, o.shadows, {
             custom: (m) => (m.name.startsWith("fish") ? fishMaterial(o.scene, FISH_WIGGLE[+m.name.slice(4)] ?? 0.1)
-                : m.name === "skyMirror" ? skyMirrorMaterial(o.scene) : m.name === "woodSlab" ? deckMaterial(o.scene) : m.name === "glass" ? glassMaterial(o.scene) : druidMaterial(o.scene, m)),
+                : m.name === "skyMirror" ? skyMirrorMaterial(o.scene) : m.name === "woodSlab" ? deckMaterial(o.scene) : m.name === "woodWall" ? deckWallMaterial(o.scene) : m.name === "glass" ? glassMaterial(o.scene) : druidMaterial(o.scene, m)),
         });
         this.birds.sound = (k, v) => { if (k === "chirp") this.sfx.chirp(v); else this.sfx.flutter(v); };
         this.flamingos.sound = (k, v) => { if (k === "honk") this.sfx.honk(v); else this.sfx.flutter(v); };
@@ -976,6 +977,10 @@ export class Game {
         if (!ug.active && def?.kind === "plan") {
             if (input.cycleDelta) { this.cyclePiece(input.cycleDelta); input.cycleDelta = 0; }
             const pc = PIECES[this.pieceIdx];
+            // on (or looking at) a raft: build on the raft
+            const ra = this.boats.raftAim(pc.kind, eye, dir, player.yaw);
+            if (ra) { this.raftPlan(dt, ra, pc, eye, dir); return; }
+            this.boats.showRaftGhost(null);
             const aim = this.building.updateGhost(pc.kind, eye, dir);
             const have = this.inv.count("wood");
             const keys = this.vr.active ? "Trigger place · Y change piece · hold A remove · X to stone" : input.touch ? "HIT place · tap here to change piece · hold USE to remove · ⟳ to stone" : "Click place · Q change piece · hold E remove · R to stone";
@@ -1034,7 +1039,7 @@ export class Game {
         const useStone = !!dz && !useDoor && (!t || dz.dist < t.dist + 0.3) && (!st || dz.dist < st.dist);
         // holding a boat: show where it would go in the water
         if (def?.boat && input.rotateQueued) { this.boatTurn += (Math.PI / 4) * input.rotateQueued; input.rotateQueued = 0; }
-        this.boatAim = def?.boat && !ug.active && !this.boats.on ? this.boats.aim(eye, dir, player.yaw + Math.PI / 2 + this.boatTurn) : null;
+        this.boatAim = def?.boat && !ug.active && !this.boats.on ? this.boats.aim(eye, dir, player.yaw + (def.raft ? 0 : Math.PI / 2) + this.boatTurn, !!def.raft) : null;
         this.boats.showGhost(this.boatAim, performance.now() / 1000);
         // a boat: climb aboard from outside; on deck, the wheel
         let bt = ug.active || this.boats.atHelm ? null : this.boats.target(eye, dir, 4.5);
@@ -1044,11 +1049,11 @@ export class Game {
         if (useBoat && bt) {
             const b = bt.b, E = this.keyLabel("E");
             if (bt.what === "board") {
-                hud.setPrompt("Boat", `${E} climb aboard${this.boats.aboard(b) ? "" : ` &nbsp;·&nbsp; hold ${E} pack it up`}`, true);
+                hud.setPrompt(b.raft ? "Raft" : "Boat", `${E} climb aboard${this.boats.aboard(b) ? "" : ` &nbsp;·&nbsp; hold ${E} pack it up`}`, true);
                 this.runHold(dt, b, () => { this.boats.board(b, player.pos, player.vel); player.mode = "walk"; player.lastY = player.pos.y; }, () => this.pickupBoat(b));
             } else {
                 const busy = b.helm !== null && b.helm !== this.netId;
-                hud.setPrompt("Wheel", busy ? "Somebody else is steering" : `${E} take the wheel`, !busy);
+                hud.setPrompt(b.raft ? "Oar" : "Wheel", busy ? "Somebody else is steering" : `${E} take the ${b.raft ? "oar" : "wheel"}`, !busy);
                 this.runHold(dt, b, () => { if (!busy) this.takeHelm(b); }, () => {});
             }
         } else if (useStone && dz) {
@@ -1143,9 +1148,9 @@ export class Game {
                 const ba = this.boatAim;
                 if (!ba || !ba.ok) { hud.message(ba?.why || "Aim at open water"); this.sfx.denied(); }
                 else {
-                    this.boats.add(`b${this.netId}_${Math.random().toString(36).slice(2, 8)}`, ba.x, ba.z, ba.yaw);
+                    this.boats.add(`b${this.netId}_${Math.random().toString(36).slice(2, 8)}`, ba.x, ba.z, ba.yaw, false, def.raft ? [["t", 0, 0]] : undefined);
                     this.inv.takeAt(hud.selected, 1); this.sfx.splash(0.9); view.place();
-                    hud.message("In the water! Look at it and press E to get in.");
+                    hud.message(def.raft ? "Raft in the water! Climb on with E, steer with the oar at the back, and build on it with the building plan." : "In the water! Look at it and press E to get in.");
                 }
             }
             else if (def?.frame && input.attackQueued && !ug.active) {
@@ -1222,7 +1227,38 @@ export class Game {
         if (!swung) this.input.attackQueued = true;
     }
 
+    /** the building plan, aimed at a raft: the same pieces at the same prices, on the raft's own grid */
+    private raftPlan(dt: number, ra: RaftAim, pc: { kind: PieceKind; name: string; cost: number }, eye: Vector3, dir: Vector3) {
+        const { input, hud, view } = this;
+        this.building.hideGhost();
+        this.boats.showRaftGhost(ra);
+        const have = this.inv.count("wood"), name = pc.kind === "foundation" ? "Raft section" : pc.name;
+        const keys = this.vr.active ? "Trigger place · Y change piece · hold A remove" : input.touch ? "HIT place · tap here to change piece · hold USE to remove" : "Click place · Q change piece · hold E remove";
+        hud.setBuild(`<b>${name}</b> · <b class="cost">${pc.cost} wood</b> <span style="opacity:.7">(you have ${have})</span>${ra.ok ? "" : ` · ${ra.reason}`}<small>${keys}</small>`, false, true, !ra.ok || have < pc.cost);
+        if (input.attackQueued) {
+            input.attackQueued = false;
+            if (!ra.ok) { hud.message(ra.reason || "Can’t build there"); this.sfx.denied(); }
+            else if (have < pc.cost) { hud.message(`You need ${pc.cost} wood`); this.sfx.denied(); }
+            else { this.inv.remove("wood", pc.cost); this.boats.raftPlace(ra); this.sfx.place(); view.place(); this.vr.haptic?.(0.4); }
+        }
+        input.rotateQueued = 0;
+        const hit = this.boats.raftFind(eye, dir, 6);
+        if (hit) {
+            const k = hit.p[0] === "t" ? "foundation" : hit.p[0] === "f" ? "floor" : hit.p[0] === "s" ? "stairs" : (hit.p[5] as PieceKind);
+            const nm = k === "foundation" ? "Raft section" : PIECE_INFO.find((q) => q.kind === k)!.name;
+            hud.setPrompt(nm, `hold ${this.keyLabel("E")} to remove`, true);
+            this.runHold(dt, hit.b.nid + JSON.stringify(hit.p) as never, () => {}, () => {
+                const why = this.boats.raftCanRemove(hit.b, hit.p);
+                if (why) { hud.message(why); this.sfx.denied(); return; }
+                this.boats.raftRemove(hit.b, hit.p);
+                this.give("wood", Math.floor(PIECE_INFO.find((q) => q.kind === k)!.cost / 2));
+                this.sfx.remove();
+            });
+        } else { hud.setPrompt(null); this.runHold(dt, null, () => {}, () => {}); }
+        input.interactQueued = false;
+    }
     private hideBuildUi() {
+        this.boats.showRaftGhost(null);
         this.paintings.showGhost(null);
         this.doors.showGhost(null);
         this.hud.setBuild(null, false, false);
@@ -1577,7 +1613,8 @@ export class Game {
             return this.boats.carryHelm(p.pos, p);
         };
         const vr = this.vr.active, touch = this.input.touch;
-        this.hud.message(vr ? "At the wheel: left stick steers, right trigger fills the sails · A let go" : touch ? "At the wheel: the stick steers and sails · USE let go" : "At the wheel: W / S sails, A / D steer, Shift full sail · E or Space let go");
+        if (b.raft) this.hud.message(vr ? "At the oar: left stick steers, right trigger rows · A let go" : touch ? "At the oar: the stick rows and steers · USE let go" : "At the oar: W / S row, A / D steer, Shift row hard · E or Space let go");
+        else this.hud.message(vr ? "At the wheel: left stick steers, right trigger fills the sails · A let go" : touch ? "At the wheel: the stick steers and sails · USE let go" : "At the wheel: W / S sails, A / D steer, Shift full sail · E or Space let go");
     }
     /** letting go of the wheel (E, Space, A): not once the storm has you, out past the reef - you hold on and ride it out */
     private tryLeaveHelm(): boolean {
@@ -1596,6 +1633,15 @@ export class Game {
     private pickupBoat(b: Boat) {
         if (this.boats.aboard(b)) { this.hud.message("Somebody is aboard"); this.sfx.denied(); return; }
         if (this.structures.list.some((s) => s.deck?.n === b.nid)) { this.hud.message("Take everything off the deck first"); this.sfx.denied(); return; }
+        if (b.raft) {
+            if (this.inv.add("raft", 1) > 0) { this.hud.message("No room in your pockets"); this.sfx.denied(); return; }
+            // (what was built on it comes back as half its wood, as when you take a piece down)
+            let wood = 0;
+            for (const p of this.boats.raftPieces(b)) { const k = p[0] === "t" ? "foundation" : p[0] === "f" ? "floor" : p[0] === "s" ? "stairs" : (p[5] as PieceKind); wood += Math.floor((PIECE_INFO.find((q) => q.kind === k)?.cost ?? 0) / 2); }
+            if (wood) this.give("wood", wood);
+            this.boats.remove(b); this.sfx.pickup(); this.hud.message(wood ? `Raft packed up (and ${wood} wood back)` : "Raft packed up");
+            return;
+        }
         if (this.inv.add("boat", 1) > 0) { this.hud.message("No room in your pockets"); this.sfx.denied(); return; }
         this.boats.remove(b); this.sfx.pickup(); this.hud.message("Boat picked up");
     }
@@ -1617,7 +1663,9 @@ export class Game {
             // the boat is gone; you come round on the beach (everybody a little apart), the storm is over
             const b = this.boats.on;
             this.boats.leaveHelm();
-            if (b) this.boats.remove(b);
+            // (a raft washes back near the island, ready to go again; a boat is lost)
+            this.wreckRaft = !!b?.raft;
+            if (b?.raft) this.boats.respawnRaft(b); else if (b) this.boats.remove(b);
             this.boats.reset();
             this.weather?.calm(); this.net.calm?.();
             const s = this.spawn, k = (this.netId % 4) - 1.5, rx = Math.cos(s.yaw), rz = -Math.sin(s.yaw);
@@ -1633,7 +1681,7 @@ export class Game {
         if (t >= 11) {
             this.wreckT = -1; this.eyeBlur = 0; this.lids(-1);
             document.getElementById("fade")?.classList.remove("now");
-            this.hud.message("You wake up on the beach, soaked through. The boat is gone… but you still have all your things.");
+            this.hud.message(this.wreckRaft ? "You wake up on the beach, soaked through. Your raft washed up just off the beach, ready to sail again." : "You wake up on the beach, soaked through. The boat is gone… but you still have all your things.");
         }
     }
     private wakeGround(x: number, z: number) { return Math.max(heightAt(x, z), this.building.ground(x, z, heightAt(x, z) + 1)); }

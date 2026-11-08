@@ -513,6 +513,15 @@ function build(id: ItemId, left = false): THREE.Group {
       g.rotation.y = 0.4;
       return g;
     }
+    case 'raft': {
+      // a toy raft: five logs side by side on two cross-pieces, a little oar
+      const g = new THREE.Group(), log = mat('#8a6440', 0.9), dark = mat('#5c4128', 0.9);
+      for (let k = 0; k < 5; k++) g.add(mesh(place(new THREE.CylinderGeometry(0.016, 0.016, 0.16, 8).rotateX(Math.PI / 2), (k - 2) * 0.032, 0, 0), log, 11));
+      for (const z of [-0.05, 0.05]) g.add(mesh(place(new THREE.BoxGeometry(0.17, 0.008, 0.014), 0, 0.017, z), dark, 12));
+      g.add(mesh(place(new THREE.CylinderGeometry(0.004, 0.004, 0.14).rotateX(-1.1), 0, 0.04, 0.09), dark, 12));
+      g.rotation.y = 0.4;
+      return g;
+    }
     case 'hatchet': return hatchet(false);
     case 'metal_hatchet': return hatchet(true);
     case 'pickaxe': return pickaxe(false);
@@ -544,7 +553,7 @@ const GRIPS: Record<ItemId, Grip> = {
   spear: { ...G_HANDLE, gy: -0.08, cy: 0.07 }, fishing_rod: { ...G_HANDLE, gy: -0.06, fit: [1.3, 1.0, 0.95] }, raw_meat: G_STONE, cooked_meat: G_STONE, raw_fish: G_BUNDLE, cooked_fish: G_BUNDLE,
   sapling: G_BUNDLE, campfire: G_BUNDLE, torch: { ...G_HANDLE, gy: -0.03 }, furnace: G_BIG, workbench: { ...G_HANDLE, gy: -0.04 }, bed: G_BUNDLE, sleeping_bag: G_BUNDLE, box: G_BIG, building_plan: G_LOG,
   leather: G_BUNDLE, leather_cap: G_BIG, leather_vest: G_BIG, leather_pants: G_BIG, metal_helmet: G_BIG, metal_chestplate: G_BIG, metal_greaves: G_BIG,
-  diamond_helmet: G_BIG, diamond_chestplate: G_BIG, diamond_greaves: G_BIG, boat: G_BIG,
+  diamond_helmet: G_BIG, diamond_chestplate: G_BIG, diamond_greaves: G_BIG, boat: G_BIG, raft: G_BIG,
   meat_stick: { ...G_HANDLE, gy: 0.0 }, roast_stick: { ...G_HANDLE, gy: 0.0 }, guitar: { ...G_HANDLE, gy: -0.02 }, sand: G_STONE,
 };
 const DESK_POSE: Partial<Record<ItemId, [number, number, number]>> = { drumsticks: [0.9, 0, 0], meat_stick: [1.2, 0, -0.4], roast_stick: [1.2, 0, -0.4], guitar: [1.1, 0.35, 0.5] };

@@ -37,6 +37,7 @@ export const RECIPES: Recipe[] = [
   { group: 'furniture', out: 'guitar', count: 1, bench: true, cost: [['wood', 20], ['fiber', 12]] },
   { group: 'furniture', out: 'lantern', count: 1, bench: true, cost: [['metal', 2], ['wood', 4], ['fiber', 2]] },
   { group: 'build', out: 'door', count: 1, bench: true, cost: [['wood', 14], ['fiber', 4]] },
+  { group: 'build', out: 'raft', count: 1, cost: [['wood', 30], ['fiber', 12]] },
   { group: 'build', out: 'boat', count: 1, bench: true, cost: [['wood', 100], ['fiber', 40], ['metal', 4]] },
   // a building plan needs no workbench (build your house first); the workbench unlocks storage, furnaces, metal tools and armor
   { group: 'build', out: 'furnace', count: 1, bench: true, cost: [['stone', 40], ['wood', 15]] },

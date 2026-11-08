@@ -6,6 +6,15 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-11-08", title: "Rafts",
+        items: [
+            "Craft a raft from wood and fiber (no workbench needed) and put it on the sea.",
+            "Build on it with the building plan like on land: more raft sections, walls, doorways, windows, railings, a floor above and stairs up to it.",
+            "Steer it with the oar at the back. Sail too far out and the storm comes for it; after the giant wave it washes up off the beach, ready to go again.",
+            "Fixes: the rug shows its pattern, big houses run much smoother, raised pools no longer open a hole in the ground, the desert ground shows on Quest, the VR pointer shows over the menu, the host's dropped items show for everyone, and legs stand still on a moving boat.",
+        ],
+    },
+    {
         date: "2026-11-06", title: "Swim in the lava",
         items: [
             "Floris Lava: fall in and you can swim in the lava - dive under and everything glows orange.",

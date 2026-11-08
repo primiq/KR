@@ -10,7 +10,9 @@
 // Babylon port: Castaway's code, drawn by render/mirror.ts. The deck planks ('woodSlab') and the cabin windows ('glass') get
 // the Babylon building materials; the depth-only 'boatLid' keeps the sea out of the hull.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { heightAt } from './island';
+import { CELL, type MatKey, type PieceKind, pieceGeometry, RAIL_H, STAIR_DIRS, WALL_H } from '../game/building';
 
 let WOOD: { slab: THREE.Material } | null = null;
 const woodMaterials = () => (WOOD ??= { slab: new THREE.MeshStandardMaterial({ name: 'woodSlab' }) });
@@ -45,7 +47,7 @@ function floorAt(lx: number, lz: number): number {
 const GAP = 0.45;
 const MAX = 3;
 
-export interface BoatRow { n: string; x: number; z: number; r: number }
+export interface BoatRow { n: string; x: number; z: number; r: number; p?: RaftPiece[] }
 
 export class Boat {
   group = new THREE.Group();
@@ -62,6 +64,8 @@ export class Boat {
   boom: THREE.Group | null = null; main: THREE.Mesh | null = null; jib: THREE.Mesh | null = null; wheel: THREE.Group | null = null; flames: THREE.Mesh[] = [];
   /** the cabin torch, as the structures' light pool sees it */
   torch = { kind: 'cabin', x: 0, y: 0, z: 0, phase: Math.random() * 9, lit: true };
+  /** a raft (built on with the building plan), not the sailing boat */
+  raft: Raft | null = null;
   constructor(public nid: string, public x: number, public z: number, public yaw: number) { this.tx = x; this.tz = z; this.tyaw = yaw; }
 }
 
@@ -362,6 +366,194 @@ class Wave {
   liftAt(d: number) { return d > 26 || d < -4 ? 0 : 15 * this.grow * Math.pow(Math.max(0, Math.min(1, (26 - d) / 24)), 2.2); }
 }
 
+// ------------------------------------------------------------------ rafts
+// A raft: a square of lashed logs the size of one building block, put on the sea like a boat. Build on it with the building
+// plan, just like on land: more log sections next to it, walls, doorways, windows and railings round their edges, a floor
+// (an upper deck or a roof) above, stairs up to it. Everything sits on the raft's own grid and sails with it. An oar at the
+// back steers it. Raft space: origin on the waterline in the middle of the first section, +z the stern (the bow is -z).
+/** a piece of a raft: a log section, an edge (wall, doorway, window, railing) on level L, an upper floor, a staircase */
+export type RaftPiece = ['t', number, number] | ['e', 'x' | 'z', number, number, number, string] | ['f', number, number, number] | ['s', number, number, number, number];
+/** the deck of the logs, above the waterline */
+const RDECK = 0.45;
+const RC = CELL, RWH = WALL_H;
+const RAFT_MAX = 4, RAFT_TILES = 36, RAFT_LEVELS = 2;
+const EDGE_KINDS = ['wall', 'doorway', 'window', 'railing'];
+export class Raft {
+  tiles = new Set<string>();
+  edges = new Map<string, string>();
+  floors = new Set<string>();
+  stairs = new Map<string, number>();
+  oar: THREE.Group | null = null;
+  /** the section the oar is on (the back of the raft), its extent in raft space, how far it reaches from the origin */
+  hi = 0; hj = 0;
+  x0 = -RC / 2; x1 = RC / 2; z0 = -RC / 2; z1 = RC / 2; rad = 2.2;
+  /** solid things to walk into (raft space) */
+  boxes: { x0: number; x1: number; z0: number; z1: number; y0: number; y1: number }[] = [];
+  constructor(plan?: RaftPiece[]) {
+    if (plan) for (const p of plan) this.put(p);
+    if (!this.tiles.size) this.tiles.add('0,0');
+    this.refresh();
+  }
+  static key(p: RaftPiece) { return p[0] === 't' ? `${p[1]},${p[2]}` : p[0] === 'e' ? `${p[1]}${p[2]},${p[3]},${p[4]}` : `${p[1]},${p[2]},${p[3]}`; }
+  has(p: RaftPiece) {
+    const k = Raft.key(p);
+    return p[0] === 't' ? this.tiles.has(k) : p[0] === 'e' ? this.edges.has(k) : p[0] === 'f' ? this.floors.has(k) : this.stairs.has(k);
+  }
+  put(p: RaftPiece) {
+    const k = Raft.key(p), n = (v: unknown) => Number.isInteger(v) && Math.abs(v as number) < 40;
+    if (p[0] === 't' && n(p[1]) && n(p[2])) this.tiles.add(k);
+    else if (p[0] === 'e' && (p[1] === 'x' || p[1] === 'z') && n(p[2]) && n(p[3]) && n(p[4]) && EDGE_KINDS.includes(p[5])) this.edges.set(k, p[5]);
+    else if (p[0] === 'f' && n(p[1]) && n(p[2]) && n(p[3])) this.floors.add(k);
+    else if (p[0] === 's' && n(p[1]) && n(p[2]) && n(p[3]) && n(p[4])) this.stairs.set(k, ((p[4] % 4) + 4) % 4);
+  }
+  del(p: RaftPiece) {
+    const k = Raft.key(p);
+    if (p[0] === 't') this.tiles.delete(k); else if (p[0] === 'e') this.edges.delete(k); else if (p[0] === 'f') this.floors.delete(k); else this.stairs.delete(k);
+  }
+  list(): RaftPiece[] {
+    const out: RaftPiece[] = [];
+    const nums = (k: string) => k.split(',').map(Number);
+    for (const k of this.tiles) { const [i, j] = nums(k); out.push(['t', i, j]); }
+    for (const [k, kind] of this.edges) { const [i, j, L] = nums(k.slice(1)); out.push(['e', k[0] as 'x' | 'z', i, j, L, kind]); }
+    for (const k of this.floors) { const [i, j, L] = nums(k); out.push(['f', i, j, L]); }
+    for (const [k, d] of this.stairs) { const [i, j, L] = nums(k); out.push(['s', i, j, L, d]); }
+    return out;
+  }
+  tile(i: number, j: number) { return this.tiles.has(`${i},${j}`); }
+  floor(i: number, j: number, L: number) { return L === 0 ? this.tile(i, j) : this.floors.has(`${i},${j},${L}`); }
+  /** extent, the oar's section, the solid boxes */
+  refresh() {
+    let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9, hi = 0, hj = -1e9;
+    for (const k of this.tiles) {
+      const [i, j] = k.split(',').map(Number);
+      x0 = Math.min(x0, i * RC - RC / 2); x1 = Math.max(x1, i * RC + RC / 2); z0 = Math.min(z0, j * RC - RC / 2); z1 = Math.max(z1, j * RC + RC / 2);
+      if (j > hj || (j === hj && (Math.abs(i) < Math.abs(hi) || (Math.abs(i) === Math.abs(hi) && i < hi)))) { hi = i; hj = j; }
+    }
+    Object.assign(this, { x0, x1, z0, z1, hi, hj });
+    this.rad = Math.max(Math.hypot(x0, z0), Math.hypot(x1, z0), Math.hypot(x0, z1), Math.hypot(x1, z1)) + 0.3;
+    this.boxes = [];
+    const T = 0.16;
+    for (const [k, kind] of this.edges) {
+      const [i, j, L] = k.slice(1).split(',').map(Number), y0 = RDECK + L * RWH, y1 = y0 + (kind === 'railing' ? RAIL_H : RWH);
+      // along the edge from a to b (a span of it: a doorway leaves its middle open)
+      const spans: [number, number][] = kind === 'doorway' ? [[-RC / 2, -0.6], [0.6, RC / 2]] : [[-RC / 2, RC / 2]];
+      for (const [a, b] of spans) {
+        if (k[0] === 'x') { const z = (j - 0.5) * RC, x = i * RC; this.boxes.push({ x0: x + a, x1: x + b, z0: z - T, z1: z + T, y0, y1 }); }
+        else { const x = (i - 0.5) * RC, z = j * RC; this.boxes.push({ x0: x - T, x1: x + T, z0: z + a, z1: z + b, y0, y1 }); }
+      }
+    }
+    const [hx, , hz] = this.oarPost();
+    this.boxes.push({ x0: hx - 0.12, x1: hx + 0.12, z0: hz - 0.12, z1: hz + 0.12, y0: RDECK, y1: RDECK + 1.1 });
+  }
+  /** the oar's post (raft space, its foot), and where whoever steers stands */
+  oarPost(): [number, number, number] { return [this.hi * RC, RDECK, this.hj * RC + RC / 2 - 0.3]; }
+  helmSpot(): [number, number, number] { return [this.hi * RC, RDECK, this.hj * RC + RC / 2 - 1.35]; }
+  /** the walking surface at (lx, lz) for feet at ly (raft space): the logs, an upper floor, a stair; the highest one a step
+   *  up at most; -1e9 off the raft */
+  floorAt(lx: number, ly: number, lz: number): number {
+    const i = Math.round(lx / RC), j = Math.round(lz / RC);
+    if (!this.tile(i, j)) return -1e9;
+    let best = RDECK;
+    for (let L = 0; L <= RAFT_LEVELS; L++) {
+      const base = RDECK + L * RWH;
+      if (L > 0 && this.floors.has(`${i},${j},${L}`) && base <= ly + 0.9) best = Math.max(best, base);
+      const d = this.stairs.get(`${i},${j},${L}`);
+      if (d !== undefined) {
+        const [dx, dz] = STAIR_DIRS[d], u = Math.max(0, Math.min(1, ((lx - i * RC) * dx + (lz - j * RC) * dz) / RC + 0.5)), h = base + u * RWH;
+        if (h <= ly + 0.9) best = Math.max(best, h);
+      }
+    }
+    return best;
+  }
+  /** the nearest point on the raft's sections to (lx, lz), kept `m` in from their edges */
+  nearest(lx: number, lz: number, m: number): [number, number, number] {
+    let bx = 0, bz = 0, bd = 1e9;
+    for (const k of this.tiles) {
+      const [i, j] = k.split(',').map(Number), cx = i * RC, cz = j * RC, h = RC / 2 - m;
+      const x = Math.max(cx - h, Math.min(cx + h, lx)), z = Math.max(cz - h, Math.min(cz + h, lz)), d = Math.hypot(x - lx, z - lz);
+      if (d < bd) { bd = d; bx = x; bz = z; }
+    }
+    return [bx, bz, bd];
+  }
+}
+
+let RMATS: Record<'log' | 'end' | 'rope' | 'wall' | 'beam' | 'pile', THREE.Material> | null = null;
+function raftMats() {
+  if (RMATS) return RMATS;
+  const std = (c: string, r: number) => { const m = new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: 0 }); m.emissive = new THREE.Color(c).multiplyScalar(0.07); return m; };
+  RMATS = { log: std('#8a6440', 0.95), end: std('#c9a06a', 0.9), rope: std('#a08a5c', 1), wall: new THREE.MeshStandardMaterial({ name: 'woodWall' }), beam: std('#7d5530', 0.9), pile: std('#5c4128', 1) };
+  return RMATS;
+}
+const PIECE_GEO = new Map<string, Map<MatKey, THREE.BufferGeometry[]>>();
+const pieceGeo = (k: PieceKind) => { let g = PIECE_GEO.get(k); if (!g) PIECE_GEO.set(k, (g = pieceGeometry(k))); return g; };
+const clean = (g: THREE.BufferGeometry) => { const n = g.index ? g.toNonIndexed() : g.clone(); for (const a of Object.keys(n.attributes)) if (a !== 'position' && a !== 'normal') n.deleteAttribute(a); return n; };
+/** a raft's geometry, by material: its logs, and the pieces built on it (the oar is separate: it moves) */
+function raftParts(r: Raft, only?: RaftPiece): Map<THREE.Material, THREE.BufferGeometry[]> {
+  const RM = raftMats(), W = woodMaterials(), out = new Map<THREE.Material, THREE.BufferGeometry[]>();
+  const put = (m: THREE.Material, g: THREE.BufferGeometry) => { let a = out.get(m); if (!a) out.set(m, (a = [])); a.push(clean(g)); };
+  const matOf = (k: MatKey) => (k === 'wall' || k === 'swall' ? RM.wall : k === 'slab' || k === 'sslab' ? W.slab : k === 'beam' ? RM.beam : k === 'glass' ? mats().glass : RM.pile);
+  const piece = (kind: PieceKind, x: number, y: number, z: number, ry: number) => {
+    for (const [k, list] of pieceGeo(kind)) for (const g of list) put(matOf(k), g.clone().rotateY(ry).translate(x, y, z));
+  };
+  const logs = (i: number, j: number) => {
+    const cx = i * RC, cz = j * RC;
+    for (let k = 0; k < 5; k++) {
+      const x = cx + (k - 2) * 0.6, len = RC - 0.06 - ((k * 7 + i * 3 + j * 5) % 3) * 0.04;
+      put(RM.log, new THREE.CylinderGeometry(0.29, 0.29, len, 10, 1, true).rotateX(Math.PI / 2).translate(x, RDECK - 0.31, cz));
+      for (const s of [-1, 1]) put(RM.end, new THREE.CircleGeometry(0.29, 10).rotateY(s > 0 ? 0 : Math.PI).translate(x, RDECK - 0.31, cz + s * len / 2));
+    }
+    // the cross-pieces the logs are lashed to, and the lashings
+    for (const s of [-1, 1]) {
+      put(RM.beam, new THREE.BoxGeometry(RC - 0.08, 0.09, 0.18).translate(cx, RDECK - 0.03, cz + s * 0.95));
+      for (let k = 0; k < 5; k++) put(RM.rope, new THREE.BoxGeometry(0.1, 0.1, 0.24).translate(cx + (k - 2) * 0.6, RDECK - 0.02, cz + s * 0.95));
+    }
+  };
+  const each = (p: RaftPiece) => {
+    if (p[0] === 't') logs(p[1], p[2]);
+    else if (p[0] === 'e') { const [, ax, i, j, L, kind] = p; if (ax === 'x') piece(kind as PieceKind, i * RC, RDECK + L * RWH, (j - 0.5) * RC, 0); else piece(kind as PieceKind, (i - 0.5) * RC, RDECK + L * RWH, j * RC, Math.PI / 2); }
+    else if (p[0] === 'f') piece('floor', p[1] * RC, RDECK + p[3] * RWH, p[2] * RC, 0);
+    else { const [dx, dz] = STAIR_DIRS[p[4]]; piece('stairs', p[1] * RC, RDECK + p[3] * RWH, p[2] * RC, Math.atan2(dx, dz)); }
+  };
+  if (only) each(only); else for (const p of r.list()) each(p);
+  return out;
+}
+function makeRaft(r: Raft, shadows: boolean, ghost: THREE.Material | null = null, only?: RaftPiece): THREE.Group {
+  const g = new THREE.Group();
+  for (const [m, list] of raftParts(r, only)) {
+    const o = new THREE.Mesh(mergeGeometries(list)!, ghost ?? m);
+    o.castShadow = shadows && !ghost && m !== mats().glass; o.receiveShadow = shadows && !ghost;
+    g.add(o);
+  }
+  if (only || ghost) return g;
+  // the oar: a post at the back, the oar on a pivot at its top, its blade trailing in the water behind
+  const RM = raftMats(), [px, py, pz] = r.oarPost();
+  g.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 1.1, 8).translate(px, py + 0.55, pz), RM.beam), { castShadow: shadows }));
+  const pv = new THREE.Group(); pv.position.set(px, py + 1.05, pz + 0.02); g.add(pv);
+  const a = new THREE.Vector3(0, 0.12, -0.75), b = new THREE.Vector3(0, -1.45, 3.1), len = a.distanceTo(b);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, len, 7), RM.end);
+  pole.position.copy(a).add(b).multiplyScalar(0.5); pole.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize()); pv.add(pole);
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.05, 0.85), RM.beam);
+  blade.position.copy(b).add(b.clone().sub(a).normalize().multiplyScalar(-0.35)); blade.quaternion.copy(pole.quaternion).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2)); pv.add(blade);
+  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.3, 7).rotateZ(Math.PI / 2).translate(a.x, a.y, a.z), RM.beam); pv.add(grip);
+  r.oar = pv;
+  return g;
+}
+/** the raft's sections all clear of the bottom at (x, z, yaw)? (`extra`: one more section, to try) */
+function raftAfloat(r: Raft, x: number, z: number, yaw: number, draft: number, extra?: [number, number]): boolean {
+  const s = Math.sin(yaw), c = Math.cos(yaw), h = RC / 2 - 0.1;
+  const test = (i: number, j: number) => {
+    for (const [ox, oz] of [[0, 0], [-h, -h], [h, -h], [-h, h], [h, h]]) {
+      const lx = i * RC + ox, lz = j * RC + oz, wx = x + lx * c + lz * s, wz = z - lx * s + lz * c;
+      if (heightAt(wx, wz) > -draft) return false;
+    }
+    return true;
+  };
+  for (const k of r.tiles) { const [i, j] = k.split(',').map(Number); if (!test(i, j)) return false; }
+  return !extra || test(extra[0], extra[1]);
+}
+/** what the building plan would put on a raft, and whether it can */
+export interface RaftAim { b: Boat; p: RaftPiece; ok: boolean; reason: string; t: number }
+
 // ------------------------------------------------------------------ the boats
 const tmpV = new THREE.Vector3(), tmpQ = new THREE.Quaternion(), tmpE = new THREE.Euler(0, 0, 0, 'YXZ');
 interface Pose { x: number; y: number; z: number; yaw: number; pitch: number; roll: number }
@@ -380,6 +572,8 @@ function toLocal(p: Pose, x: number, y: number, z: number, out: THREE.Vector3) {
 }
 const pose = (b: Boat): Pose => ({ x: b.x, y: b.y + b.lift, z: b.z, yaw: b.yaw, pitch: b.pitch, roll: b.roll });
 const L1 = new THREE.Vector3(), L2 = new THREE.Vector3();
+/** how far from its middle anything of a boat or raft reaches (m) */
+const reach = (b: Boat) => (b.raft ? b.raft.rad : LEN / 2 + 0.5);
 
 export class Boats {
   readonly list: Boat[] = [];
@@ -400,6 +594,10 @@ export class Boats {
   private sndT = 0;
   private lastYaw = NaN;
   private ghost: THREE.Group;
+  /** the raft being set down, and a piece being built on a raft */
+  private raftGhost: THREE.Group | null = null;
+  private pieceGhost: THREE.Group | null = null;
+  private pieceGhostKey = '';
   private ghostMat = new THREE.MeshBasicMaterial({ color: 0x7cff9a, transparent: true, opacity: 0.35, depthWrite: false });
   /** other players on deck: where on which boat (boat space), and when we last heard */
   private riders = new Map<number, { b: Boat; x: number; y: number; z: number; r: number; t: number }>();
@@ -439,16 +637,18 @@ export class Boats {
    * it (too shallow, too near the beach, another boat), the nearest spot that will is found for you: a little further
    * out along your line of sight or to either side, and the boat turned along or across it, whichever fits.
    */
-  aim(eye: { x: number; y: number; z: number }, dir: { x: number; y: number; z: number }, yaw: number): { ok: boolean; why: string; x: number; z: number; yaw: number } {
-    const out = { ok: false, why: '', x: 0, z: 0, yaw };
-    if (this.list.length >= MAX) { out.why = `There are ${MAX} boats already`; return out; }
+  aim(eye: { x: number; y: number; z: number }, dir: { x: number; y: number; z: number }, yaw: number, raft = false): { ok: boolean; why: string; x: number; z: number; yaw: number; raft?: boolean } {
+    const out = { ok: false, why: '', x: 0, z: 0, yaw, raft };
+    if (!raft && this.list.filter((b) => !b.raft).length >= MAX) { out.why = `There are ${MAX} boats already`; return out; }
+    if (raft && this.list.filter((b) => b.raft).length >= RAFT_MAX) { out.why = `There are ${RAFT_MAX} rafts already`; return out; }
+    const one = raft ? new Raft() : null, room = raft ? 2.6 : 6;
     const hl = Math.hypot(dir.x, dir.z) || 1, hx = dir.x / hl, hz = dir.z / hl;
     // looking at (or near) the horizon still works: the boat goes 9 m out
     const t = dir.y < -0.05 ? Math.max(3, Math.min(30, eye.y / -dir.y)) * hl : 9;
     const bx = eye.x + hx * t, bz = eye.z + hz * t;
     out.x = bx; out.z = bz;
     if (t > 30) { out.why = 'Too far away'; return out; }
-    const fits = (x: number, z: number, r: number) => heightAt(x, z) < -0.3 && this.afloat(x, z, r, 0.95) && !this.list.some((b) => Math.hypot(b.x - x, b.z - z) < 12)
+    const fits = (x: number, z: number, r: number) => heightAt(x, z) < -0.3 && (one ? raftAfloat(one, x, z, r, 0.6) : this.afloat(x, z, r, 0.95)) && !this.list.some((b) => Math.hypot(b.x - x, b.z - z) < reach(b) + room)
       && Math.hypot(x - eye.x, z - eye.z) > 3;
     const yaws = [yaw, yaw + Math.PI / 2, yaw + Math.PI / 4, yaw - Math.PI / 4];
     for (let step = 0; step <= 14; step++) {
@@ -457,27 +657,41 @@ export class Boats {
         for (const r of yaws) if (fits(x, z, r)) { out.x = x; out.z = z; out.yaw = r; out.ok = true; return out; }
       }
     }
-    out.why = heightAt(bx, bz) > -0.05 ? 'Boats go on the water: aim at the sea' : this.list.some((b) => Math.hypot(b.x - bx, b.z - bz) < 12) ? 'Another boat is in the way' : 'Too shallow here: aim a bit further out';
+    out.why = heightAt(bx, bz) > -0.05 ? `${raft ? 'Rafts' : 'Boats'} go on the water: aim at the sea` : this.list.some((b) => Math.hypot(b.x - bx, b.z - bz) < reach(b) + room) ? 'Another boat is in the way' : 'Too shallow here: aim a bit further out';
     return out;
   }
-  showGhost(a: { ok: boolean; x: number; z: number; yaw: number } | null, time = 0) {
-    this.ghost.visible = !!a && a.x !== 0;
-    if (!a || !this.ghost.visible) return;
-    this.ghost.position.set(a.x, this.surface(a.x, a.z) + 0.05 * Math.sin(time * 2), a.z);
-    this.ghost.rotation.set(0, a.yaw, 0);
+  showGhost(a: { ok: boolean; x: number; z: number; yaw: number; raft?: boolean } | null, time = 0) {
+    if (a?.raft && !this.raftGhost) { this.raftGhost = makeRaft(new Raft(), false, this.ghostMat); this.scene.add(this.raftGhost); }
+    const gh = a?.raft ? this.raftGhost! : this.ghost, other = a?.raft ? this.ghost : this.raftGhost;
+    if (other) other.visible = false;
+    gh.visible = !!a && a.x !== 0;
+    if (!a || !gh.visible) return;
+    gh.position.set(a.x, this.surface(a.x, a.z) + 0.05 * Math.sin(time * 2), a.z);
+    gh.rotation.set(0, a.yaw, 0);
     (this.ghostMat as THREE.MeshBasicMaterial).color.set(a.ok ? 0x7cff9a : 0xff6a5a);
   }
 
-  add(nid: string, x: number, z: number, yaw: number, remote = false): Boat | null {
+  add(nid: string, x: number, z: number, yaw: number, remote = false, plan?: RaftPiece[]): Boat | null {
     if (this.list.some((b) => b.nid === nid)) return null;
     const b = new Boat(nid, x, z, yaw);
-    b.group = makeModel(null, this.shadows, b);
+    if (plan) { b.raft = new Raft(plan); b.torch.lit = false; }
+    b.group = b.raft ? makeRaft(b.raft, this.shadows) : makeModel(null, this.shadows, b);
     b.y = this.surface(x, z);
     this.place(b);
     this.scene.add(b.group);
     this.list.push(b);
-    if (!remote) this.onEvent?.({ op: 'add', n: nid, x: +x.toFixed(2), z: +z.toFixed(2), r: +yaw.toFixed(3) });
+    if (!remote) this.onEvent?.({ op: 'add', n: nid, x: +x.toFixed(2), z: +z.toFixed(2), r: +yaw.toFixed(3), ...(plan ? { p: b.raft!.list() } : {}) });
     return b;
+  }
+  /** a raft's pieces changed: draw it again */
+  private remodel(b: Boat) {
+    if (!b.raft) return;
+    b.raft.refresh();
+    this.scene.remove(b.group);
+    b.group.traverse((o) => { if ((o as THREE.Mesh).geometry) (o as THREE.Mesh).geometry.dispose(); });
+    b.group = makeRaft(b.raft, this.shadows);
+    this.place(b);
+    this.scene.add(b.group);
   }
   remove(b: Boat, remote = false) {
     const i = this.list.indexOf(b); if (i < 0) return;
@@ -494,6 +708,11 @@ export class Boats {
     for (const b of this.list) {
       if (Math.abs(b.x - x) > LEN || Math.abs(b.z - z) > LEN) continue;
       const l = toLocal(pose(b), x, y, z, L1);
+      if (b.raft) {
+        const f = b.raft.floorAt(l.x, l.y, l.z);
+        if (f > -1e8 && l.y > f - 0.6 && l.y < f + 3) return { n: b.nid, l: [+l.x.toFixed(3), +l.y.toFixed(3), +l.z.toFixed(3), +(yaw - b.yaw).toFixed(3)] };
+        continue;
+      }
       if (Math.abs(l.x) < HB + 0.3 && Math.abs(l.z) < LEN / 2 + 0.3 && l.y > DECK - 0.6 && l.y < DECK + 3) return { n: b.nid, l: [+l.x.toFixed(3), +l.y.toFixed(3), +l.z.toFixed(3), +(yaw - b.yaw).toFixed(3)] };
     }
     return null;
@@ -514,8 +733,16 @@ export class Boats {
   ground(x: number, z: number, y = 1e9): number {
     let best = -1e9;
     for (const b of this.list) {
-      if (Math.abs(x - b.x) > 7 || Math.abs(z - b.z) > 7) continue;
-      const p = pose(b), l = toLocal(p, x, y, z, L1);
+      const R = reach(b);
+      if (Math.abs(x - b.x) > R || Math.abs(z - b.z) > R) continue;
+      const p = pose(b), l = toLocal(p, x, Math.min(y, p.y + 30), z, L1);
+      if (b.raft) {
+        const f = b.raft.floorAt(l.x, l.y, l.z);
+        if (f < -1e8) continue;
+        const d = toWorld(p, l.x, f, l.z, L2).y;
+        if (d <= y + 0.9 && d > best) best = d;
+        continue;
+      }
       const hh = deckHalf(l.z);
       if (hh < 0 || Math.abs(l.x) > hh || l.z > LEN / 2) continue;
       // the deck's height right here (or the cabin floor, the helm step), tilted with the boat
@@ -527,8 +754,14 @@ export class Boats {
   /** pushes a walker (or a swimmer) out of everything solid on a boat: rails, cabin walls, mast, wheel, table; the hull from outside */
   resolve(x: number, z: number, r: number, feetY: number, out: { x: number; z: number }) {
     for (const b of this.list) {
-      if (Math.abs(x - b.x) > 8 || Math.abs(z - b.z) > 8) continue;
+      const R = reach(b) + 1;
+      if (Math.abs(x - b.x) > R || Math.abs(z - b.z) > R) continue;
       const p = pose(b), l = toLocal(p, x, feetY, z, L1);
+      if (b.raft) {
+        const o = this.resolveRaft(b.raft, l.x, l.y, l.z, r);
+        if (o) { const w = toWorld(p, o[0], l.y, o[1], L2); x = w.x; z = w.z; }
+        continue;
+      }
       const deckY = toWorld(p, l.x, floorAt(l.x, l.z), l.z, L2).y, up = feetY - deckY;
       let lx = l.x, lz = l.z;
       const hh = deckHalf(lz);
@@ -563,10 +796,45 @@ export class Boats {
     }
     out.x = x; out.z = z;
   }
+  /** on a raft: walls and railings are solid; from the water, the logs are (swim round them). The new (x, z), or null. */
+  private resolveRaft(rf: Raft, lx0: number, ly: number, lz0: number, r: number): [number, number] | null {
+    let lx = lx0, lz = lz0;
+    if (ly > RDECK - 0.4) {
+      for (const bx of rf.boxes) {
+        if (bx.y1 < ly + 0.35 || bx.y0 > ly + 1.7) continue;
+        const cx = Math.max(bx.x0, Math.min(lx, bx.x1)), cz = Math.max(bx.z0, Math.min(lz, bx.z1));
+        const dx = lx - cx, dz = lz - cz, d2 = dx * dx + dz * dz;
+        if (d2 >= r * r) continue;
+        if (d2 > 1e-8) { const d = Math.sqrt(d2); lx = cx + (dx / d) * r; lz = cz + (dz / d) * r; }
+        else { const m = Math.min(lx - bx.x0, bx.x1 - lx, lz - bx.z0, bx.z1 - lz); if (m === lx - bx.x0) lx = bx.x0 - r; else if (m === bx.x1 - lx) lx = bx.x1 + r; else if (m === lz - bx.z0) lz = bx.z0 - r; else lz = bx.z1 + r; }
+      }
+    } else if (ly > -2.5) {
+      // in the water: out from under the logs, the shortest way
+      const i = Math.round(lx / RC), j = Math.round(lz / RC);
+      const fx = lx - i * RC, fz = lz - j * RC, h = RC / 2 + r;
+      const inT = (a: number, b: number) => rf.tile(a, b) && Math.abs(lx - a * RC) < h && Math.abs(lz - b * RC) < h;
+      let hit: [number, number] | null = null;
+      for (const [a, b] of [[i, j], [i + Math.sign(fx || 1), j], [i, j + Math.sign(fz || 1)], [i + Math.sign(fx || 1), j + Math.sign(fz || 1)]]) if (inT(a, b)) { hit = [a, b]; break; }
+      if (!hit) return null;
+      const run = (dx: number, dz: number) => { let a = hit![0], b = hit![1]; while (rf.tile(a + dx, b + dz)) { a += dx; b += dz; } return [a, b]; };
+      const [ax] = run(-1, 0), [bx2] = run(1, 0), [, az] = run(0, -1), [, bz] = run(0, 1);
+      const opts: [number, number][] = [[(ax - 0.5) * RC - r, lz], [(bx2 + 0.5) * RC + r, lz], [lx, (az - 0.5) * RC - r], [lx, (bz + 0.5) * RC + r]];
+      let best = opts[0], bd = 1e9;
+      for (const o of opts) { const d = Math.hypot(o[0] - lx, o[1] - lz); if (d < bd) { bd = d; best = o; } }
+      lx = best[0]; lz = best[1];
+    }
+    return lx !== lx0 || lz !== lz0 ? [lx, lz] : null;
+  }
   /** which boat (if any) someone at (x, y, z) is standing or jumping on */
   private boatUnder(x: number, y: number, z: number): Boat | null {
     for (const b of this.list) {
-      if (Math.abs(x - b.x) > 7 || Math.abs(z - b.z) > 7) continue;
+      const R = reach(b);
+      if (Math.abs(x - b.x) > R || Math.abs(z - b.z) > R) continue;
+      if (b.raft) {
+        const l = toLocal(pose(b), x, y, z, L1), f = b.raft.floorAt(l.x, l.y, l.z), up = l.y - f;
+        if (f > -1e8 && up > -0.35 && up < 2.2) return b;
+        continue;
+      }
       const p = pose(b), l = toLocal(p, x, y, z, L1), hh = deckHalf(l.z);
       if (hh < 0 || Math.abs(l.x) > hh + 0.15 || l.z > LEN / 2 + 0.2) continue;
       const up = y - toWorld(p, l.x, floorAt(l.x, l.z), l.z, L2).y;
@@ -580,7 +848,7 @@ export class Boats {
   target(eye: { x: number; y: number; z: number }, dir: { x: number; y: number; z: number }, max: number): { b: Boat; what: 'board' | 'helm'; dist: number } | null {
     let best: { b: Boat; what: 'board' | 'helm'; dist: number } | null = null;
     for (const b of this.list) {
-      if (Math.hypot(b.x - eye.x, b.z - eye.z) > max + 7) continue;
+      if (Math.hypot(b.x - eye.x, b.z - eye.z) > max + reach(b)) continue;
       const p = pose(b), o = toLocal(p, eye.x, eye.y, eye.z, L1).clone();
       const e2 = toLocal(p, eye.x + dir.x, eye.y + dir.y, eye.z + dir.z, L2), d = e2.sub(o);
       const hit = (lo: number[], hi: number[]) => {
@@ -592,6 +860,18 @@ export class Boats {
         }
         return t0 <= t1 ? t0 : -1;
       };
+      if (b.raft) {
+        const rf = b.raft;
+        if (this.on === b) {
+          if (this.atHelm) continue;
+          const [px, , pz] = rf.oarPost(), t = hit([px - 0.5, RDECK + 0.2, pz - 0.5], [px + 0.5, RDECK + 1.6, pz + 0.6]);
+          if (t >= 0 && (!best || t < best.dist)) best = { b, what: 'helm', dist: t };
+        } else {
+          const t = hit([rf.x0 - 0.2, -0.8, rf.z0 - 0.2], [rf.x1 + 0.2, RDECK + 1.0, rf.z1 + 0.2]);
+          if (t >= 0 && (!best || t < best.dist)) best = { b, what: 'board', dist: t };
+        }
+        continue;
+      }
       if (this.on === b) {
         if (this.atHelm) continue;
         const t = hit([-0.65, DECK + 0.8, WHEEL_Z - 0.3], [0.65, DECK + 2.0, WHEEL_Z + 0.45]);
@@ -607,8 +887,13 @@ export class Boats {
   nearHull(x: number, y: number, z: number, pad = 2.2): Boat | null {
     let best: Boat | null = null, bd = 1e9;
     for (const b of this.list) {
-      if (this.on === b || Math.abs(b.x - x) > LEN || Math.abs(b.z - z) > LEN) continue;
+      if (this.on === b || Math.abs(b.x - x) > reach(b) + pad || Math.abs(b.z - z) > reach(b) + pad) continue;
       const l = toLocal(pose(b), x, y, z, L1);
+      if (b.raft) {
+        const d = b.raft.nearest(l.x, l.z, 0)[2];
+        if (d < pad && l.y > -3.5 && l.y < RDECK + 2.5 && d < bd) { bd = d; best = b; }
+        continue;
+      }
       const ox = Math.max(0, Math.abs(l.x) - HB), oz = Math.max(0, l.z - LEN / 2, -LEN / 2 - l.z), d = Math.hypot(ox, oz);
       if (d < pad && l.y > -3.5 && l.y < DECK + 2.5 && d < bd) { bd = d; best = b; }
     }
@@ -617,6 +902,11 @@ export class Boats {
   /** climb aboard from the water (or a jetty): onto the nearest bit of deck. Sets the feet `pos`. */
   board(b: Boat, pos: PV, vel: PV) {
     const p = pose(b), l = toLocal(p, pos.x, pos.y, pos.z, L1);
+    if (b.raft) {
+      const [nx, nz] = b.raft.nearest(l.x, l.z, 0.55), w = toWorld(p, nx, RDECK + 0.05, nz, L2);
+      pos.set(w.x, w.y, w.z); vel.set(0, 0, 0); this.sfx?.splash(0.4);
+      return;
+    }
     let lz = Math.max(-LEN / 2 + 1.5, Math.min(LEN / 2 - 0.7, l.z)), lx = l.x;
     const hh = deckHalf(lz) - 0.5;
     lx = Math.max(-hh, Math.min(hh, lx));
@@ -642,7 +932,8 @@ export class Boats {
   /** One frame at the wheel: stand behind it (feet `pos`), the view turning with the boat. False once you let go. */
   carryHelm(pos: PV, look: { yaw: number }): boolean {
     const b = this.on; if (!b || !this.atHelm) return false;
-    toWorld(pose(b), 0, DECK + HELM_UP, HELM_Z, pos);
+    if (b.raft) { const [hx, hy, hz] = b.raft.helmSpot(); toWorld(pose(b), hx, hy, hz, pos); }
+    else toWorld(pose(b), 0, DECK + HELM_UP, HELM_Z, pos);
     if (!Number.isNaN(this.lastYaw)) { let d = b.yaw - this.lastYaw; d = Math.atan2(Math.sin(d), Math.cos(d)); look.yaw += d; }
     this.lastYaw = b.yaw;
     return true;
@@ -679,7 +970,9 @@ export class Boats {
     if (!this.atHelm) this.on = free && !away ? this.boatUnder(me.x, me.y, me.z) : null;
     const ride = this.on && !this.atHelm ? toLocal(pose(this.on), me.x, me.y, me.z, new THREE.Vector3()) : null;
     // (in the storm nobody goes over the side: whoever is on deck stays on it)
-    if (ride && this.storm > 0.1) {
+    if (ride && this.storm > 0.1 && this.on?.raft) {
+      const [nx, nz] = this.on.raft.nearest(ride.x, ride.z, 0.3); ride.x = nx; ride.z = nz;
+    } else if (ride && this.storm > 0.1) {
       ride.z = Math.max(-LEN / 2 + 1.5, Math.min(LEN / 2 - 0.7, ride.z));
       const hh = deckHalf(ride.z) - 0.25;
       if (hh > 0) ride.x = Math.max(-hh, Math.min(hh, ride.x));
@@ -756,16 +1049,18 @@ export class Boats {
 
   /** the helm: sails filling or spilled, the rudder, aground on the shallows, and the storm shoving you about */
   private drive(b: Boat, dt: number, time: number, ctl: { x: number; y: number; boost: boolean }) {
-    const maxV = ctl.boost ? 9.5 : 7;
-    const want = ctl.y >= 0 ? ctl.y * maxV : ctl.y * 2;
+    const rf = b.raft;
+    const maxV = rf ? (ctl.boost ? 4.6 : 3.4) : ctl.boost ? 9.5 : 7;
+    const want = ctl.y >= 0 ? ctl.y * maxV : ctl.y * (rf ? 1.4 : 2);
     b.v += (want - b.v) * Math.min(1, dt * (Math.abs(want) > Math.abs(b.v) ? 0.3 : 0.6));
-    const turn = -ctl.x * 0.5 * Math.min(1, 0.3 + Math.abs(b.v) / 4) * (b.v < -0.1 ? -1 : 1);
+    const turn = -ctl.x * (rf ? 0.42 : 0.5) * Math.min(1, 0.3 + Math.abs(b.v) / 4) * (b.v < -0.1 ? -1 : 1);
     b.yawV += (turn - b.yawV) * Math.min(1, dt * 2);
     const st = this.storm;
     if (st > 0) { b.yawV += st * Math.sin(time * 0.9 + Math.sin(time * 0.37) * 2) * 0.35 * dt; b.v -= st * 0.5 * dt * Math.sign(b.v); }
     b.yaw += b.yawV * dt;
     const nx = b.x - Math.sin(b.yaw) * b.v * dt, nz = b.z - Math.cos(b.yaw) * b.v * dt;
-    const clear = this.afloat(nx, nz, b.yaw, 0.9) && Math.hypot(nx, nz) < WRECK_R + 60 && !this.list.some((o) => o !== b && Math.hypot(o.x - nx, o.z - nz) < 10);
+    const clear = (rf ? raftAfloat(rf, nx, nz, b.yaw, 0.55) : this.afloat(nx, nz, b.yaw, 0.9)) && Math.hypot(nx, nz) < WRECK_R + 60
+      && !this.list.some((o) => o !== b && Math.hypot(o.x - nx, o.z - nz) < reach(o) + reach(b) - 1);
     if (clear) { b.x = nx; b.z = nz; }
     else {
       if (Math.abs(b.v) > 1.5) { this.sfx?.bonk(); this.shake?.(0.3); this.say?.('Aground! Back off with S.'); }
@@ -778,6 +1073,19 @@ export class Boats {
   private float(b: Boat, dt: number, time: number) {
     const s = Math.sin(b.yaw), c = Math.cos(b.yaw);
     const at = (lx: number, lz: number) => this.surface(b.x + lx * c + lz * s, b.z - lx * s + lz * c);
+    if (b.raft) {
+      // a raft sits right on the water and rocks with every wave (a big one less)
+      const r = b.raft, mx = (r.x0 + r.x1) / 2, mz = (r.z0 + r.z1) / 2, hx = (r.x1 - r.x0) / 2, hz = (r.z1 - r.z0) / 2;
+      const fwd = at(mx, r.z0), aft = at(mx, r.z1), port = at(r.x0, mz), stbd = at(r.x1, mz), mid = at(mx, mz);
+      const y = (fwd + aft + port + stbd + mid * 2) / 6 + 0.02 * Math.sin(time * 1.3 + b.x);
+      const k = 1 - Math.exp(-dt * 3.5);
+      b.y += (y - b.y) * k;
+      const pitch = Math.atan2(fwd - aft, hz * 2) - (b.lift > 0.5 ? 0.3 * Math.min(1, b.lift / 8) : 0);
+      const roll = Math.atan2(port - stbd, hx * 2) + this.storm * 0.08 * Math.sin(time * 1.4 + b.z);
+      b.pitch += (pitch - b.pitch) * k; b.roll += (roll - b.roll) * k;
+      this.place(b);
+      return;
+    }
     const fwd = at(0, -4.5), aft = at(0, 4.5), port = at(-1.8, 0), stbd = at(1.8, 0);
     const y = (fwd + aft + port + stbd) / 4 + Math.sin(time * 0.9 + b.x) * 0.03;
     const k = 1 - Math.exp(-dt * 2.5);
@@ -796,6 +1104,17 @@ export class Boats {
   }
   /** sails fill with speed (and flog when there is none), the boom swings out to leeward, the wheel turns, the torch flickers */
   private animate(b: Boat, dt: number, time: number) {
+    if (b.raft) {
+      // the oar sweeps to steer, and paddles along while under way
+      const o = b.raft.oar;
+      if (o) {
+        const row = Math.abs(b.v) > 0.3 ? Math.sin(time * 2.2) * Math.min(1, Math.abs(b.v) / 3) : 0;
+        const want = Math.max(-0.6, Math.min(0.6, b.yawV * 1.6)) + row * 0.25;
+        o.rotation.y += (want - o.rotation.y) * Math.min(1, dt * 4);
+        o.rotation.x = row * 0.08;
+      }
+      return;
+    }
     const v = Math.abs(b.v), fill = Math.min(1, v / 6);
     const flog = (1 - fill) * 0.12 * Math.sin(time * 9 + b.x);
     const belly = 0.12 + fill * 0.55 + this.storm * 0.25;
@@ -806,7 +1125,7 @@ export class Boats {
     b.flames.forEach((f, i) => { const k = 1 + 0.18 * Math.sin(time * (13 + i * 4) + b.torch.phase) + 0.08 * Math.sin(time * 31 + i); f.scale.set(1, k, 1); });
   }
   /** the cabin torches, for the light pool */
-  lights() { return this.list.map((b) => b.torch); }
+  lights() { return this.list.filter((b) => !b.raft).map((b) => b.torch); }
 
   // -------------------------------------------------------------- the giant wave and after
   /** the sea has had enough: a wave for my boat (and everybody on it), or just for me */
@@ -829,11 +1148,209 @@ export class Boats {
     this.wave.active = false; this.wave.mesh.visible = false;
   }
 
+  // -------------------------------------------------------------- building on a raft
+  /**
+   * What the building plan would build on a raft I'm looking at (a piece of the kind `kind`), or null when no raft is in
+   * view. `face`: which way I'm facing (a staircase climbs that way).
+   */
+  raftAim(kind: PieceKind, eye: { x: number; y: number; z: number }, dir: { x: number; y: number; z: number }, face: number, max = 7): RaftAim | null {
+    let best: RaftAim | null = null, near: { b: Boat; t: number } | null = null;
+    for (const b of this.list) {
+      const rf = b.raft;
+      if (!rf || Math.hypot(b.x - eye.x, b.z - eye.z) > max + rf.rad + 3) continue;
+      const p = pose(b), o = toLocal(p, eye.x, eye.y, eye.z, L1).clone(), d = toLocal(p, eye.x + dir.x, eye.y + dir.y, eye.z + dir.z, L2).sub(o);
+      const plane = (h: number) => { if (Math.abs(d.y) < 1e-4) return null; const t = (h - o.y) / d.y; return t > 0.2 && t < max ? { t, x: o.x + d.x * t, z: o.z + d.z * t } : null; };
+      const cand = (pc: RaftPiece, t: number, ok: boolean, reason = '') => { if (!best || (ok && !best.ok) || (ok === best.ok && t < best.t)) best = { b, p: pc, ok, reason, t }; };
+      // (is the raft in view at all: the ray passes over or near it)
+      for (let L = 0; L <= RAFT_LEVELS; L++) {
+        const h = plane(RDECK + L * RWH);
+        if (h && rf.nearest(h.x, h.z, 0)[2] < RC && (!near || h.t < near.t)) near = { b, t: h.t };
+      }
+      const cell = (x: number, z: number) => [Math.round(x / RC), Math.round(z / RC)];
+      if (kind === 'pool') continue;
+      if (kind === 'foundation') {
+        const h = plane(RDECK); if (!h) continue;
+        let [i, j] = cell(h.x, h.z);
+        if (rf.tile(i, j)) {
+          // looking at a section already there: the next one out, on the side you are looking at
+          const fx = h.x / RC - i, fz = h.z / RC - j;
+          if (Math.abs(fx) > Math.abs(fz)) i += Math.sign(fx); else j += Math.sign(fz);
+          if (rf.tile(i, j)) continue;
+        }
+        const nb = rf.tile(i - 1, j) || rf.tile(i + 1, j) || rf.tile(i, j - 1) || rf.tile(i, j + 1);
+        if (!nb) continue;
+        if (rf.tiles.size >= RAFT_TILES) cand(['t', i, j], h.t, false, `A raft can have ${RAFT_TILES} sections at most`);
+        else if (!raftAfloat(rf, b.x, b.z, b.yaw, 0.4, [i, j])) cand(['t', i, j], h.t, false, 'Too shallow there');
+        else if (this.list.some((o) => o !== b && Math.hypot(o.x - b.x, o.z - b.z) < reach(o) + Math.hypot(i * RC, j * RC) + RC)) cand(['t', i, j], h.t, false, 'Too close to another boat');
+        else cand(['t', i, j], h.t, true);
+      } else if (kind === 'floor') {
+        for (let L = 1; L <= RAFT_LEVELS; L++) for (const h of [plane(RDECK + L * RWH), plane(RDECK + (L - 1) * RWH)]) {
+          if (!h) continue;
+          const [i, j] = cell(h.x, h.z);
+          if (!rf.tile(i, j) || rf.floors.has(`${i},${j},${L}`)) continue;
+          if (L > 1 && !rf.floors.has(`${i},${j},${L - 1}`)) continue;
+          if (rf.stairs.has(`${i},${j},${L - 1}`)) cand(['f', i, j, L], h.t, false, 'Leave the floor above stairs open');
+          else cand(['f', i, j, L], h.t, true);
+        }
+      } else if (kind === 'stairs') {
+        const lf = face - b.yaw, fx = -Math.sin(lf), fz = -Math.cos(lf);
+        let dd = 0, bd = -2;
+        STAIR_DIRS.forEach(([x, z], k) => { const v = x * fx + z * fz; if (v > bd) { bd = v; dd = k; } });
+        for (let L = 0; L < RAFT_LEVELS; L++) {
+          const h = plane(RDECK + L * RWH); if (!h) continue;
+          const [i, j] = cell(h.x, h.z);
+          if (!rf.floor(i, j, L) || rf.stairs.has(`${i},${j},${L}`)) continue;
+          if (rf.floors.has(`${i},${j},${L + 1}`)) cand(['s', i, j, L, dd], h.t, false, 'There is a floor right above');
+          else cand(['s', i, j, L, dd], h.t, true);
+        }
+      } else {
+        for (let L = 0; L < RAFT_LEVELS; L++) {
+          const h = plane(RDECK + L * RWH); if (!h) continue;
+          const [i, j] = cell(h.x, h.z), fx = h.x / RC - i, fz = h.z / RC - j;
+          const pc: RaftPiece = Math.abs(fx) > Math.abs(fz) ? ['e', 'z', i + (fx > 0 ? 1 : 0), j, L, kind] : ['e', 'x', i, j + (fz > 0 ? 1 : 0), L, kind];
+          const [ii, jj] = [pc[2], pc[3]], other = pc[1] === 'x' ? [ii, jj - 1] : [ii - 1, jj];
+          if (!rf.floor(ii, jj, L) && !rf.floor(other[0], other[1], L)) continue;
+          if (rf.has(pc)) cand(pc, h.t, false, 'Something is there already');
+          else cand(pc, h.t, true);
+        }
+      }
+    }
+    if (!best && near) {
+      const nb = (near as { b: Boat; t: number });
+      return { b: nb.b, p: ['t', 0, 0], ok: false, reason: kind === 'pool' ? 'No pools on a raft' : kind === 'foundation' ? 'Aim at the edge of the raft' : 'Can’t build that there', t: nb.t };
+    }
+    return best;
+  }
+  /** show (or hide: null) the piece the building plan would put on a raft */
+  showRaftGhost(a: RaftAim | null) {
+    if (!a || (a.p[0] === 't' && !a.ok && a.p[1] === 0 && a.p[2] === 0)) { if (this.pieceGhost) this.pieceGhost.visible = false; return; }
+    const key = JSON.stringify(a.p);
+    if (key !== this.pieceGhostKey) {
+      if (this.pieceGhost) { this.scene.remove(this.pieceGhost); this.pieceGhost.traverse((o) => (o as THREE.Mesh).geometry?.dispose()); }
+      this.pieceGhost = makeRaft(a.b.raft!, false, this.ghostMat, a.p);
+      this.pieceGhostKey = key;
+      this.scene.add(this.pieceGhost);
+    }
+    const g = this.pieceGhost!;
+    g.visible = true;
+    g.position.copy(a.b.group.position); g.rotation.copy(a.b.group.rotation);
+    (this.ghostMat as THREE.MeshBasicMaterial).color.set(a.ok ? 0x7cff9a : 0xff6a5a);
+  }
+  /** build it */
+  raftPlace(a: RaftAim) {
+    const b = a.b; if (!b.raft || !a.ok) return;
+    b.raft.put(a.p); this.remodel(b);
+    this.pieceGhostKey = '';
+    this.onEvent?.({ op: 'rp', n: b.nid, a: 1, p: a.p });
+  }
+  /** the raft piece I'm looking at (to take down), or null */
+  raftFind(eye: { x: number; y: number; z: number }, dir: { x: number; y: number; z: number }, max: number): { b: Boat; p: RaftPiece; dist: number } | null {
+    let best: { b: Boat; p: RaftPiece; dist: number } | null = null;
+    for (const b of this.list) {
+      const rf = b.raft;
+      if (!rf || Math.hypot(b.x - eye.x, b.z - eye.z) > max + rf.rad) continue;
+      const p = pose(b), o = toLocal(p, eye.x, eye.y, eye.z, L1).clone(), d = toLocal(p, eye.x + dir.x, eye.y + dir.y, eye.z + dir.z, L2).sub(o);
+      const hit = (lo: number[], hi: number[]) => {
+        let t0 = 0, t1 = max; const oo = [o.x, o.y, o.z], dd = [d.x, d.y, d.z];
+        for (let k = 0; k < 3; k++) {
+          if (Math.abs(dd[k]) < 1e-6) { if (oo[k] < lo[k] || oo[k] > hi[k]) return -1; continue; }
+          let a = (lo[k] - oo[k]) / dd[k], c = (hi[k] - oo[k]) / dd[k]; if (a > c) [a, c] = [c, a];
+          t0 = Math.max(t0, a); t1 = Math.min(t1, c);
+        }
+        return t0 <= t1 ? t0 : -1;
+      };
+      const take = (pc: RaftPiece, t: number) => { if (t >= 0 && (!best || t < best.dist)) best = { b, p: pc, dist: t }; };
+      for (const pc of rf.list()) {
+        const h = RC / 2;
+        if (pc[0] === 't') { const x = pc[1] * RC, z = pc[2] * RC; take(pc, hit([x - h, -0.4, z - h], [x + h, RDECK, z + h])); }
+        else if (pc[0] === 'f') { const x = pc[1] * RC, z = pc[2] * RC, y = RDECK + pc[3] * RWH; take(pc, hit([x - h, y - 0.35, z - h], [x + h, y, z + h])); }
+        else if (pc[0] === 's') { const x = pc[1] * RC, z = pc[2] * RC, y = RDECK + pc[3] * RWH; take(pc, hit([x - h + 0.15, y, z - h + 0.15], [x + h - 0.15, y + RWH * 0.6, z + h - 0.15])); }
+        else {
+          const [, ax, i, j, L, kind] = pc, y0 = RDECK + L * RWH, y1 = y0 + (kind === 'railing' ? RAIL_H : RWH);
+          if (ax === 'x') { const z = (j - 0.5) * RC, x = i * RC; take(pc, hit([x - h, y0, z - 0.2], [x + h, y1, z + 0.2])); }
+          else { const x = (i - 0.5) * RC, z = j * RC; take(pc, hit([x - 0.2, y0, z - h], [x + 0.2, y1, z + h])); }
+        }
+      }
+    }
+    return best;
+  }
+  /** why a raft piece can't come down yet (null: it can) */
+  raftCanRemove(b: Boat, pc: RaftPiece): string | null {
+    const rf = b.raft; if (!rf) return 'Not a raft';
+    if (pc[0] === 't') {
+      const [, i, j] = pc;
+      if (rf.tiles.size <= 1) return 'Pack the whole raft up instead (hold E on it from the water)';
+      if (b.helm !== null) return 'Not while somebody is at the oar';
+      if (rf.floors.has(`${i},${j},1`) || rf.stairs.has(`${i},${j},0`)) return 'Take down what is built on it first';
+      for (const [k] of rf.edges) {
+        const [ii, jj, L] = k.slice(1).split(',').map(Number), other = k[0] === 'x' ? [ii, jj - 1] : [ii - 1, jj];
+        const mine = (ii === i && jj === j) || (other[0] === i && other[1] === j);
+        if (!mine || L > 0) continue;
+        const keep = ii === i && jj === j ? rf.tile(other[0], other[1]) : rf.tile(ii, jj);
+        if (!keep) return 'Take its walls and railings down first';
+      }
+      // (the rest must still hang together)
+      const left = [...rf.tiles].filter((k) => k !== `${i},${j}`), seen = new Set([left[0]]), q = [left[0]];
+      while (q.length) { const [a, c] = q.pop()!.split(',').map(Number); for (const n of [`${a + 1},${c}`, `${a - 1},${c}`, `${a},${c + 1}`, `${a},${c - 1}`]) if (left.includes(n) && !seen.has(n)) { seen.add(n); q.push(n); } }
+      if (seen.size !== left.length) return 'That would cut the raft in two';
+    } else if (pc[0] === 'f') {
+      const [, i, j, L] = pc;
+      if (rf.floors.has(`${i},${j},${L + 1}`) || rf.stairs.has(`${i},${j},${L}`)) return 'Take down what is built on it first';
+      for (const [k] of rf.edges) {
+        const [ii, jj, LL] = k.slice(1).split(',').map(Number); if (LL !== L) continue;
+        const other = k[0] === 'x' ? [ii, jj - 1] : [ii - 1, jj];
+        const a = ii === i && jj === j, c = other[0] === i && other[1] === j;
+        if ((a && !rf.floor(other[0], other[1], L)) || (c && !rf.floor(ii, jj, L))) return 'Take down the walls on it first';
+      }
+    }
+    return null;
+  }
+  raftRemove(b: Boat, pc: RaftPiece, remote = false) {
+    if (!b.raft) return;
+    b.raft.del(pc); this.remodel(b);
+    if (!remote) this.onEvent?.({ op: 'rp', n: b.nid, a: 0, p: pc });
+  }
+  /** what a raft is worth in wood beyond the raft itself (the pieces built on it, at the building plan's prices) */
+  raftPieces(b: Boat): RaftPiece[] { return b.raft ? b.raft.list().filter((p) => !(p[0] === 't' && p[1] === 0 && p[2] === 0)) : []; }
+
+  // -------------------------------------------------------------- a raft after the giant wave
+  /** washed back near the island: out from the beach the way it went, in water deep enough for all of it, bow to the sea */
+  respawnRaft(b: Boat, remote = false) {
+    const rf = b.raft; if (!rf) return;
+    const a0 = Math.round(Math.atan2(b.z, b.x) * 8) / 8;
+    let at: [number, number, number] | null = null;
+    for (const da of [0, 0.2, -0.2, 0.4, -0.4, 0.7, -0.7, 1.0, -1.0, 1.4, -1.4, 1.9, -1.9, 2.5, -2.5, 3.1]) {
+      const a = a0 + da, ux = Math.cos(a), uz = Math.sin(a), yaw = Math.atan2(-ux, -uz);
+      for (let r = 40; r < 300; r += 4) {
+        if (!raftAfloat(rf, ux * r, uz * r, yaw, 1.2)) continue;
+        // well clear of the shallows: a little further out than the first spot it floats
+        const R = r + 10 + rf.rad, x = ux * R, z = uz * R;
+        if (R < STORM_R0 - 40 && raftAfloat(rf, x, z, yaw, 1.5) && !this.list.some((o) => o !== b && Math.hypot(o.x - x, o.z - z) < reach(o) + rf.rad + 3)) at = [x, z, yaw];
+        break;
+      }
+      if (at) break;
+    }
+    if (!at) { const a = a0, R = 260; at = [Math.cos(a) * R, Math.sin(a) * R, Math.atan2(-Math.cos(a), -Math.sin(a))]; }
+    this.warp(b, at[0], at[1], at[2]);
+    if (!remote) this.onEvent?.({ op: 'warp', n: b.nid, x: +at[0].toFixed(2), z: +at[1].toFixed(2), r: +at[2].toFixed(3) });
+  }
+  private warp(b: Boat, x: number, z: number, yaw: number) {
+    b.x = b.tx = x; b.z = b.tz = z; b.yaw = b.tyaw = yaw; b.v = b.tv = 0; b.yawV = 0; b.lift = 0; b.pitch = b.roll = 0;
+    b.doomed = false; b.helm = null;
+    b.y = this.surface(x, z);
+    if (this.on === b) { this.on = null; this.atHelm = false; }
+    if (this.waveFor === b) this.waveFor = null;
+    for (const [id, r] of this.riders) if (r.b === b) this.riders.delete(id);
+    this.place(b);
+  }
+
   // -------------------------------------------------------------- network
   net(e: Record<string, any>, from: number) {
     const b = typeof e.n === 'string' ? this.byId(e.n) : null;
     switch (e.op) {
-      case 'add': if (!b && Number.isFinite(+e.x) && Number.isFinite(+e.z)) this.add(e.n, +e.x, +e.z, +e.r || 0, true); break;
+      case 'add': if (!b && Number.isFinite(+e.x) && Number.isFinite(+e.z)) this.add(e.n, +e.x, +e.z, +e.r || 0, true, Array.isArray(e.p) ? e.p : undefined); break;
+      case 'rp': if (b?.raft && Array.isArray(e.p)) { if (e.a) b.raft.put(e.p as RaftPiece); else b.raft.del(e.p as RaftPiece); this.remodel(b); } break;
+      case 'warp': if (b && Number.isFinite(+e.x) && Number.isFinite(+e.z)) this.warp(b, +e.x, +e.z, +e.r || 0); break;
       case 'del': if (b) this.remove(b, true); break;
       case 'helm': {
         if (!b) break;
@@ -852,9 +1369,9 @@ export class Boats {
   }
 
   // -------------------------------------------------------------- save
-  capture(): BoatRow[] { return this.list.filter((b) => !b.doomed).map((b) => ({ n: b.nid, x: +b.x.toFixed(2), z: +b.z.toFixed(2), r: +b.yaw.toFixed(3) })); }
+  capture(): BoatRow[] { return this.list.filter((b) => !b.doomed || b.raft).map((b) => ({ n: b.nid, x: +b.x.toFixed(2), z: +b.z.toFixed(2), r: +b.yaw.toFixed(3), ...(b.raft ? { p: b.raft.list() } : {}) })); }
   restore(rows: BoatRow[] | undefined) {
     for (const b of [...this.list]) this.remove(b, true);
-    if (Array.isArray(rows)) for (const r of rows) if (r && typeof r.n === 'string') this.add(r.n, +r.x, +r.z, +r.r || 0, true);
+    if (Array.isArray(rows)) for (const r of rows) if (r && typeof r.n === 'string') this.add(r.n, +r.x, +r.z, +r.r || 0, true, Array.isArray(r.p) ? r.p : undefined);
   }
 }

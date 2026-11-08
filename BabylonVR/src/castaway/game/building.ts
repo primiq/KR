@@ -181,7 +181,7 @@ function inPoolRim(mask: number, lx: number, lz: number) {
 }
 
 // ---------------------------------------------------------------- models
-type MatKey = "wall" | "slab" | "beam" | "pile" | "glass" | "pool" | "tile" | "swall" | "sslab";
+export type MatKey = "wall" | "slab" | "beam" | "pile" | "glass" | "pool" | "tile" | "swall" | "sslab";
 /** A piece's model while it is put together: boxes in local space, bucketed by material (one Babylon mesh per material). */
 class Kit {
     readonly parts = new Map<MatKey, THREE.BufferGeometry[]>();
@@ -331,6 +331,14 @@ function fillKit(kit: Kit, kind: PieceKind, depth = 0.6, pile?: (lx: number, lz:
             for (const x of [-1, 0, 1]) box(0.16, 0.2, CELL - 0.06, x * 1.2, -0.115, 0, "beam");
             break;
     }
+}
+
+/** a piece's geometry, grouped by material, with the window casements shut in place (for a raft's pieces, drawn by three.js) */
+export function pieceGeometry(kind: PieceKind): Map<MatKey, THREE.BufferGeometry[]> {
+    const kit = new Kit();
+    fillKit(kit, kind, 0.4);
+    for (const s of kit.sashes) for (const [k, list] of s.geos) for (const g of list) kit.add(k, g.translate(s.side * 0.65, 0, 0.02));
+    return kit.parts;
 }
 
 let SCENE: Scene | null = null;

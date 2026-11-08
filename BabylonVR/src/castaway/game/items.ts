@@ -9,7 +9,7 @@ export type ItemId =
   | 'campfire' | 'furnace' | 'workbench' | 'bed' | 'sleeping_bag' | 'box'
   | 'building_plan' | 'torch' | 'sapling' | 'picture_frame' | 'flower_pot' | 'rug' | 'lantern' | 'door'
   | 'leather' | 'leather_cap' | 'leather_vest' | 'leather_pants' | 'metal_helmet' | 'metal_chestplate' | 'metal_greaves'
-  | 'diamond_helmet' | 'diamond_chestplate' | 'diamond_greaves' | 'boat' | 'table' | 'cat_bed' | 'lounger' | 'drum' | 'drumsticks'
+  | 'diamond_helmet' | 'diamond_chestplate' | 'diamond_greaves' | 'boat' | 'raft' | 'table' | 'cat_bed' | 'lounger' | 'drum' | 'drumsticks'
   | 'meat_stick' | 'roast_stick' | 'guitar' | 'sand';
 export type ArmorSlot = 'head' | 'chest' | 'legs';
 export const ARMOR_SLOTS: ArmorSlot[] = ['head', 'chest', 'legs'];
@@ -38,6 +38,8 @@ export interface ItemDef {
   frame?: boolean;
   /** a boat: goes on the water */
   boat?: boolean;
+  /** ... a raft (one log section, built on with the building plan) */
+  raft?: boolean;
   /** raw food on a stick: hold its end over a burning campfire to roast it into this item */
   roast?: ItemId;
   /** a musical instrument: strum it */
@@ -306,6 +308,11 @@ export const ITEMS = {
     id: 'boat', name: 'Boat', stack: 1, kind: 'resource', boat: true,
     desc: 'A wooden sailing boat, big enough to walk about on: a deck with rails, a little cabin with a table and a torch, a mast and two sails. Hold it and click open water to put it in. Press E at the wheel to steer; jump the rail to swim, and press E on the hull to climb back aboard. Don’t sail too far out…',
     icon: svg('<path d="M3 15h26l-4 9c-1 2-2 3-4 3H10c-2 0-3-1-4-3z" fill="#f2efe6"/><path d="M5 21h22l-1.6 3.6c-.8 1.8-2 2.4-3.4 2.4H10c-1.6 0-2.6-.8-3.4-2.4z" fill="#9c3324"/><path d="M4 17.5h24" stroke="#1f3d66" stroke-width="1.6"/><path d="M3 15h26" stroke="#7a5230" stroke-width="1.8"/><rect x="24" y="8" width="4" height="6" rx="1" fill="#2b2f33"/><path d="M26 14v8" stroke="#2b2f33" stroke-width="1.4"/>'),
+  },
+  raft: {
+    id: 'raft', name: 'Raft', stack: 1, kind: 'resource', boat: true, raft: true,
+    desc: 'Logs lashed into a little raft, one building block in size. Hold it and click the sea to put it in. Build on it with the building plan like on land (more raft sections, walls, railings, a floor above) and steer it with the oar at the back. If the storm wrecks it, it washes up near the beach.',
+    icon: svg('<path d="M4 15h24v7H4z" fill="#8a6440"/><g fill="#c9a06a"><circle cx="6.4" cy="18.5" r="2.4"/><circle cx="11.2" cy="18.5" r="2.4"/><circle cx="16" cy="18.5" r="2.4"/><circle cx="20.8" cy="18.5" r="2.4"/><circle cx="25.6" cy="18.5" r="2.4"/></g><path d="M3 14.5h26" stroke="#5c4128" stroke-width="2"/><path d="M22 13L28 4" stroke="#c9a06a" stroke-width="1.6"/><path d="M27 3l3 2-2 2.5-3-2z" fill="#7d5530"/>'),
   },
   building_plan: {
     id: 'building_plan', name: 'Building Plan', stack: 1, kind: 'plan',

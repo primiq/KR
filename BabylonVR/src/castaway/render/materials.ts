@@ -186,6 +186,11 @@ export function deckMaterial(scene: Scene): PBRCustomMaterial {
     return once("deckWood", () => plankMaterial(scene, "planksDeck", Color3.FromHexString("#c08c58").toLinearSpace(), Color3.FromHexString("#a87a48").toLinearSpace(), false, true));
 }
 
+/** a raft's walls: the wall planks, fixed to the raft as it sails */
+export function deckWallMaterial(scene: Scene): PBRCustomMaterial {
+    return once("deckWallWood", () => plankMaterial(scene, "planksDeckWall", Color3.FromHexString("#d2a06a").toLinearSpace(), Color3.FromHexString("#bd8b56").toLinearSpace(), true, true));
+}
+
 export interface WoodMats { wall: PBRCustomMaterial; slab: PBRCustomMaterial; beam: PBRMaterial; pile: PBRMaterial }
 export function woodMaterials(scene: Scene): WoodMats {
     return once("wood", () => {
