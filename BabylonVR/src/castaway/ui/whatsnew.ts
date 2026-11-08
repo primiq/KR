@@ -6,6 +6,14 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-11-09", title: "Submarines, and homes on rafts",
+        items: [
+            "Build a submarine at the workbench and put it in deep water: a yellow sub with a glass dome, four seats and a hatch on top.",
+            "Climb in at the surface and everybody gets a seat. The driver sails it from the console and takes it down to the reef and back up. Deep down, the storm can't reach you.",
+            "Rafts: no more gap under the walls. Beds, doors, pictures, torches on the railing posts, lanterns under an upper floor and the rest all work on a raft and sail with it.",
+        ],
+    },
+    {
         date: "2026-11-08", title: "Rafts",
         items: [
             "Craft a raft from wood and fiber (no workbench needed) and put it on the sea.",

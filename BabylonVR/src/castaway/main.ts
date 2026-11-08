@@ -435,6 +435,8 @@ async function main() {
     progress(0.82, "Washing the castaway ashore…");
     await nextFrame();
     const game = new Game({ scene, camera, player, vegetation, input, spawn, springSpots, shadows: q.shadows, clock });
+    // (no sea inside a submarine's hull)
+    ocean.holes = game.subs.holes;
     // ruined huts and shipwrecks with chests, and the caves under the island
     const sites = new SurfaceSites(game.ugRoot as unknown as THREE.Scene, sitePlan, vegetation.colliders, q.shadows);
     game.under.sites = sites;
@@ -856,6 +858,7 @@ async function main() {
             if (locs.active && !locs.contains(player.pos.x, player.pos.z)) { locs.leave(player); player.teleport(player.pos.x, heightAt(player.pos.x, player.pos.z), player.pos.z, player.yaw); }
             if (air.driving && game.stats.dead) air.exitCar(player);
             if (air.active) air.pre(dt, { gas: Math.max(-1, Math.min(1, input.move.y)), steer: Math.max(-1, Math.min(1, input.move.x)), hand: input.jumpHeld, boost: input.wantsSprint }, player, vrActive());
+            game.subsPre(dt);
             if (!game.uiBlocking) player.update(dt, input);
             else input.consumeLook();
             vrMode?.afterPlayer(dt);
@@ -930,11 +933,11 @@ async function main() {
             // head-less one the camera draws, so you see your body and legs when you look down (in a headset, your arms too)
             {
                 const held = game.equipped, pose = vrMode?.pose() ?? null;
-                const me: PState = { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch, spd: game.walkSpeed, item: held ? held.id : "", swing: game.swings, flags: (player.sprinting && !game.boats.atHelm ? 1 : 0) | (player.mode === "swim" ? 2 : 0) | (game.stats.dead ? 4 : 0) | (game.isSleeping ? 8 : 0) | (game.drinking ? 32 : 0), hp: game.stats.health, arm: game.armorCode };
+                const me: PState = { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch, spd: game.walkSpeed, item: held ? held.id : "", swing: game.swings, flags: (player.sprinting && !game.boats.atHelm ? 1 : 0) | (player.mode === "swim" ? 2 : 0) | (game.stats.dead ? 4 : 0) | (game.isSleeping ? 8 : 0) | (game.drinking ? 32 : 0) | (game.subs.mine ? 64 : 0), hp: game.stats.health, arm: game.armorCode };
                 if (pose) { me.v = pose; me.yaw = pose.h[3]; me.pitch = pose.h[4]; }
                 if (game.lounger) { me.flags |= F_LOUNGE; me.yaw = game.loungeYaw; me.v = null; }
                 const mirrorOn = sky.active || (seaReflOn && !game.under.active);
-                const fpOn = !game.stats.dead && !game.isSleeping && player.mode !== "swim" && !game.warp.inLevel && !game.invaders.seated && !game.under.cat?.active && !game.under.camp?.active && !game.under.air?.driving && !game.dive?.active && !game.slide.riding;
+                const fpOn = !game.stats.dead && !game.isSleeping && player.mode !== "swim" && !game.warp.inLevel && !game.invaders.seated && !game.under.cat?.active && !game.under.camp?.active && !game.under.air?.driving && !game.subs.mine && !game.dive?.active && !game.slide.riding;
                 if (mirrorOn || fpOn || mirrorAv) {
                     mirrorAv ??= sync?.avatars ?? new Avatars(scene, false);
                     const myId = sync?.session.myId ?? 0;

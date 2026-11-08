@@ -161,7 +161,17 @@ float fbm(vec2 p) { float s = 0.0; float a = 0.5; for (int i = 0; i < 4; i++) { 
 uniform sampler2D lakeMask;
 uniform vec4 lakeRect;
 #endif
+// cut-outs: the inside of a submarine's hull (centre, yaw / half sizes, on), so no sea shows in it
+uniform vec4 holeA[4];
+uniform vec4 holeB[4];
 void main(void) {
+    for (int i = 0; i < 4; i++) {
+        if (holeB[i].w < 0.5) continue;
+        vec3 d = vPos - holeA[i].xyz;
+        float c = cos(holeA[i].w), s = sin(holeA[i].w);
+        vec3 q = vec3(d.x * c - d.z * s, d.y, d.x * s + d.z * c) / holeB[i].xyz;
+        if (dot(q, q) < 1.0) discard;
+    }
 #ifdef LAKE
     // (a lake: only where the water has got to)
     if (texture2D(lakeMask, (vPos.xz - lakeRect.xy) / lakeRect.z).r < 0.5) discard;
@@ -293,6 +303,8 @@ export class Ocean {
     horizon: { away: Color3; toSun: Color3; sunX: number; sunZ: number } | null = null;
     /** the reflection can be paused (in a headset, underground...) without throwing it away */
     reflectOn = true;
+    /** submarines' hulls cut out of the surface: 4 x (x, y, z, yaw), then 4 x (half sizes, on) */
+    holes: number[] = new Array(32).fill(0);
 
     /**
      * Mirror the scene in the sea: a reduced-size HDR render of what `include` picks, reflected about sea level, refreshed
@@ -355,7 +367,7 @@ export class Ocean {
             { vertex: "ocean", fragment: "ocean" },
             {
                 attributes: ["position"],
-                uniforms: ["world", "viewProjection", "time", "waveA", "waveB", "seabedRect", "rippleRect", "rippleTexel", "cameraPos", "sunDir", "sunColor", "shallowColor", "deepColor", "daylight", "bio", "useRefl", "screenSize", "hzAway", "hzSun", "hzSunXZ", "flash", "rough"],
+                uniforms: ["world", "viewProjection", "time", "waveA", "waveB", "seabedRect", "rippleRect", "rippleTexel", "cameraPos", "sunDir", "sunColor", "shallowColor", "deepColor", "daylight", "bio", "useRefl", "screenSize", "hzAway", "hzSun", "hzSunXZ", "flash", "rough", "holeA", "holeB"],
                 samplers: ["seabed", "ripples", "envMap", "reflTex"],
                 defines: [`#define NUM_WAVES ${n}`, ...(q === "mobile" ? ["#define LITE"] : [])],
                 needAlphaBlending: true,
@@ -380,6 +392,8 @@ export class Ocean {
             e.setFloat4("rippleRect", r.origin.x, r.origin.y, r.worldSize, r.enabled ? 1 : 0);
             e.setFloat2("rippleTexel", 1 / r.size, 1 / r.size);
             e.setTexture("ripples", r.texture);
+            e.setArray4("holeA", this.holes.slice(0, 16));
+            e.setArray4("holeB", this.holes.slice(16, 32));
         });
         this.mesh.material = mat;
 

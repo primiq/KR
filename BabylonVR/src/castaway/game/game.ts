@@ -36,6 +36,7 @@ import { CHORDS, Guitar } from "./guitar";
 import { Drum } from "./drum";
 import { Slide } from "../world/slide";
 import { type Boat, Boats, type RaftAim } from "../world/boat";
+import { type Sub, Subs } from "../world/sub";
 import { skyMirrorMaterial } from "../world/skyView";
 import type { Skydive } from "../world/skydive";
 import { Twins } from "./twins";
@@ -124,6 +125,11 @@ export class Game {
     dive: Skydive | null = null;
     /** boats on the sea, and the storm out past the reef */
     readonly boats: Boats;
+    /** submarines: glass bubbles for four, with a hatch on top */
+    readonly subs: Subs;
+    /** (VR) the left stick up / down while driving a submarine */
+    subRise = 0;
+    private subAim: { ok: boolean; why: string; x: number; z: number; yaw: number } | null = null;
     private boatAim: { ok: boolean; why: string; x: number; z: number; yaw: number } | null = null;
     private boatTurn = 0;
     /** seconds since the giant wave hit (-1: not happening) */
@@ -137,6 +143,7 @@ export class Game {
     private wreckStage = 0;
     private wakeAt = { x: 0, z: 0, yaw: 0 };
     private wreckRaft = false;
+    private wreckSub = false;
     private lidsEl: HTMLElement | null = null;
     private ivDir = new THREE.Vector3();
     /** doors hung in doorways, and pictures on the walls (with the paint editor) */
@@ -231,7 +238,9 @@ export class Game {
     get equipped() { return this.under?.cat?.active ? undefined : this.inv.slots[this.hud.selected]; }
     get equippedDef() { const e = this.equipped; return e ? ITEMS[e.id] : null; }
     /** how fast your avatar is walking (for its legs): standing still at a boat's wheel, however fast the boat goes */
-    get walkSpeed() { return this.boats.atHelm ? 0 : Math.hypot(this.player.vel.x, this.player.vel.z); }
+    get walkSpeed() { return this.boats.atHelm || this.subs.mine ? 0 : Math.hypot(this.player.vel.x, this.player.vel.z); }
+    /** true while I sit at a submarine's controls (VR: the sticks drive it) */
+    get subHelm() { return !!this.subs.mine && this.subs.seat === 0; }
     get uiBlocking() { return this.hud.inventoryOpen || this.map.open || this.stats.dead || this.sleeping || this.painter.open; }
     get isSleeping() { return this.sleeping; }
     get openStruct() { return this.openS; }
@@ -324,7 +333,7 @@ export class Game {
         this.slide.say = (t) => this.hud.message(t);
         this.slide.sound = (k, v) => { if (k === "splash") this.sfx.splash(v); else if (k === "land") this.sfx.splash(0.6); else this.sfx.whoosh(); };
         this.boats = new Boats(this.natureRoot, !!o.shadows);
-        this.player.roam = (x, z) => this.boats.list.some((b) => Math.hypot(b.x - x, b.z - z) < 30);
+        this.player.roam = (x, z) => this.boats.list.some((b) => Math.hypot(b.x - x, b.z - z) < 30) || this.subs.list.some((b) => Math.hypot(b.x - x, b.z - z) < 30);
         // things set down on a deck (a drum, a torch, a box...) sail with the boat
         this.structures.deckSpot = (x, y, z, yaw) => this.boats.deckSpot(x, y, z, yaw);
         this.structures.deckWorld = (n, l, out) => this.boats.deckWorld(n, l, out);
@@ -333,10 +342,15 @@ export class Game {
         this.boats.sfx = this.sfx as never;
         this.boats.shake = (a) => this.player.shake(a);
         this.boats.onWreck = () => this.startWreck();
+        this.subs = new Subs(this.natureRoot, !!o.shadows);
+        this.subs.surface = (x, z) => this.player.surfaceAt(x, z);
+        this.subs.say = (t) => this.hud.message(t);
+        this.subs.sfx = this.sfx as never;
+        this.subs.shake = (a) => this.player.shake(a);
         // (the slide's tower platform and boats' decks are ground too)
         this.player.world = {
-            ground: (x, z, y) => Math.max(this.building.ground(x, z, y), this.slide.ground(x, z, y ?? -1e9), this.boats.ground(x, z, y ?? 1e9)),
-            resolve: (x, z, r, feetY, out) => { this.building.resolve(x, z, r, feetY, out); this.boats.resolve(out.x, out.z, r, feetY, out); },
+            ground: (x, z, y) => Math.max(this.building.ground(x, z, y), this.slide.ground(x, z, y ?? -1e9), this.boats.ground(x, z, y ?? 1e9), this.subs.ground(x, z, y ?? 1e9)),
+            resolve: (x, z, r, feetY, out) => { this.building.resolve(x, z, r, feetY, out); this.boats.resolve(out.x, out.z, r, feetY, out); this.subs.resolve(out.x, out.z, r, feetY, out); },
         };
         this.invaders = new Invaders(this.natureRoot);
         {
@@ -871,7 +885,7 @@ export class Game {
 
         const calm = !!this.under.camp?.active || !!this.under.locs?.active || !!this.under.town?.active;
         stats.godMode = player.mode === "fly" || calm;      // no hunger, thirst or falls in the campaign or the Locations places
-        if (!stats.dead && !calm) stats.update({ dt, moving: player.moving && player.mode !== "fly", sprinting: player.sprinting && player.mode !== "fly", swimming: player.mode === "swim", jumped: player.jumped, underwater: player.underwater });
+        if (!stats.dead && !calm) stats.update({ dt, moving: player.moving && player.mode !== "fly", sprinting: player.sprinting && player.mode !== "fly", swimming: player.mode === "swim", jumped: player.jumped, underwater: player.underwater && !this.subs.mine });
         if (stats.dead && !this.deathHandled) this.onDeath();
         hud.setVitals(stats);
 
@@ -885,6 +899,18 @@ export class Game {
             return;
         }
         if (this.boats.atHelm && input.interactQueued) { input.interactQueued = false; this.tryLeaveHelm(); }
+        // sitting in a submarine: nothing else to do but drive it (or ride), take the controls, or climb out at the surface
+        if (this.subs.mine && !stats.dead && this.wreckT < 0) {
+            const sb = this.subs.mine, E = this.keyLabel("E"), up = this.subs.surfaced(sb), drv = this.subs.seat === 0;
+            const d0 = sb.seats[0], free = !drv && (d0 === null || !this.subs.present(d0));
+            const R = `<b>${this.vr.active ? "X" : input.touch ? "⟳" : "R"}</b>`;
+            hud.setPrompt("Submarine", `${up ? `${E} climb out` : "Surface to open the hatch"}${free ? ` &nbsp;·&nbsp; ${R} take the controls` : ""}`, true);
+            this.hideBuildUi(); view.visible(false);
+            if (input.interactQueued) { input.interactQueued = false; this.leaveSub(); }
+            if (input.rotateQueued) { input.rotateQueued = 0; if (free && this.subs.takeControls()) this.subHint(); }
+            input.attackQueued = false; input.hotbarDelta = 0; input.hotbarSelect = null;
+            return;
+        }
         if (stats.dead || this.sleeping || this.wreckT >= 0 || this.warp.inLevel || this.invaders.seated) { hud.setPrompt(null); this.hideBuildUi(); return; }
 
         if (hud.inventoryOpen) {
@@ -1055,12 +1081,23 @@ export class Game {
         if (def?.boat && input.rotateQueued) { this.boatTurn += (Math.PI / 4) * input.rotateQueued; input.rotateQueued = 0; }
         this.boatAim = def?.boat && !ug.active && !this.boats.on ? this.boats.aim(eye, dir, player.yaw + (def.raft ? 0 : Math.PI / 2) + this.boatTurn, !!def.raft) : null;
         this.boats.showGhost(this.boatAim, performance.now() / 1000);
+        // holding a submarine: where it would go
+        if (def?.sub && input.rotateQueued) { this.boatTurn += (Math.PI / 4) * input.rotateQueued; input.rotateQueued = 0; }
+        this.subAim = def?.sub && !ug.active && !this.boats.on ? this.subs.aim(eye, dir, player.yaw + this.boatTurn) : null;
+        this.subs.showGhost(this.subAim, performance.now() / 1000);
+        // a submarine: climb in through the hatch
+        const sbt = ug.active || this.boats.atHelm ? null : this.subs.target(eye, dir, 4.5);
+        const useSub = !!sbt && (!t || sbt.dist < t.dist) && (!st || sbt.dist < st.dist) && !useDoor;
         // a boat: climb aboard from outside; on deck, the wheel
         let bt = ug.active || this.boats.atHelm ? null : this.boats.target(eye, dir, 4.5);
         // (close beside a boat, from any side, with nothing else in view: use climbs aboard, no need to aim at it)
         if (!bt && !ug.active && !this.boats.on && !t && !st) { const nb = this.boats.nearHull(player.pos.x, player.pos.y, player.pos.z); if (nb) bt = { b: nb, what: "board", dist: 0.5 }; }
-        const useBoat = !!bt && (!t || bt.dist < t.dist) && (!st || bt.dist < st.dist) && !useDoor;
-        if (useBoat && bt) {
+        const useBoat = !!bt && (!t || bt.dist < t.dist) && (!st || bt.dist < st.dist) && !useDoor && !(useSub && sbt && sbt.dist < bt.dist);
+        if (useSub && sbt && !useBoat) {
+            const sb = sbt.s, E = this.keyLabel("E"), n = sb.seats.filter((q) => q !== null).length;
+            hud.setPrompt("Submarine", `${this.subs.surfaced(sb) ? `${E} climb in (${4 - n} of 4 seats free)` : "Under water: the hatch is shut"}${this.subs.occupied(sb) ? "" : ` &nbsp;·&nbsp; hold ${E} pack it up`}`, true);
+            this.runHold(dt, sb, () => this.enterSub(sb), () => this.pickupSub(sb));
+        } else if (useBoat && bt) {
             const b = bt.b, E = this.keyLabel("E");
             if (bt.what === "board") {
                 hud.setPrompt(b.raft ? "Raft" : "Boat", `${E} climb aboard${this.boats.aboard(b) ? "" : ` &nbsp;·&nbsp; hold ${E} pack it up`}`, true);
@@ -1176,6 +1213,15 @@ export class Game {
                     this.boats.add(`b${this.netId}_${Math.random().toString(36).slice(2, 8)}`, ba.x, ba.z, ba.yaw, false, def.raft ? [["t", 0, 0]] : undefined);
                     this.inv.takeAt(hud.selected, 1); this.sfx.splash(0.9); view.place();
                     hud.message(def.raft ? "Raft in the water! Climb on with E, steer with the oar at the back, and build on it with the building plan." : "In the water! Look at it and press E to get in.");
+                }
+            }
+            else if (def?.sub && input.attackQueued && !ug.active && !this.boats.on) {
+                const sa = this.subAim;
+                if (!sa || !sa.ok) { hud.message(sa?.why || "Aim at deep water"); this.sfx.denied(); }
+                else {
+                    this.subs.add(`s${this.netId}_${Math.random().toString(36).slice(2, 8)}`, sa.x, sa.z, sa.yaw);
+                    this.inv.takeAt(hud.selected, 1); this.sfx.splash(0.9); view.place();
+                    hud.message("Submarine in the water! Swim or walk up to it and press E to climb in through the hatch.");
                 }
             }
             else if (def?.frame && input.attackQueued && !ug.active) {
@@ -1696,6 +1742,46 @@ export class Game {
         this.boats.remove(b); this.sfx.pickup(); this.hud.message("Boat picked up");
     }
 
+    // ------------------------------------------------------------ submarines
+    private enterSub(sb: Sub) {
+        const p = this.player;
+        if (p.ride || this.stats.dead) return;
+        const why = this.subs.enter(sb);
+        if (why) { this.hud.message(why); this.sfx.denied(); return; }
+        p.vel.set(0, 0, 0); p.mode = "walk";
+        p.eyeAt = { x: p.pos.x, y: p.pos.y + 1, z: p.pos.z };
+        if (!this.vr.active) { p.yaw = sb.yaw; p.pitch = -0.05; }
+        p.ride = () => { if (!this.subs.mine || !p.eyeAt) return false; return this.subs.carry(p.pos, p.eyeAt, p); };
+        this.subs.carry(p.pos, p.eyeAt, p);
+        this.subHint();
+    }
+    private subHint() {
+        const vr = this.vr.active, touch = this.input.touch;
+        if (this.subs.seat === 0) this.hud.message(vr ? "At the controls: left stick steers and goes up and down, right trigger ahead, left trigger astern · A climb out at the surface" : touch ? "At the controls: the stick drives, JUMP rises, hold HIT to dive · USE climb out at the surface" : "At the controls: W / S ahead and astern, A / D steer, Space up, Ctrl or X down, Shift full speed · E climb out at the surface");
+        else this.hud.message(`You sit down in the submarine. ${vr ? "X" : touch ? "⟳" : "R"} takes the controls if nobody has them.`);
+    }
+    private leaveSub(force = false) {
+        const p = this.player;
+        const why = this.subs.leave(p.pos, force);
+        if (why) { this.hud.message(why); this.sfx.denied(); return; }
+        p.ride = null; p.eyeAt = null; p.onGround = true; p.vel.set(0, 0, 0); p.lastY = p.pos.y;
+    }
+    private pickupSub(sb: Sub) {
+        if (this.subs.occupied(sb)) { this.hud.message("Somebody is inside"); this.sfx.denied(); return; }
+        if (this.inv.add("submarine", 1) > 0) { this.hud.message("No room in your pockets"); this.sfx.denied(); return; }
+        this.subs.remove(sb); this.sfx.pickup(); this.hud.message("Submarine picked up");
+    }
+    /** before the player moves: the submarines move (so whoever sits in one is put exactly in their seat this frame) */
+    subsPre(dt: number) {
+        const i = this.input, p = this.player;
+        if (this.subs.mine && this.stats.dead) this.leaveSub(true);
+        const drv = this.subHelm && !this.hud.inventoryOpen;
+        const rise = this.vr.active ? this.subRise : (i.jumpHeld ? 1 : 0) - (i.wantsDive || i.attackHeld ? 1 : 0);
+        this.subs.update(dt, performance.now() / 1000, drv ? { x: i.move.x, y: i.move.y, rise, boost: i.wantsSprint } : { x: 0, y: 0, rise: 0, boost: false });
+        if (this.subs.mine) i.jumpQueued = false;
+        void p;
+    }
+
     // ------------------------------------------------------------ lost at sea: the giant wave, the black, the beach
     private startWreck() {
         if (this.wreckT >= 0) return;
@@ -1711,7 +1797,10 @@ export class Game {
         const t0 = this.wreckT, t = (this.wreckT += dt), p = this.player;
         if (t0 < 0.3 && t >= 0.3) {
             // the boat is gone; you come round on the beach (everybody a little apart), the storm is over
-            const b = this.boats.on;
+            const b = this.boats.on, sm = this.subs.mine;
+            // (out of a submarine: it washes up off the beach too)
+            if (sm) { this.leaveSub(true); this.subs.respawn(sm); }
+            this.wreckSub = !!sm;
             this.boats.leaveHelm();
             // (a raft washes back near the island, ready to go again; a boat is lost)
             this.wreckRaft = !!b?.raft;
@@ -1731,7 +1820,7 @@ export class Game {
         if (t >= 11) {
             this.wreckT = -1; this.eyeBlur = 0; this.lids(-1);
             document.getElementById("fade")?.classList.remove("now");
-            this.hud.message(this.wreckRaft ? "You wake up on the beach, soaked through. Your raft washed up just off the beach, ready to sail again." : "You wake up on the beach, soaked through. The boat is gone… but you still have all your things.");
+            this.hud.message(this.wreckSub ? "You wake up on the beach, soaked through. Your submarine washed up just off the beach." : this.wreckRaft ? "You wake up on the beach, soaked through. Your raft washed up just off the beach, ready to sail again." : "You wake up on the beach, soaked through. The boat is gone… but you still have all your things.");
         }
     }
     private wakeGround(x: number, z: number) { return Math.max(heightAt(x, z), this.building.ground(x, z, heightAt(x, z) + 1)); }
@@ -1830,7 +1919,7 @@ export class Game {
         {
             const bx0 = me.x, by0 = me.y, bz0 = me.z;
             this.boats.update(dt, performance.now() / 1000, { x: this.input.move.x, y: this.input.move.y, boost: this.input.wantsSprint }, me, p,
-                (!p.ride || this.boats.atHelm) && !this.stats.dead && !this.sleeping && p.mode !== "fly", !onIsland || !!p.cave || this.stats.dead || this.wreckT >= 0);
+                (!p.ride || this.boats.atHelm) && !this.stats.dead && !this.sleeping && p.mode !== "fly", !onIsland || !!p.cave || this.stats.dead || this.wreckT >= 0 || (!!this.subs.mine && this.subs.mine.depth > 1.5));
             // the boat moved after the player did this frame: the eyes go with it
             if (this.boats.on) { p.eye.x += me.x - bx0; p.eye.y += me.y - by0; p.eye.z += me.z - bz0; }
         }

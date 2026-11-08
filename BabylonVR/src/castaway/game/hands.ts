@@ -513,6 +513,14 @@ function build(id: ItemId, left = false): THREE.Group {
       g.rotation.y = 0.4;
       return g;
     }
+    case 'submarine': {
+      // a toy submarine: a glass egg on a yellow bottom, a hatch on top
+      const g = grp(mesh(place(new THREE.SphereGeometry(1, 14, 6, 0, Math.PI * 2, Math.PI * 0.62, Math.PI * 0.38), 0, 0, 0, 0.055, 0.045, 0.1), mat('#f2b705', 0.5, { double: true }), 11));
+      g.add(mesh(place(new THREE.SphereGeometry(1, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.63), 0, 0, 0, 0.054, 0.044, 0.099), mat('#bfe3ee', 0.2), 11));
+      g.add(mesh(place(new THREE.CylinderGeometry(0.014, 0.014, 0.008, 10), 0, 0.046, 0), mat('#c3cbd1', 0.4), 12));
+      g.rotation.y = 0.4;
+      return g;
+    }
     case 'raft': {
       // a toy raft: five logs side by side on two cross-pieces, a little oar
       const g = new THREE.Group(), log = mat('#8a6440', 0.9), dark = mat('#5c4128', 0.9);
@@ -553,7 +561,7 @@ const GRIPS: Record<ItemId, Grip> = {
   spear: { ...G_HANDLE, gy: -0.08, cy: 0.07 }, fishing_rod: { ...G_HANDLE, gy: -0.06, fit: [1.3, 1.0, 0.95] }, raw_meat: G_STONE, cooked_meat: G_STONE, raw_fish: G_BUNDLE, cooked_fish: G_BUNDLE,
   sapling: G_BUNDLE, campfire: G_BUNDLE, torch: { ...G_HANDLE, gy: -0.03 }, furnace: G_BIG, workbench: { ...G_HANDLE, gy: -0.04 }, bed: G_BUNDLE, sleeping_bag: G_BUNDLE, box: G_BIG, building_plan: G_LOG,
   leather: G_BUNDLE, leather_cap: G_BIG, leather_vest: G_BIG, leather_pants: G_BIG, metal_helmet: G_BIG, metal_chestplate: G_BIG, metal_greaves: G_BIG,
-  diamond_helmet: G_BIG, diamond_chestplate: G_BIG, diamond_greaves: G_BIG, boat: G_BIG, raft: G_BIG,
+  diamond_helmet: G_BIG, diamond_chestplate: G_BIG, diamond_greaves: G_BIG, boat: G_BIG, raft: G_BIG, submarine: G_BIG,
   meat_stick: { ...G_HANDLE, gy: 0.0 }, roast_stick: { ...G_HANDLE, gy: 0.0 }, guitar: { ...G_HANDLE, gy: -0.02 }, sand: G_STONE,
 };
 const DESK_POSE: Partial<Record<ItemId, [number, number, number]>> = { drumsticks: [0.9, 0, 0], meat_stick: [1.2, 0, -0.4], roast_stick: [1.2, 0, -0.4], guitar: [1.1, 0.35, 0.5] };

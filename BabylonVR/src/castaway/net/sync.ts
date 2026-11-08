@@ -120,6 +120,11 @@ export class WorldSync {
             bo.onEvent = (e) => session.sendEvent({ k: "bo", ...e });
             bo.present = (pid) => pid === session.myId || session.players.has(pid);
             game.net.calm = () => { if (!session.isHost) session.sendEvent({ k: "bo", op: "calm" }); };
+            // submarines: seats go to whoever sits first, the driver moves it
+            const su = game.subs;
+            su.myId = session.myId;
+            su.onEvent = (e) => session.sendEvent({ k: "su", ...e });
+            su.present = (pid) => pid === session.myId || session.players.has(pid);
         }
         // gone down the warp pipe (the secret level): their body is not on the island
         this.avatars.three.hideIf = (flags) => (flags & F_LEVEL) !== 0;
@@ -235,6 +240,7 @@ export class WorldSync {
         this.game.guitar.onStrum = null;
         this.game.drum.onHit = null;
         if (this.game.under.desert) this.game.under.desert.onEvent = null;
+        { const su = this.game.subs; su.onEvent = null; su.present = () => true; for (const sb of su.list) sb.seats = sb.seats.map((q) => (q === su.myId ? 0 : null)); su.myId = 0; }
         { const bo = this.game.boats; bo.onEvent = null; bo.present = () => true; for (const b of bo.list) b.helm = b === bo.on && bo.atHelm ? 0 : null; bo.myId = 0; }
         { const w = this.game.warp; w.remote = false; w.onEvent = null; w.present = () => true; w.who = () => ({ name: "You", color: "#3cb043" }); w.myId = 0; }
         { const dr = this.game.druids; dr.remote = false; dr.onTouch = null; dr.onPhase = null; dr.onHit = null; dr.players = () => [{ id: 0, x: this.game.player.pos.x, y: this.game.player.pos.y, z: this.game.player.pos.z }]; }
@@ -371,6 +377,7 @@ export class WorldSync {
             }
             case "sz": if (from === 0) g.under.desert?.storm?.remote(!!e.on, +e.l || 0); break;
             case "gs": if (typeof e.x === "number" && Array.isArray(e.s)) g.guitar.remote(e, Math.hypot(g.player.pos.x - e.x, g.player.pos.y - e.y, g.player.pos.z - e.z)); break;
+            case "su": g.subs.net(e, from); break;
             case "bo": if (e.op === "calm") { if (this.session.isHost && g.weather && g.weather.kind !== 0) g.weather.set(0); } else g.boats.net(e, from); break;
             case "cr": if (e.on) { const c = g.under.air?.cars[e.i]; if (c && c !== g.under.air?.driving) { g.under.air?.remote.set(e.i, from); c.driver = from; } } else g.under.air?.remoteLeave(e.i); break;
             case "cs": g.under.air?.remoteDrive(from, e.r); break;
@@ -511,7 +518,7 @@ export class WorldSync {
         const st: PState = {
             x: p.pos.x, y: p.pos.y, z: p.pos.z, yaw: p.yaw, pitch: p.pitch,
             spd: g.walkSpeed, item: held ? held.id : "", swing: g.swings,
-            flags: (p.sprinting && !g.boats.atHelm ? 1 : 0) | (p.mode === "swim" ? 2 : 0) | (g.stats.dead ? 4 : 0) | (g.isSleeping ? 8 : 0) | (g.drinking ? 32 : 0) | (g.warp.inLevel ? F_LEVEL : 0) | (g.slide.riding ? 536870912 : 0) | (g.under.air?.driving ? 64 : 0) | (g.under.cat?.active ? 16 : 0) | (g.under.hide?.active ? 128 : 0) | ((g.under.hide?.hiddenMe ?? -1) >= 0 ? 256 : 0) | (g.under.trial?.active ? 512 : 0) | (g.under.trial?.inRoom ? 1024 : 0) | (g.under.camp?.flags ?? 0) | (g.under.locs?.active ? 65536 : 0) | (g.under.town?.active ? 131072 | (g.under.town.index << 18) : 0) | (g.dive?.active ? 2048 : 0) | (g.dive?.active && g.dive.phase === "chute" ? 4096 : 0),
+            flags: (p.sprinting && !g.boats.atHelm ? 1 : 0) | (p.mode === "swim" ? 2 : 0) | (g.stats.dead ? 4 : 0) | (g.isSleeping ? 8 : 0) | (g.drinking ? 32 : 0) | (g.warp.inLevel ? F_LEVEL : 0) | (g.slide.riding ? 536870912 : 0) | (g.under.air?.driving || g.subs.mine ? 64 : 0) | (g.under.cat?.active ? 16 : 0) | (g.under.hide?.active ? 128 : 0) | ((g.under.hide?.hiddenMe ?? -1) >= 0 ? 256 : 0) | (g.under.trial?.active ? 512 : 0) | (g.under.trial?.inRoom ? 1024 : 0) | (g.under.camp?.flags ?? 0) | (g.under.locs?.active ? 65536 : 0) | (g.under.town?.active ? 131072 | (g.under.town.index << 18) : 0) | (g.dive?.active ? 2048 : 0) | (g.dive?.active && g.dive.phase === "chute" ? 4096 : 0),
             hp: g.stats.health, arm: g.armorCode,
         };
         const pose = this.vrPose?.() ?? null;
@@ -526,6 +533,8 @@ export class WorldSync {
         if (this.carT <= 0) { this.carT = 0.1; const cs = g.under.air?.driveState(); if (cs) s.sendEvent({ k: "cs", r: cs }); }
         const air = g.under.air;
         if (air) for (const [pid, ps] of s.states) if (pid !== s.myId && (ps.flags & 64) && air.seatOf(pid, this.seatTmp)) { ps.x = this.seatTmp.x; ps.y = this.seatTmp.y; ps.z = this.seatTmp.z; ps.yaw = this.seatTmp.yaw; ps.pitch = 0; }
+        // a player in a submarine sits exactly in their seat
+        for (const [pid, ps] of s.states) if (pid !== s.myId && (ps.flags & 64) && g.subs.seatOf(pid, this.seatTmp)) { ps.x = this.seatTmp.x; ps.y = this.seatTmp.y; ps.z = this.seatTmp.z; ps.yaw = this.seatTmp.yaw; ps.pitch = 0; }
         // a player on a boat's deck rides along with it
         for (const [pid, ps] of s.states) { ps.deck = false; if (pid !== s.myId && g.boats.deckOf(pid, this.seatTmp)) { ps.x = this.seatTmp.x; ps.y = this.seatTmp.y; ps.z = this.seatTmp.z; ps.deck = true; if (!ps.v) ps.yaw = this.seatTmp.yaw; } }
         this.avatars.sync(s.players, s.states, s.myId, dt, p.pos);
