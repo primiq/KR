@@ -125,6 +125,7 @@ export class WorldSync {
             su.myId = session.myId;
             su.onEvent = (e) => session.sendEvent({ k: "su", ...e });
             su.present = (pid) => pid === session.myId || session.players.has(pid);
+            game.deepSea.onEvent = (e) => session.sendEvent({ k: "dp", ...e });
         }
         // gone down the warp pipe (the secret level): their body is not on the island
         this.avatars.three.hideIf = (flags) => (flags & F_LEVEL) !== 0;
@@ -240,6 +241,7 @@ export class WorldSync {
         this.game.guitar.onStrum = null;
         this.game.drum.onHit = null;
         if (this.game.under.desert) this.game.under.desert.onEvent = null;
+        this.game.deepSea.onEvent = null;
         { const su = this.game.subs; su.onEvent = null; su.present = () => true; for (const sb of su.list) sb.seats = sb.seats.map((q) => (q === su.myId ? 0 : null)); su.myId = 0; }
         { const bo = this.game.boats; bo.onEvent = null; bo.present = () => true; for (const b of bo.list) b.helm = b === bo.on && bo.atHelm ? 0 : null; bo.myId = 0; }
         { const w = this.game.warp; w.remote = false; w.onEvent = null; w.present = () => true; w.who = () => ({ name: "You", color: "#3cb043" }); w.myId = 0; }
@@ -378,6 +380,7 @@ export class WorldSync {
             case "sz": if (from === 0) g.under.desert?.storm?.remote(!!e.on, +e.l || 0); break;
             case "gs": if (typeof e.x === "number" && Array.isArray(e.s)) g.guitar.remote(e, Math.hypot(g.player.pos.x - e.x, g.player.pos.y - e.y, g.player.pos.z - e.z)); break;
             case "su": g.subs.net(e, from); break;
+            case "dp": g.deepSea.net(e); break;
             case "bo": if (e.op === "calm") { if (this.session.isHost && g.weather && g.weather.kind !== 0) g.weather.set(0); } else g.boats.net(e, from); break;
             case "cr": if (e.on) { const c = g.under.air?.cars[e.i]; if (c && c !== g.under.air?.driving) { g.under.air?.remote.set(e.i, from); c.driver = from; } } else g.under.air?.remoteLeave(e.i); break;
             case "cs": g.under.air?.remoteDrive(from, e.r); break;

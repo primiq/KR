@@ -22,12 +22,16 @@ const N2 = new Noise2D(9001);
 
 const ISLAND_R = 215;
 
-/** Underwater profile: wide turquoise shelf, then a drop into the deep. */
+/** Underwater profile: wide turquoise shelf, a slope, then a sudden wall down into the dark abyss (~100 m). */
 function underwater(u: number): number {
   const shelf = -Math.min(u, 64) * 0.062;
   const drop = -smoothstep(48, 165, u) * 34;
-  return shelf + drop;
+  // (past the reef the floor falls away: a steep wall, then the abyss, gently deeper still)
+  const abyss = -smoothstep(84, 116, u) * 66;
+  return shelf + drop + abyss;
 }
+/** the deep: how far below the surface the sea floor lies here, for things that live down there */
+export const ABYSS_DEPTH = 55;
 
 /** Distance-to-shore field: positive on land. The same function everything else (coves, cliffs, rivers) is placed from. */
 function shoreS(x: number, z: number): number {

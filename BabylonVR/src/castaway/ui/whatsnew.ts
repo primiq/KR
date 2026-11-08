@@ -6,6 +6,15 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-11-10", title: "The deep",
+        items: [
+            "Past the reef the sea floor now drops down a wall into the abyss, about 100 m deep, where the daylight dies away to black.",
+            "Submarines have floodlights at the bow and stern: press the button at the top left of the console to switch them on.",
+            "Deep sea life that glows in the dark: lantern fish, jellyfish, squid and anglerfish.",
+            "Treasure chests lie on the floor of the abyss. Bring the submarine close and anyone inside can press E to loot it. They fill up again after a while.",
+        ],
+    },
+    {
         date: "2026-11-09", title: "Submarines, and homes on rafts",
         items: [
             "Build a submarine at the workbench and put it in deep water: a yellow sub with a glass dome, four seats and a hatch on top.",

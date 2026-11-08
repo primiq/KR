@@ -170,6 +170,8 @@ export class ThreeMirror {
             s.backFaceCulling = m.side !== THREE.DoubleSide;
             // depth only (a boat's hull lid keeps the sea out of it): drawn with the opaque world, before the water
             if (!m.colorWrite) { s.disableColorWrite = true; s.backFaceCulling = false; }
+            // (glowing things deep in the sea: seen through the dark water from afar)
+            if ((m as THREE.MeshBasicMaterial).fog === false) s.fogEnabled = false;
             if (m.transparent || m.opacity < 1) {
                 s.alpha = m.opacity;
                 s.disableDepthWrite = true;

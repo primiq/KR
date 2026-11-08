@@ -37,6 +37,7 @@ import { Drum } from "./drum";
 import { Slide } from "../world/slide";
 import { type Boat, Boats, type RaftAim } from "../world/boat";
 import { type Sub, Subs } from "../world/sub";
+import { type DeepChest, DeepSea } from "../world/deepsea";
 import { skyMirrorMaterial } from "../world/skyView";
 import type { Skydive } from "../world/skydive";
 import { Twins } from "./twins";
@@ -127,6 +128,12 @@ export class Game {
     readonly boats: Boats;
     /** submarines: glass bubbles for four, with a hatch on top */
     readonly subs: Subs;
+    /** the deep sea past the reef: its glowing life and its treasure chests */
+    readonly deepSea: DeepSea;
+    /** the floodlights of the nearest submarine that has them on (ahead, astern): they borrow the fire light pool */
+    private subLights = [{ x: 0, y: 0, z: 0, power: 0, range: 42 }, { x: 0, y: 0, z: 0, power: 0, range: 30 }];
+    private subLightK = 0;
+    private pokeWas = false;
     /** (VR) the left stick up / down while driving a submarine */
     subRise = 0;
     private subAim: { ok: boolean; why: string; x: number; z: number; yaw: number } | null = null;
@@ -347,6 +354,8 @@ export class Game {
         this.subs.say = (t) => this.hud.message(t);
         this.subs.sfx = this.sfx as never;
         this.subs.shake = (a) => this.player.shake(a);
+        this.deepSea = new DeepSea(this.natureRoot);
+
         // (the slide's tower platform and boats' decks are ground too)
         this.player.world = {
             ground: (x, z, y) => Math.max(this.building.ground(x, z, y), this.slide.ground(x, z, y ?? -1e9), this.boats.ground(x, z, y ?? 1e9), this.subs.ground(x, z, y ?? 1e9)),
@@ -903,10 +912,24 @@ export class Game {
         if (this.subs.mine && !stats.dead && this.wreckT < 0) {
             const sb = this.subs.mine, E = this.keyLabel("E"), up = this.subs.surfaced(sb), drv = this.subs.seat === 0;
             const d0 = sb.seats[0], free = !drv && (d0 === null || !this.subs.present(d0));
-            const R = `<b>${this.vr.active ? "X" : input.touch ? "⟳" : "R"}</b>`;
-            hud.setPrompt("Submarine", `${up ? `${E} climb out` : "Surface to open the hatch"}${free ? ` &nbsp;·&nbsp; ${R} take the controls` : ""}`, true);
+            const R = `<b>${this.vr.active ? "X" : input.touch ? "⟳" : "R"}</b>`, clk = `<b>${this.vr.active ? "A" : input.touch ? "HIT" : "Click"}</b>`;
+            // what I'm looking (or pointing) at: the light switch on the console; a treasure chest right by the sub
+            const eye = this.eye, dir = this.dir;
+            if (this.vr.active) { dir.copyFrom(this.vr.dir); eye.copyFrom(this.vr.eye); }
+            else { eye.copyFrom(player.eye); const cp = Math.cos(player.pitch); dir.set(-Math.sin(player.yaw) * cp, Math.sin(player.pitch), -Math.cos(player.yaw) * cp); }
+            const sw = this.subs.switchHit(eye, dir) !== null;
+            const ctr = this.subs.centre(sb, new Vector3()), chest = this.deepSea.near(ctr.x, ctr.y, ctr.z, 7);
+            const flip = () => { this.subs.setLights(sb, !sb.lights); this.sfx.pickup(); this.vr.haptic?.(0.3); };
+            // (VR: poke it with a finger)
+            const poke = this.vr.active && [this.vr.handL, this.vr.handR].some((h) => !!h && this.subs.switchTouch(h));
+            if (poke && !this.pokeWas) flip();
+            this.pokeWas = poke;
+            if (sw) hud.setPrompt("Lights", `${clk} or ${E} switch the floodlights ${sb.lights ? "off" : "on"}`, true);
+            else if (chest) hud.setPrompt("Treasure chest", `${E} loot it`, true);
+            else hud.setPrompt("Submarine", `${up ? `${E} climb out` : "Surface to open the hatch"}${free ? ` &nbsp;·&nbsp; ${R} take the controls` : ""}`, true);
             this.hideBuildUi(); view.visible(false);
-            if (input.interactQueued) { input.interactQueued = false; this.leaveSub(); }
+            if (sw && input.attackQueued) { input.attackQueued = false; flip(); }
+            if (input.interactQueued) { input.interactQueued = false; if (sw) flip(); else if (chest) this.lootDeep(chest); else this.leaveSub(); }
             if (input.rotateQueued) { input.rotateQueued = 0; if (free && this.subs.takeControls()) this.subHint(); }
             input.attackQueued = false; input.hotbarDelta = 0; input.hotbarSelect = null;
             return;
@@ -1771,6 +1794,19 @@ export class Game {
         if (this.inv.add("submarine", 1) > 0) { this.hud.message("No room in your pockets"); this.sfx.denied(); return; }
         this.subs.remove(sb); this.sfx.pickup(); this.hud.message("Submarine picked up");
     }
+    /** a treasure chest on the floor of the abyss, opened from a submarine beside it */
+    private lootDeep(c: DeepChest) {
+        this.deepSea.loot(c);
+        this.sfx.creak();
+        const got: string[] = [];
+        for (const [id, n] of DeepSea.treasure()) {
+            const it = ITEMS[id as ItemId]; if (!it) continue;
+            const left = this.inv.add(id as ItemId, n);
+            if (n - left > 0) got.push(`${n - left} ${it.name}`);
+        }
+        this.hud.message(got.length ? `Treasure! You found: ${got.join(", ")}` : "Your bag is full!");
+        this.vr.haptic?.(0.7);
+    }
     /** before the player moves: the submarines move (so whoever sits in one is put exactly in their seat this frame) */
     subsPre(dt: number) {
         const i = this.input, p = this.player;
@@ -1779,7 +1815,21 @@ export class Game {
         const rise = this.vr.active ? this.subRise : (i.jumpHeld ? 1 : 0) - (i.wantsDive || i.attackHeld ? 1 : 0);
         this.subs.update(dt, performance.now() / 1000, drv ? { x: i.move.x, y: i.move.y, rise, boost: i.wantsSprint } : { x: 0, y: 0, rise: 0, boost: false });
         if (this.subs.mine) i.jumpQueued = false;
-        void p;
+        // the floodlights: the nearest sub with them on gets the two spot lights (bow, stern)
+        let best: Sub | null = null, bd = 90;
+        for (const s of this.subs.list) { if (!s.lights) continue; const d = Math.hypot(s.x - p.eye.x, s.y - p.eye.y, s.z - p.eye.z); if (d < bd) { bd = d; best = s; } }
+        this.subLightK += ((best ? 1 : 0) - this.subLightK) * Math.min(1, dt * 5);
+        const [F, B] = this.subLights;
+        if (best) {
+            // (each a few metres out along its beam: it lights the water and the floor ahead, not just the glass)
+            const pos = new Vector3(), d = new Vector3();
+            for (const [L, back, out] of [[F, false, 7], [B, true, 5]] as [typeof F, boolean, number][]) {
+                this.subs.lightPose(best, back, pos, d); d.normalize();
+                L.x = pos.x + d.x * out; L.y = pos.y + d.y * out; L.z = pos.z + d.z * out;
+            }
+        }
+        F.power = 420 * this.subLightK; B.power = 220 * this.subLightK;
+        this.structures.extraLights = this.subLightK > 0.02 ? this.subLights : [];
     }
 
     // ------------------------------------------------------------ lost at sea: the giant wave, the black, the beach

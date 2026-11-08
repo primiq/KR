@@ -446,10 +446,16 @@ function poseFlame(f: { n: TransformNode; base: THREE.Quaternion }, sx: number, 
  * workbenches, beds and sleeping bags (respawn points), storage boxes, torches, lanterns, pots, rugs, tables
  * and cat beds. Placement rules, footprints and station timing are Castaway's.
  */
+/** a lamp that is not a structure: where it is, how strong, how far it reaches */
+export interface ExtraLight { x: number; y: number; z: number; power: number; range: number }
+const LAMP_WHITE = Color3.FromHexString("#dceaff"), FIRE_ORANGE = Color3.FromHexString("#ff9a48");
+
 export class StructureManager {
   readonly list: Structure[] = [];
   /** A fixed pool of fire lights: the nearest burning sources get one each, with a fade. */
   static POOL = 3;
+  /** lights that borrow the pool before any fire (a submarine's floodlights, deep down where no fire burns) */
+  extraLights: ExtraLight[] = [];
   /** other players' torches in their hands (set by main): they get pool lights too */
   remoteTorches: (() => { id: number; x: number; y: number; z: number }[]) | null = null;
   private remote = new Map<number, Structure>();
@@ -864,6 +870,8 @@ export class StructureManager {
       if (d < 44) cands.push({ s, d });
     }
 
+    // lamps that are not structures (a submarine's floodlights): first in line for the pool
+    for (const e of this.extraLights) cands.push({ s: e as unknown as Structure, d: -1 });
     // pooled lights: keep a source's light while it stays among the nearest, give free lights to newcomers
     cands.sort((p, q) => p.d - q.d);
     const top = cands.slice(0, StructureManager.POOL).map((c) => c.s);
@@ -881,7 +889,10 @@ export class StructureManager {
     for (let i = 0; i < this.lights.length; i++) {
       const n = this.lightFor[i], L = this.lights[i];
       let target = 0;
-      if (n && top.includes(n)) {
+      const lamp = n && (n as unknown as ExtraLight).power !== undefined ? (n as unknown as ExtraLight) : null;
+      L.diffuse.copyFrom(lamp ? LAMP_WHITE : FIRE_ORANGE);
+      if (lamp && top.includes(n!)) { L.position.set(lamp.x, lamp.y, lamp.z); target = lamp.power; L.range = lamp.range; }
+      else if (n && top.includes(n)) {
         if (n.kind === "furnace") L.position.set(n.x + Math.sin(n.yaw) * 1.0, n.y + 0.6, n.z + Math.cos(n.yaw) * 1.0);
         else if (n.kind === "lantern") { const h = n.hits[0]; L.position.set(h.x, h.y, h.z); }
         else L.position.set(n.x, n.y + (n.kind === "torch" ? 1.45 : 0.9), n.z);

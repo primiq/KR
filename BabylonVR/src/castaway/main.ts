@@ -977,6 +977,13 @@ async function main() {
             {
                 const onIsland = !game.under.active && Math.abs(player.pos.x) < 600 && Math.abs(player.pos.z) < 600 && player.pos.y < 120;
                 underwaterLook(dt, player.underwater && !lava.active, lava.active ? (lava.submerged ? 1 : lava.heat * 0.45) : 0);
+                // the deep: the further down the eyes, the less daylight (black past ~45 m); its life comes out round you
+                {
+                    const e = player.eye, down = onIsland && player.underwater ? player.surfaceAt(e.x, e.z) - e.y : 0;
+                    const want = Math.max(0, Math.min(1, (down - 10) / 35));
+                    clock.deep += (want - clock.deep) * Math.min(1, dt * 1.5);
+                    game.deepSea.update(dt, e, clock.deep);
+                }
                 seabed.update(dt, player.pos.x, player.pos.z, camera.position, player.underwater, onIsland && (player.underwater || heightAt(player.pos.x, player.pos.z) < 8));
             }
             dolphins.update(dt, player.pos.x, player.pos.z, player.yaw, game.under.active);

@@ -22,7 +22,12 @@ const BELT = -0.72, FLOOR = -0.95, CUSH = -0.5;
 const FLOAT = SAY * 0.5;
 /** the seats (x, z): the driver's at the console, two side by side, one at the back */
 const SEATS: [number, number][] = [[0, -1.15], [-0.72, 0.25], [0.72, 0.25], [0, 1.45]];
-const MAX = 2, MAX_DEPTH = 40;
+const MAX = 2, MAX_DEPTH = 110;
+/** the floodlights (x, y, at the stern?) and the light switch on the console (top left, in front of the driver) */
+const LAMPS: [number, number, boolean][] = [[-0.55, -0.85, false], [0.55, -0.85, false], [0, 0.35, true]];
+const BUTTON: [number, number, number] = [-0.24, -0.4, -2.1];
+/** how far from the middle of the island a submarine may go under water (the sea floor's edge) */
+const DEEP_R = 372;
 
 export interface SubRow { n: string; x: number; z: number; r: number }
 
@@ -38,11 +43,15 @@ export class Sub {
   /** the moving parts */
   lid: THREE.Group | null = null; prop: THREE.Group | null = null; yoke: THREE.Group | null = null; screen: THREE.Mesh | null = null;
   lidAng = 0;
+  /** the floodlights at bow and stern, and what shows them: the lamps lit, the beams in the water, the console button */
+  lights = false;
+  lit: THREE.Object3D[] = [];
+  unlit: THREE.Object3D[] = [];
   constructor(public nid: string, public x: number, public z: number, public yaw: number) { this.tx = x; this.tz = z; this.tyaw = yaw; }
 }
 
 // ------------------------------------------------------------------ the model
-let MATS: Record<'hull' | 'lining' | 'steel' | 'dark' | 'glass' | 'seat' | 'floor' | 'screen' | 'lamp', THREE.Material> | null = null;
+let MATS: Record<'hull' | 'lining' | 'steel' | 'dark' | 'glass' | 'seat' | 'floor' | 'screen' | 'lamp' | 'lampOff' | 'beam' | 'beam2' | 'btnOn' | 'btnOff', THREE.Material> | null = null;
 function mats() {
   if (MATS) return MATS;
   const std = (c: string, r: number, m = 0, extra: Partial<THREE.MeshStandardMaterialParameters> = {}) => {
@@ -54,7 +63,11 @@ function mats() {
     hull: std('#f2b705', 0.45, 0.2), lining: std('#6d767d', 0.6, 0.5, { side: THREE.DoubleSide }), steel: std('#c3cbd1', 0.3, 0.8), dark: std('#2f3438', 0.6, 0.4),
     glass: new THREE.MeshStandardMaterial({ name: 'glass', color: '#cfe8f0', transparent: true, opacity: 0.3 }),
     seat: std('#2e5b8a', 0.8), floor: std('#4a5157', 0.7, 0.5),
-    screen: new THREE.MeshBasicMaterial({ color: '#5ef2c0' }), lamp: new THREE.MeshBasicMaterial({ color: '#fff6c8' }),
+    screen: new THREE.MeshBasicMaterial({ color: '#5ef2c0' }), lamp: new THREE.MeshBasicMaterial({ color: '#fff6c8' }), lampOff: std('#8d9499', 0.3, 0.6),
+    // the beams: faint additive cones in the water (two lengths, so they fade along)
+    beam: new THREE.MeshBasicMaterial({ color: '#cfe6ff', transparent: true, opacity: 0.045, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
+    beam2: new THREE.MeshBasicMaterial({ color: '#cfe6ff', transparent: true, opacity: 0.06, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
+    btnOn: new THREE.MeshBasicMaterial({ color: '#5dff7a' }), btnOff: new THREE.MeshBasicMaterial({ color: '#d0302a' }),
   };
   return MATS;
 }
@@ -101,13 +114,34 @@ function makeModel(ghost: THREE.Material | null, shadows: boolean, s: Sub | null
   add(new THREE.CylinderGeometry(0.02, 0.02, 0.2, 6).rotateX(Math.PI / 2).translate(0, 0, 0.1), M.steel, yoke);
   add(new THREE.BoxGeometry(0.4, 0.04, 0.04).translate(0, 0, 0.2), M.dark, yoke);
   for (const sd of [-1, 1]) add(new THREE.CylinderGeometry(0.025, 0.025, 0.14, 6).translate(sd * 0.2, 0.05, 0.2), M.dark, yoke);
-  // a lamp at the bow, the propeller at the stern
-  add(new THREE.CircleGeometry(0.16, 16).rotateY(Math.PI).translate(0, BELT - 0.2, -SAZ * Math.sqrt(1 - ((BELT - 0.2) / SAY) ** 2) - 0.01), M.lamp);
+  // floodlights: two at the bow, one at the stern, each a lamp (dark when off) and a beam out into the water
+  const lit: THREE.Object3D[] = [], unlit: THREE.Object3D[] = [];
+  for (const [x, y, back] of LAMPS) {
+    const z = (back ? 1 : -1) * (SAZ * Math.sqrt(1 - (x / SAX) ** 2 - (y / SAY) ** 2) + 0.02), ry = back ? 0 : Math.PI;
+    add(new THREE.CylinderGeometry(0.17, 0.2, 0.12, 16).rotateX(Math.PI / 2).rotateY(ry).translate(x, y, z), M.steel);
+    unlit.push(add(new THREE.CircleGeometry(0.14, 16).rotateY(ry).translate(x, y, z + (back ? 0.065 : -0.065)), M.lampOff));
+    lit.push(add(new THREE.CircleGeometry(0.14, 16).rotateY(ry).translate(x, y, z + (back ? 0.07 : -0.07)), M.lamp));
+    if (!ghost) {
+      // (pointing out along the hull, tipped a little down)
+      const dz = back ? 1 : -1, tip = back ? 0.18 : -0.22;
+      for (const [len, rad, mt] of [[13, 3.2, M.beam]] as [number, number, THREE.Material][]) {
+        const c = new THREE.Mesh(new THREE.ConeGeometry(rad, len, 20, 1, true).translate(0, -len / 2, 0).rotateX(-dz * Math.PI / 2).rotateX(tip), mt);
+        c.position.set(x, y, z); c.renderOrder = 3; g.add(c); lit.push(c);
+      }
+    }
+  }
+  // the switch: a button at the top left of the console (red off, green on)
+  // (on the sloping panel: tipped back with it)
+  const onPanel = (geo: THREE.BufferGeometry, up: number) => geo.translate(0, up, 0).rotateX(0.7).translate(BUTTON[0], BUTTON[1], BUTTON[2]);
+  add(onPanel(new THREE.BoxGeometry(0.1, 0.02, 0.1), -0.005), M.steel);
+  unlit.push(add(onPanel(new THREE.CylinderGeometry(0.032, 0.032, 0.03, 14), 0.02), M.btnOff));
+  lit.push(add(onPanel(new THREE.CylinderGeometry(0.032, 0.032, 0.03, 14), 0.014), M.btnOn));
+  for (const o of lit) o.visible = false;
   add(new THREE.CylinderGeometry(0.16, 0.05, 0.5, 12).rotateX(Math.PI / 2).translate(0, -0.3, SAZ + 0.1), M.hull);
   const prop = new THREE.Group(); prop.position.set(0, -0.3, SAZ + 0.38); g.add(prop);
   for (let k = 0; k < 3; k++) add(new THREE.BoxGeometry(0.06, 0.42, 0.02).translate(0, 0.21, 0).rotateY(0.4).rotateZ(k * Math.PI * 2 / 3), M.steel, prop);
   for (const sd of [-1, 1]) add(new THREE.BoxGeometry(0.5, 0.04, 0.3).translate(sd * 0.3, -0.3, SAZ + 0.05), M.hull);
-  if (s) { s.lid = hinge; s.prop = prop; s.yoke = yoke; s.screen = screen; }
+  if (s) { s.lid = hinge; s.prop = prop; s.yoke = yoke; s.screen = screen; s.lit = lit; s.unlit = unlit; }
   return g;
 }
 
@@ -368,13 +402,16 @@ export class Subs {
     s.vy += (ctl.rise * 1.6 - s.vy) * Math.min(1, dt * 1.5);
     const sea = this.surface(s.x, s.z);
     let nd = Math.max(0, Math.min(MAX_DEPTH, s.depth - s.vy * dt));
+    // (the sea floor ends at the edge of the world: out there it stays at the surface)
+    if (nd > 1.5 && Math.hypot(s.x, s.z) > DEEP_R) { nd = Math.min(nd, s.depth); if (nd > 1.5) s.vy = Math.max(s.vy, 0.8); }
     if (nd > s.depth && !this.clear(s.x, s.z, s.yaw, nd + 0.3, sea)) { nd = s.depth; s.vy = 0; }
     s.depth = nd;
     const nx = s.x - Math.sin(s.yaw) * s.v * dt, nz = s.z - Math.cos(s.yaw) * s.v * dt;
-    const ok = this.clear(nx, nz, s.yaw, s.depth, sea) && Math.hypot(nx, nz) < WRECK_R + 60 && !this.list.some((o) => o !== s && Math.hypot(o.x - nx, o.z - nz) < 7);
+    const ok = this.clear(nx, nz, s.yaw, s.depth, sea) && Math.hypot(nx, nz) < WRECK_R + 60 && !(s.depth > 1.5 && Math.hypot(nx, nz) > DEEP_R && Math.hypot(nx, nz) > Math.hypot(s.x, s.z)) && !this.list.some((o) => o !== s && Math.hypot(o.x - nx, o.z - nz) < 7);
     if (ok) { s.x = nx; s.z = nz; }
     else {
-      if (Math.abs(s.v) > 1.2) { this.sfx?.bonk(); this.shake?.(0.25); this.say?.(s.depth > 1 ? 'Bump! The bottom is too close: rise (Space) or back off (S).' : 'Too shallow here. Back off with S.'); }
+      const edge = s.depth > 1.5 && Math.hypot(nx, nz) > DEEP_R;
+      if (Math.abs(s.v) > 1.2 || edge) { if (!edge) { this.sfx?.bonk(); this.shake?.(0.25); } this.sayOnce(edge ? 'Past here the sea has no floor: surface to go on.' : s.depth > 1 ? 'Bump! The bottom is too close: rise (Space) or back off (S).' : 'Too shallow here. Back off with S.'); }
       s.v *= -0.25;
     }
     s.tx = s.x; s.tz = s.z; s.tyaw = s.yaw; s.tv = s.v; s.tdepth = s.depth;
@@ -394,6 +431,38 @@ export class Subs {
     s.pitch += (pitch - s.pitch) * k; s.roll += (roll - s.roll) * k;
     this.place(s);
   }
+  private sayT = 0;
+  private sayOnce(t: string) { const n = performance.now(); if (n < this.sayT) return; this.sayT = n + 3000; this.say?.(t); }
+
+  // -------------------------------------------------------------- the floodlights
+  setLights(s: Sub, on: boolean, remote = false) {
+    if (s.lights === on) return;
+    s.lights = on;
+    for (const o of s.lit) o.visible = on;
+    for (const o of s.unlit) o.visible = !on;
+    if (!remote) this.onEvent?.({ op: 'lights', n: s.nid, on: on ? 1 : 0 });
+  }
+  /** the light switch in my sub, if I'm looking at it (or pointing at it) within arm's reach: how far */
+  switchHit(eye: { x: number; y: number; z: number }, dir: { x: number; y: number; z: number }): number | null {
+    const s = this.mine; if (!s) return null;
+    const b = toWorld(s, BUTTON[0], BUTTON[1] + 0.03, BUTTON[2], L2), vx = b.x - eye.x, vy = b.y - eye.y, vz = b.z - eye.z, t = vx * dir.x + vy * dir.y + vz * dir.z;
+    if (t < 0.1 || t > 1.8) return null;
+    return Math.hypot(vx - dir.x * t, vy - dir.y * t, vz - dir.z * t) < 0.09 ? t : null;
+  }
+  /** a hand (VR) pressing the switch? */
+  switchTouch(p: { x: number; y: number; z: number }): boolean {
+    const s = this.mine; if (!s) return false;
+    const b = toWorld(s, BUTTON[0], BUTTON[1] + 0.03, BUTTON[2], L2);
+    return Math.hypot(p.x - b.x, p.y - b.y, p.z - b.z) < 0.08;
+  }
+  /** where a sub's floodlights are and which way they shine (world): the bow pair as one, and the stern */
+  lightPose(s: Sub, back: boolean, pos: PV, dir: PV) {
+    if (back) { toWorld(s, 0, 0.35, SAZ, pos); const a = toWorld(s, 0, 0.35 - 0.18, SAZ + 1, new THREE.Vector3()); dir.set(a.x - (pos.x as number), a.y - (pos.y as number), a.z - (pos.z as number)); }
+    else { toWorld(s, 0, -0.85, -SAZ + 0.4, pos); const a = toWorld(s, 0, -0.85 - 0.22, -SAZ - 0.6, new THREE.Vector3()); dir.set(a.x - (pos.x as number), a.y - (pos.y as number), a.z - (pos.z as number)); }
+  }
+  /** the point in the sub (world) for things near it (a chest to loot) */
+  centre(s: Sub, out: PV) { return toWorld(s, 0, -0.6, 0, out); }
+
   private place(s: Sub) {
     s.group.position.set(s.x, s.y, s.z);
     s.group.rotation.set(s.pitch, s.yaw, s.roll, 'YXZ');
@@ -457,6 +526,7 @@ export class Subs {
         break;
       }
       case 'mv': if (s && !(s === this.mine && this.seat === 0)) { s.tx = +e.x; s.tz = +e.z; s.tyaw = +e.r; s.tv = +e.v || 0; s.tdepth = Math.max(0, +e.d || 0); } break;
+      case 'lights': if (s) this.setLights(s, !!e.on, true); break;
       case 'warp': if (s && Number.isFinite(+e.x) && Number.isFinite(+e.z)) this.warp(s, +e.x, +e.z, +e.r || 0); break;
     }
   }
