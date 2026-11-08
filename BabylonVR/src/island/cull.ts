@@ -16,13 +16,14 @@ export function cullRenderTarget(rtt: RenderTargetTexture, scene: Scene, keepNea
     rtt.getCustomRenderList = (_pass, list, len) => {
         // (by now the pass has set its own view: the mirror's, or the cascade's)
         Frustum.GetPlanesToRef(scene.getTransformMatrix(), planes);
-        const use = keepNear ? planes.slice(1) : planes;
+        // (Babylon's test always reads all six planes: an "ignored" near plane is one that lets everything through)
+        if (keepNear) { planes[0].normal.set(0, 0, 0); planes[0].d = 1; }
         out.length = 0;
         if (!list) return null;
         for (let i = 0; i < len; i++) {
             const m = list[i] as AbstractMesh;
             if (!m.isEnabled() || !m.isVisible) continue;
-            if (m.alwaysSelectAsActiveMesh || m.isInFrustum(use)) out.push(m);
+            if (m.alwaysSelectAsActiveMesh || m.isInFrustum(planes)) out.push(m);
         }
         return out;
     };
