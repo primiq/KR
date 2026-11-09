@@ -69,6 +69,8 @@ export class ThreeMirror {
     private skins = new Map<THREE.SkinnedMesh, SkinView>();
     private memo = new WeakMap<THREE.Object3D, { g: THREE.BufferGeometry; m: THREE.Material; b: Bucket }>();
     private liveMats: { m: THREE.MeshStandardMaterial; p: PBRMaterial }[] = [];
+    /** basic (unlit) materials whose colour changes (a placing preview's green or red): followed every frame */
+    private liveBasic: { m: THREE.MeshBasicMaterial; s: StandardMaterial }[] = [];
     private live: { map: THREE.Texture; tex: DynamicTexture; version: number }[] = [];
     private frame = 0;
     private ids = new WeakMap<object, number>();
@@ -167,6 +169,7 @@ export class ThreeMirror {
             s.disableLighting = true;
             const c = anyM.color ?? new THREE.Color(1, 1, 1);
             s.emissiveColor = new Color3(c.r, c.g, c.b).toGammaSpace();
+            if (m.userData.liveColor) this.liveBasic.push({ m: anyM, s });
             s.backFaceCulling = m.side !== THREE.DoubleSide;
             // depth only (a boat's hull lid keeps the sea out of it): drawn with the opaque world, before the water
             if (!m.colorWrite) { s.disableColorWrite = true; s.backFaceCulling = false; }
@@ -407,6 +410,7 @@ export class ThreeMirror {
             }
         }
         for (const v of this.skins.values()) if (v.seen !== this.frame) v.mesh.setEnabled(false);
+        for (const { m, s } of this.liveBasic) { const c = m.color; s.emissiveColor.set(c.r, c.g, c.b).toGammaSpaceToRef(s.emissiveColor); }
         for (const { m, p } of this.liveMats) { const k = m.emissiveIntensity; p.emissiveColor.set(m.emissive.r * k, m.emissive.g * k, m.emissive.b * k); p.albedoColor.set(m.color.r, m.color.g, m.color.b); if (m.transparent) p.alpha = m.opacity; }
         for (const l of this.live) if (l.map.version !== l.version) { l.version = l.map.version; l.tex.update(l.map.flipY !== false); }
         for (const [s, v] of this.sprites) {

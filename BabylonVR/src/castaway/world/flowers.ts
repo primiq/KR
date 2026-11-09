@@ -40,6 +40,15 @@ function ring(out: Part[], n: number, c: string, x: number, y: number, z: number
   }
 }
 
+/** a stalk from a to b (tapering from r0 to r1), coloured */
+function stalk(a: THREE.Vector3, b: THREE.Vector3, r0: number, r1: number, c: string): Part {
+  const d = b.clone().sub(a), len = d.length();
+  const g = new THREE.CylinderGeometry(r1, r0, len, 5).translate(0, len / 2, 0);
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()));
+  return part(g, c, a.x, a.y, a.z);
+}
+const V3 = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+
 /** One flower of the given kind, base at the origin, with the grass shader's sway / flutter weights. */
 export function flowerGeometry(k: number): THREE.BufferGeometry {
   const f = FLOWERS[k], H = f.h, P: Part[] = [];
@@ -53,13 +62,27 @@ export function flowerGeometry(k: number): THREE.BufferGeometry {
       }
       P.push(leaf(f.leaf, 0.02, 0.4), leaf(f.leaf, 0.02, 2.5), leaf(f.leaf, 0.02, 4.4));
       break;
-    case 1: // poppy: a red cup of four petals on a hairy stem, nodding a little
-      P.push(stem(H, f.leaf, 0, 0, 0.12));
-      ring(P, 4, f.head, 0.025, H, 0, 0.032, 0.03, 0, 0.5);
-      P.push(part(ball(), f.mid, 0.025, H + 0.006, 0, 0.012, 0.012, 0.012));
-      P.push(stem(H * 0.7, f.leaf, 0.04, 0.02, -0.2), part(ball(), '#6f9a3a', 0.04 - 0.05, H * 0.7, 0.02, 0.012, 0.018, 0.012));   // a bud
-      P.push(leaf(f.leaf, 0.03, 0.8, 0.09), leaf(f.leaf, 0.03, 3.6, 0.09));
+    case 1: { // poppy: a nodding bud and an open bowl of four broad red petals, black at the base, round black stamens and a pale seed pod
+      const hx = 0.03, top = V3(hx, H, 0.01);
+      P.push(stalk(V3(0, 0, 0), top, 0.008, 0.006, f.leaf));
+      // the petals: two crossed pairs, broad and cupped into a bowl, the inner pair a little smaller and more upright
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2 + (i % 2) * 0.18, inner = i % 2 === 1, L = inner ? 0.046 : 0.054, W = inner ? 0.046 : 0.054, cup = inner ? 0.6 : 0.4;
+        P.push(part(ball(), f.head, hx + Math.cos(a) * L * 0.75, H + cup * L * 0.55, 0.01 - Math.sin(a) * L * 0.75, L, 0.006, W, 0, a, -cup));
+        // the black blotch at the foot of each petal, inside the bowl
+        P.push(part(ball(), f.mid, hx + Math.cos(a) * 0.018, H + 0.009, 0.01 - Math.sin(a) * 0.018, 0.017, 0.004, 0.015, 0, a, -cup * 0.8));
+      }
+      // a ring of black stamens round the seed pod, and the pod with its dark crown
+      for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2; P.push(part(ball(), '#141010', hx + Math.cos(a) * 0.014, H + 0.015, 0.01 - Math.sin(a) * 0.014, 0.005, 0.005, 0.005)); }
+      P.push(part(ball(), '#a9bf72', hx, H + 0.016, 0.01, 0.009, 0.011, 0.009));
+      P.push(part(new THREE.CylinderGeometry(0.008, 0.008, 0.003, 8), '#3b2a44', hx, H + 0.027, 0.01));
+      // a bud, hanging its head on a curved stem
+      P.push(stalk(V3(0.01, 0, 0.01), V3(-0.04, H * 0.62, -0.02), 0.006, 0.005, f.leaf), stalk(V3(-0.04, H * 0.62, -0.02), V3(-0.055, H * 0.6, -0.025), 0.005, 0.004, f.leaf));
+      P.push(part(ball(), '#6f9a3a', -0.06, H * 0.58, -0.027, 0.011, 0.016, 0.011, 0, 0, 0.6));
+      // feathery leaves low down
+      for (const a of [0.6, 2.4, 4.1]) P.push(part(ball(), f.leaf, Math.cos(a) * 0.05, 0.035, -Math.sin(a) * 0.05, 0.075, 0.006, 0.02, 0, a, -0.45));
       break;
+    }
     case 2: // bluebell: an arching stem hung with little bells
       P.push(stem(H, f.leaf, 0, 0, 0.25));
       for (let i = 0; i < 5; i++) {
@@ -80,13 +103,31 @@ export function flowerGeometry(k: number): THREE.BufferGeometry {
         for (const q of face) P.push(q.applyMatrix4(tip));
       }
       break;
-    case 4: // hibiscus: a leafy little shrub with a couple of big open trumpets
-      for (const [x, z, a] of [[0, 0, 0], [0.08, 0.05, 2.1], [-0.07, 0.06, 4.2], [0.02, -0.08, 5.5]]) P.push(part(ball(), f.leaf, x, H * 0.45, z, 0.1, 0.07, 0.08, 0, a, 0.3));
-      for (const [x, z, y] of [[0.06, 0.02, H], [-0.06, -0.04, H * 0.85]]) {
-        ring(P, 5, f.head, x, y, z, 0.05, 0.035, -0.1, 0.25);
-        P.push(part(new THREE.CylinderGeometry(0.003, 0.003, 0.06, 3), f.mid, x, y + 0.035, z, 1, 1, 1, 0, 0, 0.3));
+    case 4: { // hibiscus: a little woody shrub, glossy leaves along its stems, big open trumpets at their tips
+      const tips: THREE.Vector3[] = [V3(0.07, H, 0.03), V3(-0.08, H * 0.86, -0.03), V3(0.01, H * 0.74, -0.09)];
+      for (const t of tips) {
+        const mid = V3(t.x * 0.4, t.y * 0.5, t.z * 0.4);
+        P.push(stalk(V3(0, 0, 0), mid, 0.012, 0.009, '#5b4a2c'), stalk(mid, t, 0.009, 0.006, '#4f5f2a'));
+        // leaves up the stem: pointed, glossy, held out sideways
+        for (const [u, side] of [[0.3, 1], [0.5, -1], [0.68, 1], [0.84, -1]] as [number, number][]) {
+          const at = V3(t.x * u, t.y * u, t.z * u), a = Math.atan2(-t.z, t.x) + side * 1.4;
+          P.push(part(ball(), f.leaf, at.x + Math.cos(a) * 0.04, at.y, at.z - Math.sin(a) * 0.04, 0.05, 0.006, 0.026, 0, a, -0.25));
+        }
       }
+      // the flowers: five broad petals opened into a wide trumpet, a deep red throat, and the long column of stamens with
+      // its yellow tip standing out of the middle
+      tips.forEach((t, n) => {
+        if (n === 2) { P.push(part(ball(), '#6a8a35', t.x, t.y + 0.012, t.z, 0.012, 0.022, 0.012)); return; }   // a bud
+        for (let i = 0; i < 5; i++) {
+          const a = (i / 5) * Math.PI * 2 + n;
+          P.push(part(ball(), f.head, t.x + Math.cos(a) * 0.045, t.y + 0.022, t.z - Math.sin(a) * 0.045, 0.052, 0.006, 0.04, 0, a, -0.45));
+        }
+        P.push(part(new THREE.ConeGeometry(0.02, 0.035, 7, 1, true).rotateX(Math.PI), '#a3143f', t.x, t.y + 0.012, t.z));
+        P.push(stalk(V3(t.x, t.y + 0.005, t.z), V3(t.x + 0.012, t.y + 0.075, t.z), 0.0025, 0.0022, '#e85a8a'));
+        P.push(part(ball(), f.mid, t.x + 0.013, t.y + 0.079, t.z, 0.007, 0.007, 0.007));
+      });
       break;
+    }
     case 5: // lavender: a tuft of grey-green spikes topped with purple beads
       for (let j = 0; j < 5; j++) {
         const a = j * 1.26, l = 0.12 + (j % 2) * 0.08, x = Math.cos(a) * 0.02, z = Math.sin(a) * 0.02, h = H * (0.8 + (j % 3) * 0.1);

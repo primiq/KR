@@ -168,7 +168,7 @@ export class Subs {
   mine: Sub | null = null;
   seat = -1;
   private ghost: THREE.Group;
-  private ghostMat = new THREE.MeshBasicMaterial({ color: 0x7cff9a, transparent: true, opacity: 0.35, depthWrite: false });
+  private ghostMat = Object.assign(new THREE.MeshBasicMaterial({ color: 0x7cff9a, transparent: true, opacity: 0.35, depthWrite: false }), { userData: { liveColor: true } });
   private mvT = 0;
   private hum = 0;
   private lastYaw = NaN;

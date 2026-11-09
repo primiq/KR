@@ -38,6 +38,7 @@ import { Slide } from "../world/slide";
 import { type Boat, Boats, type RaftAim } from "../world/boat";
 import { type Sub, Subs } from "../world/sub";
 import { type DeepChest, DeepSea } from "../world/deepsea";
+import { Butterflies } from "../world/butterflies";
 import { skyMirrorMaterial } from "../world/skyView";
 import type { Skydive } from "../world/skydive";
 import { Twins } from "./twins";
@@ -130,6 +131,8 @@ export class Game {
     readonly subs: Subs;
     /** the deep sea past the reef: its glowing life and its treasure chests */
     readonly deepSea: DeepSea;
+    /** butterflies fluttering about by day */
+    readonly butterflies: Butterflies;
     /** the floodlights of the nearest submarine that has them on (ahead, astern): they borrow the fire light pool */
     private subLights = [{ x: 0, y: 0, z: 0, power: 0, range: 42 }, { x: 0, y: 0, z: 0, power: 0, range: 30 }];
     private subLightK = 0;
@@ -357,6 +360,7 @@ export class Game {
         this.subs.sfx = this.sfx as never;
         this.subs.shake = (a) => this.player.shake(a);
         this.deepSea = new DeepSea(this.natureRoot);
+        this.butterflies = new Butterflies(this.natureRoot);
 
         // (the slide's tower platform and boats' decks are ground too)
         this.player.world = {
@@ -1928,6 +1932,8 @@ export class Game {
     /** footprints in the sand, and the birds and flamingos (which take off when someone comes too close) */
     private updateNature(dt: number, hour: number, away: boolean) {
         const p = this.player, me = p.pos, onIsland = !away && Math.abs(me.x) < 900 && Math.abs(me.z) < 900 && me.y < heightAt(me.x, me.z) + 60;
+        // butterflies by day round you (in the morning they come out, at dusk they are gone)
+        this.butterflies.update(dt, me, Math.max(0, Math.min(1, (hour - 6.5) / 1.5, (19 - hour) / 1.5)), !onIsland || !!p.cave);
         const W = this.walkers; W.length = 0;
         const threats: { x: number; z: number; fast: boolean }[] = [];
         if (onIsland) {

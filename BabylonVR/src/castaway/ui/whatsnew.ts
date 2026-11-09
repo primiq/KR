@@ -6,6 +6,16 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-11-13", title: "Butterflies and better flowers",
+        items: [
+            "Butterflies in many colours flutter about the island by day, and settle on the grass now and then.",
+            "Hibiscus grows as a little shrub with woody stems and big open flowers; poppies open wide with their black middles.",
+            "Rafts: the preview turns green where a raft or a piece can go and red where it can't, and building on a raft no longer stalls.",
+            "A tidier furnace view: its fuel and slots in one card, what goes in and what comes out, and your bag in one place with your gear beside it.",
+            "Crafting cards fit every ingredient, even for the submarine.",
+        ],
+    },
+    {
         date: "2026-11-12", title: "Fuel, gear and fixes",
         items: [
             "Furnaces and campfires show their fuel in the menu, with +1 Wood and +1 Coal buttons to feed them from your bag.",

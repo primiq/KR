@@ -95,6 +95,8 @@ export class VRPanel {
     private noteList: { t: string; at: number }[] = [];
     private grid: ReturnType<typeof slotControl>[] = [];
     private cont: ReturnType<typeof slotControl>[] = [];
+    private contArrow!: TextBlock;
+    private bagHint!: TextBlock;
     /** what you wear (head, chest, legs), and how much it protects you */
     private gear: ReturnType<typeof slotControl>[] = [];
     private gearPct!: TextBlock;
@@ -326,52 +328,85 @@ export class VRPanel {
         left.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
         left.paddingTop = "6px";
         this.bagPane.addControl(left, 0, 0);
+        // ---- an open box, furnace or campfire: a card of its own at the top, its name and (a station) its fuel and the
+        //      +1 Wood / +1 Coal buttons on one line, its slots below (a station's: what goes in, an arrow, what comes out)
         this.contBox = new StackPanel("cont");
+        this.contBox.width = "1000px";
+        const ccard = new Rectangle("ccard");
+        ccard.background = CARD; ccard.color = CARD_EDGE; ccard.thickness = 2; ccard.cornerRadius = 26;
+        ccard.height = "236px"; ccard.width = "990px";
+        this.contBox.addControl(ccard);
+        const cin = new StackPanel("cin");
+        cin.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+        ccard.addControl(cin);
+        const chead = new StackPanel("chead");
+        chead.isVertical = false; chead.height = "76px"; chead.width = "950px";
+        cin.addControl(chead);
         this.contTitle = new TextBlock("ctitle", "");
-        this.contTitle.height = "50px";
+        this.contTitle.width = "300px";
         this.contTitle.color = SEL;
-        this.contTitle.fontSize = 36;
+        this.contTitle.fontSize = 38;
         this.contTitle.fontWeight = "bold";
-        this.contBox.addControl(this.contTitle);
+        this.contTitle.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+        chead.addControl(this.contTitle);
+        const fuelRow = (this.fuelRow = new StackPanel("fuelRow"));
+        fuelRow.isVertical = false;
+        fuelRow.width = "650px";
+        this.fuelText = new TextBlock("fuelText", "");
+        this.fuelText.width = "290px";
+        this.fuelText.color = TXT;
+        this.fuelText.fontSize = 30;
+        this.fuelText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+        this.fuelText.paddingRight = "16px";
+        fuelRow.addControl(this.fuelText);
+        for (const kind of ["wood", "coal"] as const) {
+            const btn = Button.CreateSimpleButton(`fuel_${kind}`, `+1 ${kind === "wood" ? "Wood" : "Coal"}`);
+            btn.width = "180px"; btn.height = "58px"; btn.paddingLeft = "8px"; btn.paddingRight = "8px";
+            btn.cornerRadius = 29; btn.thickness = 0; btn.background = ACC; btn.color = "#ffffff"; btn.fontSize = 28; btn.fontWeight = "bold";
+            btn.onPointerUpObservable.add(() => { game.hud.onFuel?.(1, kind); this.dirty = true; });
+            fuelRow.addControl(btn);
+            this.fuelBtns.push({ kind, btn });
+        }
+        chead.addControl(fuelRow);
         const contRow = new StackPanel("crow");
         contRow.isVertical = false;
-        contRow.height = "150px";
+        contRow.height = "140px";
         for (let i = 0; i < 12; i++) {
-            const s = slotControl(`c${i}`, 116);
-            s.root.width = "124px";
+            const s = slotControl(`c${i}`, 112);
+            s.root.width = "120px";
             s.root.paddingLeft = "4px";
             s.root.paddingRight = "4px";
             s.root.onPointerUpObservable.add(() => { game.hud.slotClick(1, i); this.dirty = true; });
             contRow.addControl(s.root);
             this.cont.push(s);
+            if (i === 3) {
+                // (a station: what goes in on the left, what comes out on the right)
+                const arrow = (this.contArrow = new TextBlock("carrow", "→"));
+                arrow.width = "70px"; arrow.color = MUTED; arrow.fontSize = 52; arrow.fontWeight = "bold";
+                contRow.addControl(arrow);
+            }
         }
-        this.contBox.addControl(contRow);
-        // a furnace or campfire burns fuel: how much is left, and wood or coal from your bag to feed it
-        const fuelRow = (this.fuelRow = new StackPanel("fuelRow"));
-        fuelRow.isVertical = false;
-        fuelRow.height = "68px";
-        this.fuelText = new TextBlock("fuelText", "");
-        this.fuelText.width = "380px";
-        this.fuelText.color = TXT;
-        this.fuelText.fontSize = 32;
-        this.fuelText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-        fuelRow.addControl(this.fuelText);
-        for (const kind of ["wood", "coal"] as const) {
-            const btn = Button.CreateSimpleButton(`fuel_${kind}`, `+1 ${kind === "wood" ? "Wood" : "Coal"}`);
-            btn.width = "220px"; btn.height = "60px"; btn.paddingLeft = "10px"; btn.paddingRight = "10px";
-            btn.cornerRadius = 30; btn.thickness = 0; btn.background = ACC; btn.color = "#ffffff"; btn.fontSize = 30; btn.fontWeight = "bold";
-            btn.onPointerUpObservable.add(() => { game.hud.onFuel?.(1, kind); this.dirty = true; });
-            fuelRow.addControl(btn);
-            this.fuelBtns.push({ kind, btn });
-        }
-        this.contBox.addControl(fuelRow);
+        cin.addControl(contRow);
         left.addControl(this.contBox);
-        const bagHead = new TextBlock("baghead", "Backpack");
-        bagHead.height = "54px";
+        // ---- your bag: its heading and, beside it, how to move things about
+        const bagRow = new StackPanel("bagRow");
+        bagRow.isVertical = false; bagRow.height = "62px"; bagRow.width = "990px";
+        const bagHead = new TextBlock("baghead", "Your bag");
+        bagHead.width = "220px";
         bagHead.color = SEL;
         bagHead.fontSize = 36;
         bagHead.fontWeight = "bold";
-        left.addControl(bagHead);
+        bagHead.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+        bagHead.paddingLeft = "8px";
+        bagRow.addControl(bagHead);
+        this.bagHint = new TextBlock("bagHint", "");
+        this.bagHint.width = "770px";
+        this.bagHint.color = MUTED;
+        this.bagHint.fontSize = 24;
+        this.bagHint.textWrapping = true;
+        this.bagHint.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+        bagRow.addControl(this.bagHint);
+        left.addControl(bagRow);
         const g = new Grid("slots");
         g.height = "672px";
         g.width = "1000px";
@@ -413,22 +448,6 @@ export class VRPanel {
         right.paddingTop = "30px";
         right.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
         card.addControl(right);
-        this.detailName = new TextBlock("dname", "");
-        this.detailName.height = "76px";
-        this.detailName.color = SEL;
-        this.detailName.fontSize = 44;
-        this.detailName.fontWeight = "bold";
-        this.detailName.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-        right.addControl(this.detailName);
-        this.detail = new TextBlock("detail", "Point at an item and pull the trigger.");
-        this.detail.height = "290px";
-        this.detail.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-        this.detail.color = TXT;
-        this.detail.fontSize = 34;
-        this.detail.lineSpacing = "6px";
-        this.detail.textWrapping = true;
-        this.detail.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
-        right.addControl(this.detail);
         // what you wear: head, chest, legs (pick armour in the bag and press Wear, or pick it then a slot here; pick a worn
         // piece to take it off)
         const gearHead = new TextBlock("gearHead", "Gear");
@@ -454,6 +473,22 @@ export class VRPanel {
         this.gearPct.height = "40px"; this.gearPct.color = MUTED; this.gearPct.fontSize = 26;
         this.gearPct.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
         right.addControl(this.gearPct);
+        this.detailName = new TextBlock("dname", "");
+        this.detailName.height = "76px";
+        this.detailName.color = SEL;
+        this.detailName.fontSize = 44;
+        this.detailName.fontWeight = "bold";
+        this.detailName.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+        right.addControl(this.detailName);
+        this.detail = new TextBlock("detail", "Point at an item and pull the trigger.");
+        this.detail.height = "290px";
+        this.detail.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+        this.detail.color = TXT;
+        this.detail.fontSize = 34;
+        this.detail.lineSpacing = "6px";
+        this.detail.textWrapping = true;
+        this.detail.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+        right.addControl(this.detail);
         const act = (name: string, fn: () => void) => {
             const a = Button.CreateSimpleButton(name, name);
             a.height = "104px";
@@ -807,10 +842,13 @@ export class VRPanel {
             }
             this.boardUI.removeControl(b);
             b.width = "1650px"; b.height = "1125px";
+            // (solid on a screen: the world showing through behind the slots and text made them hard to read)
+            b.background = "#0c1a21";
             this.flatUI.addControl(b);
         } else {
             this.flatUI?.removeControl(b);
             b.width = "100%"; b.height = "100%";
+            b.background = B_BG;
             this.boardUI.addControl(b);
         }
     }
@@ -940,10 +978,20 @@ export class VRPanel {
         const c = hud.cont;
         this.contBox.isVisible = !!c;
         this.fuelRow.isVisible = !!hud.contInfo?.station;
+        this.contArrow.isVisible = !!hud.contInfo?.station;
+        {
+            const h = this.flat
+                ? `Click an item to pick it, then a slot to move it there.${c ? ` Pick one and press Move to put it in the ${hud.contInfo?.title?.toLowerCase() ?? "box"}.` : " The gold row is your hotbar."}`
+                : `Point at an item and pull the trigger to pick it, then at a slot to move it.${c ? "" : " The gold row is your hotbar."}`;
+            if (this.bagHint.text !== h) this.bagHint.text = h;
+        }
         if (c) {
             this.contTitle.text = hud.contInfo?.title ?? "";
+            // (a box's twelve slots narrower than a station's eight, so either row fits the card)
+            const wide = c.size > 8, sw = wide ? "80px" : "112px", ss = wide ? "72px" : "104px";
             for (let i = 0; i < this.cont.length; i++) {
                 const vis = i < c.size;
+                if (this.cont[i].root.width !== sw) { this.cont[i].root.width = sw; this.cont[i].root.height = ss; }
                 this.cont[i].root.isVisible = vis;
                 if (!vis) continue;
                 const it = c.slots[i];
@@ -957,10 +1005,8 @@ export class VRPanel {
             this.detailName.text = `${d.name}${ps.count > 1 ? `  ×${ps.count}` : ""}`;
             this.detail.text = d.desc;
         } else {
-            this.detailName.text = "Your bag";
-            this.detail.text = this.flat
-                ? "Click (or tap) an item to pick it, then another slot to move it there. The top row (gold) is your hotbar."
-                : "Point at an item and pull the trigger to pick it, then at another slot to move it. The top row (gold) is your hotbar.";
+            this.detailName.text = "";
+            this.detail.text = "Pick an item to see what it is and what you can do with it.";
         }
         const own = !!pick && pick.c === 0 && !!ps;
         const def = ps ? ITEMS[ps.id] : null;
@@ -1087,27 +1133,30 @@ export class VRPanel {
             chips.height = "62px";
             chips.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
             mid.addControl(chips);
+            // (the chips share the room there is: four ingredients fit as well as two)
+            const room = CW - 140 - 172 - 12, chipW = Math.min(150, Math.floor(room / r.cost.length)), tight = chipW < 140;
             for (const [id, need] of r.cost) {
                 const have = costHave(inv, r, id), enough = have >= need;
                 const chip = new Rectangle(`ck${r.out}${id}`);
-                chip.width = "150px";
+                chip.width = `${chipW}px`;
                 chip.height = "54px";
                 chip.cornerRadius = 27;
                 chip.thickness = 0;
                 chip.background = enough ? "#3aa58a2e" : "#ff9a8624";
                 chip.paddingRight = "8px";
                 const ci = new Image(`cki${r.out}${id}`, iconUrl(id));
-                ci.width = "38px";
-                ci.height = "38px";
-                ci.left = "9px";
+                ci.width = tight ? "30px" : "38px";
+                ci.height = tight ? "30px" : "38px";
+                ci.left = tight ? "6px" : "9px";
                 ci.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
                 chip.addControl(ci);
-                const ct = new TextBlock(`ckt${r.out}${id}`, `${Math.min(have, 999)}/${need}`);
+                // (squeezed: what you have only when it is short, else just what it takes, green)
+                const ct = new TextBlock(`ckt${r.out}${id}`, tight && enough ? `${need}` : `${Math.min(have, 999)}/${need}`);
                 ct.color = enough ? GOOD : SHORT;
-                ct.fontSize = 26;
+                ct.fontSize = tight ? 22 : 26;
                 ct.fontWeight = "bold";
                 ct.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
-                ct.paddingRight = "12px";
+                ct.paddingRight = tight ? "8px" : "12px";
                 chip.addControl(ct);
                 chips.addControl(chip);
             }

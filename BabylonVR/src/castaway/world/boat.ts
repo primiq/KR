@@ -512,60 +512,74 @@ function raftMats() {
 const PIECE_GEO = new Map<string, Map<MatKey, THREE.BufferGeometry[]>>();
 const pieceGeo = (k: PieceKind) => { let g = PIECE_GEO.get(k); if (!g) PIECE_GEO.set(k, (g = pieceGeometry(k))); return g; };
 const clean = (g: THREE.BufferGeometry) => { const n = g.index ? g.toNonIndexed() : g.clone(); for (const a of Object.keys(n.attributes)) if (a !== 'position' && a !== 'normal') n.deleteAttribute(a); return n; };
-/** a raft's geometry, by material: its logs, and the pieces built on it (the oar is separate: it moves) */
-function raftParts(r: Raft, only?: RaftPiece): Map<THREE.Material, THREE.BufferGeometry[]> {
-  const RM = raftMats(), W = woodMaterials(), out = new Map<THREE.Material, THREE.BufferGeometry[]>();
-  const put = (m: THREE.Material, g: THREE.BufferGeometry) => { let a = out.get(m); if (!a) out.set(m, (a = [])); a.push(clean(g)); };
+/**
+ * A raft's pieces are drawn from shared geometry: one set per kind (a log section, a wall, a doorway...), built once, and
+ * every piece of that kind is the same geometry placed where it goes. Building on a raft then adds a few meshes made from
+ * what is already on the GPU (it used to merge the whole raft anew, a stall each time, the new parts appearing one by one).
+ */
+const KIND_GEO = new Map<string, [THREE.Material, THREE.BufferGeometry][]>();
+function kindGeo(kind: string): [THREE.Material, THREE.BufferGeometry][] {
+  let out = KIND_GEO.get(kind);
+  if (out) return out;
+  const RM = raftMats(), W = woodMaterials(), by = new Map<THREE.Material, THREE.BufferGeometry[]>();
+  const put = (m: THREE.Material, g: THREE.BufferGeometry) => { let a = by.get(m); if (!a) by.set(m, (a = [])); a.push(clean(g)); };
   const matOf = (k: MatKey) => (k === 'wall' || k === 'swall' ? RM.wall : k === 'slab' || k === 'sslab' ? W.slab : k === 'beam' ? RM.beam : k === 'glass' ? mats().glass : RM.pile);
-  const piece = (kind: PieceKind, x: number, y: number, z: number, ry: number) => {
-    for (const [k, list] of pieceGeo(kind)) for (const g of list) put(matOf(k), g.clone().rotateY(ry).translate(x, y, z));
-  };
-  const logs = (i: number, j: number) => {
-    const cx = i * RC, cz = j * RC;
+  if (kind === 'tile') {
+    // five logs, their cut ends, the cross-pieces they are lashed to and the lashings (centred on the section)
     for (let k = 0; k < 5; k++) {
-      const x = cx + (k - 2) * 0.6, len = RC - 0.06 - ((k * 7 + i * 3 + j * 5) % 3) * 0.04;
-      put(RM.log, new THREE.CylinderGeometry(0.29, 0.29, len, 10, 1, true).rotateX(Math.PI / 2).translate(x, RDECK - 0.31, cz));
-      for (const s of [-1, 1]) put(RM.end, new THREE.CircleGeometry(0.29, 10).rotateY(s > 0 ? 0 : Math.PI).translate(x, RDECK - 0.31, cz + s * len / 2));
+      const x = (k - 2) * 0.6, len = RC - 0.06 - ((k * 7) % 3) * 0.04;
+      put(RM.log, new THREE.CylinderGeometry(0.29, 0.29, len, 10, 1, true).rotateX(Math.PI / 2).translate(x, RDECK - 0.31, 0));
+      for (const sd of [-1, 1]) put(RM.end, new THREE.CircleGeometry(0.29, 10).rotateY(sd > 0 ? 0 : Math.PI).translate(x, RDECK - 0.31, sd * len / 2));
     }
-    // the cross-pieces the logs are lashed to, and the lashings
-    for (const s of [-1, 1]) {
-      put(RM.beam, new THREE.BoxGeometry(RC - 0.08, 0.09, 0.18).translate(cx, RDECK - 0.03, cz + s * 0.95));
-      for (let k = 0; k < 5; k++) put(RM.rope, new THREE.BoxGeometry(0.1, 0.1, 0.24).translate(cx + (k - 2) * 0.6, RDECK - 0.02, cz + s * 0.95));
+    for (const sd of [-1, 1]) {
+      put(RM.beam, new THREE.BoxGeometry(RC - 0.08, 0.09, 0.18).translate(0, RDECK - 0.03, sd * 0.95));
+      for (let k = 0; k < 5; k++) put(RM.rope, new THREE.BoxGeometry(0.1, 0.1, 0.24).translate((k - 2) * 0.6, RDECK - 0.02, sd * 0.95));
     }
-  };
-  const each = (p: RaftPiece) => {
-    if (p[0] === 't') logs(p[1], p[2]);
-    else if (p[0] === 'e') {
-      const [, ax, i, j, L, kind] = p, x = ax === 'x' ? i * RC : (i - 0.5) * RC, z = ax === 'x' ? (j - 0.5) * RC : j * RC, ry = ax === 'x' ? 0 : Math.PI / 2;
-      piece(kind as PieceKind, x, RDECK + L * RWH, z, ry);
-      // on the logs: a squared sill under it, down between the round logs (no gap under the wall)
-      if (L === 0) put(RM.beam, new THREE.BoxGeometry(RC + 0.02, 0.4, 0.34).rotateY(ry).translate(x, RDECK - 0.2 + 0.005, z));
-    }
-    else if (p[0] === 'd') return;
-    else if (p[0] === 'f') piece('floor', p[1] * RC, RDECK + p[3] * RWH, p[2] * RC, 0);
-    else { const [dx, dz] = STAIR_DIRS[p[4]]; piece('stairs', p[1] * RC, RDECK + p[3] * RWH, p[2] * RC, Math.atan2(dx, dz)); }
-  };
-  if (only) each(only); else for (const p of r.list()) each(p);
+  } else if (kind === 'sill') {
+    // a squared sill under a wall on the logs, down between the round logs (no gap under the wall)
+    put(RM.beam, new THREE.BoxGeometry(RC + 0.02, 0.4, 0.34).translate(0, -0.2 + 0.005, 0));
+  } else for (const [k, list] of pieceGeo(kind as PieceKind)) for (const g of list) put(matOf(k), g);
+  out = [...by].map(([m, list]) => [m, mergeGeometries(list)!] as [THREE.Material, THREE.BufferGeometry]);
+  KIND_GEO.set(kind, out);
   return out;
 }
+/** the meshes of one piece of a raft, placed in raft space */
+function pieceMeshes(p: RaftPiece, shadows: boolean, ghost: THREE.Material | null, to: THREE.Object3D) {
+  const put = (kind: string, x: number, y: number, z: number, ry: number) => {
+    for (const [m, g] of kindGeo(kind)) {
+      const o = new THREE.Mesh(g, ghost ?? m);
+      o.position.set(x, y, z); o.rotation.y = ry;
+      o.castShadow = shadows && !ghost && m !== mats().glass; o.receiveShadow = shadows && !ghost;
+      to.add(o);
+    }
+  };
+  if (p[0] === 't') put('tile', p[1] * RC, 0, p[2] * RC, 0);
+  else if (p[0] === 'e') {
+    const [, ax, i, j, L, kind] = p, x = ax === 'x' ? i * RC : (i - 0.5) * RC, z = ax === 'x' ? (j - 0.5) * RC : j * RC, ry = ax === 'x' ? 0 : Math.PI / 2;
+    put(kind, x, RDECK + L * RWH, z, ry);
+    if (L === 0) put('sill', x, RDECK, z, ry);
+  }
+  else if (p[0] === 'd') return;
+  else if (p[0] === 'f') put('floor', p[1] * RC, RDECK + p[3] * RWH, p[2] * RC, 0);
+  else { const [dx, dz] = STAIR_DIRS[p[4]]; put('stairs', p[1] * RC, RDECK + p[3] * RWH, p[2] * RC, Math.atan2(dx, dz)); }
+}
+/** the oar's parts (shared geometry) */
+let OAR: { post: THREE.BufferGeometry; pole: THREE.BufferGeometry; blade: THREE.BufferGeometry; grip: THREE.BufferGeometry } | null = null;
 function makeRaft(r: Raft, shadows: boolean, ghost: THREE.Material | null = null, only?: RaftPiece): THREE.Group {
   const g = new THREE.Group();
-  for (const [m, list] of raftParts(r, only)) {
-    const o = new THREE.Mesh(mergeGeometries(list)!, ghost ?? m);
-    o.castShadow = shadows && !ghost && m !== mats().glass; o.receiveShadow = shadows && !ghost;
-    g.add(o);
-  }
+  if (only) pieceMeshes(only, shadows, ghost, g); else for (const p of r.list()) pieceMeshes(p, shadows, ghost, g);
   if (only || ghost) return g;
   // the oar: a post at the back, the oar on a pivot at its top, its blade trailing in the water behind
   const RM = raftMats(), [px, py, pz] = r.oarPost();
-  g.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 1.1, 8).translate(px, py + 0.55, pz), RM.beam), { castShadow: shadows }));
-  const pv = new THREE.Group(); pv.position.set(px, py + 1.05, pz + 0.02); g.add(pv);
   const a = new THREE.Vector3(0, 0.12, -0.75), b = new THREE.Vector3(0, -1.45, 3.1), len = a.distanceTo(b);
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, len, 7), RM.end);
+  OAR ??= { post: new THREE.CylinderGeometry(0.07, 0.09, 1.1, 8), pole: new THREE.CylinderGeometry(0.045, 0.045, len, 7), blade: new THREE.BoxGeometry(0.34, 0.05, 0.85), grip: new THREE.CylinderGeometry(0.055, 0.055, 0.3, 7).rotateZ(Math.PI / 2) };
+  const post = new THREE.Mesh(OAR.post, RM.beam); post.position.set(px, py + 0.55, pz); post.castShadow = shadows; g.add(post);
+  const pv = new THREE.Group(); pv.position.set(px, py + 1.05, pz + 0.02); g.add(pv);
+  const pole = new THREE.Mesh(OAR.pole, RM.end);
   pole.position.copy(a).add(b).multiplyScalar(0.5); pole.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize()); pv.add(pole);
-  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.05, 0.85), RM.beam);
+  const blade = new THREE.Mesh(OAR.blade, RM.beam);
   blade.position.copy(b).add(b.clone().sub(a).normalize().multiplyScalar(-0.35)); blade.quaternion.copy(pole.quaternion).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2)); pv.add(blade);
-  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.3, 7).rotateZ(Math.PI / 2).translate(a.x, a.y, a.z), RM.beam); pv.add(grip);
+  const grip = new THREE.Mesh(OAR.grip, RM.beam); grip.position.copy(a); pv.add(grip);
   r.oar = pv;
   // the doors: a leaf on a hinge in each doorway that has one
   r.doorPivots.clear();
@@ -639,7 +653,7 @@ export class Boats {
   private raftGhost: THREE.Group | null = null;
   private pieceGhost: THREE.Group | null = null;
   private pieceGhostKey = '';
-  private ghostMat = new THREE.MeshBasicMaterial({ color: 0x7cff9a, transparent: true, opacity: 0.35, depthWrite: false });
+  private ghostMat = Object.assign(new THREE.MeshBasicMaterial({ color: 0x7cff9a, transparent: true, opacity: 0.35, depthWrite: false }), { userData: { liveColor: true } });
   /** other players on deck: where on which boat (boat space), and when we last heard */
   private riders = new Map<number, { b: Boat; x: number; y: number; z: number; r: number; t: number }>();
   private clock = 0;
@@ -729,7 +743,7 @@ export class Boats {
     if (!b.raft) return;
     b.raft.refresh();
     this.scene.remove(b.group);
-    b.group.traverse((o) => { if ((o as THREE.Mesh).geometry) (o as THREE.Mesh).geometry.dispose(); });
+    // (the pieces share their geometry: nothing to dispose)
     b.group = makeRaft(b.raft, this.shadows);
     this.place(b);
     this.scene.add(b.group);
@@ -1273,7 +1287,7 @@ export class Boats {
     if (!a || (a.p[0] === 't' && !a.ok && a.p[1] === 0 && a.p[2] === 0)) { if (this.pieceGhost) this.pieceGhost.visible = false; return; }
     const key = JSON.stringify(a.p);
     if (key !== this.pieceGhostKey) {
-      if (this.pieceGhost) { this.scene.remove(this.pieceGhost); this.pieceGhost.traverse((o) => (o as THREE.Mesh).geometry?.dispose()); }
+      if (this.pieceGhost) { this.scene.remove(this.pieceGhost); }
       this.pieceGhost = makeRaft(a.b.raft!, false, this.ghostMat, a.p);
       this.pieceGhostKey = key;
       this.scene.add(this.pieceGhost);
