@@ -300,10 +300,12 @@ function fillKit(kit: Kit, kind: PieceKind, depth = 0.6, pile?: (lx: number, lz:
             box(CELL - 0.004, 0.2, THICK + 0.18, 0, WALL_H - 0.1, 0, "beam");
             if (stone) box(CELL - 0.004, 0.14, THICK + 0.1, 0, 0.07, 0, "beam");
             // the two glazed casements, each hinged on its outer side
-            const Wd = 0.65, Hh = 0.88, y0 = 1.06, F = 0.05;
+            // (each casement sits a few millimetres inside the opening: flush, its edges shared the very planes of the sill,
+            //  the lintel and the posts and flickered against them)
+            const Wd = 0.635, Hh = 0.865, y0 = 1.0675, F = 0.05, HINGE = 0.008;
             for (const s of [-1, 1]) {
                 const geos = new Map<MatKey, THREE.BufferGeometry[]>();
-                const put = (k: MatKey, g: THREE.BufferGeometry) => { let a = geos.get(k); if (!a) geos.set(k, (a = [])); a.push(g.translate(-s * Wd / 2, 0, 0)); };
+                const put = (k: MatKey, g: THREE.BufferGeometry) => { let a = geos.get(k); if (!a) geos.set(k, (a = [])); a.push(g.translate(-s * (Wd / 2 + HINGE), 0, 0)); };
                 const fr = (w: number, h: number, x: number, y: number) => put("beam", new THREE.BoxGeometry(w, h, 0.045).translate(x, y, 0));
                 fr(Wd, F, 0, y0 + F / 2); fr(Wd, F, 0, y0 + Hh - F / 2); fr(F, Hh, -Wd / 2 + F / 2, y0 + Hh / 2); fr(F, Hh, Wd / 2 - F / 2, y0 + Hh / 2);
                 fr(Wd - 2 * F, 0.03, 0, y0 + Hh / 2);
