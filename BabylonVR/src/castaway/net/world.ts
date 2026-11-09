@@ -41,14 +41,14 @@ export function captureWorld(g: Game) {
         deepChests: g.deepSea.capture(),
         sand: g.under.desert?.capture() ?? null,
         camp: g.under.camp?.exportProgress(),
-        structs: g.structures.list.map((s) => [s.nid, s.kind, +s.x.toFixed(2), +s.y.toFixed(3), +s.z.toFixed(2), +s.yaw.toFixed(3), +s.fuel.toFixed(1), s.lit ? 1 : 0, +s.prog.toFixed(1), packInv(s.inv)]),
+        structs: g.structures.list.map((s) => [s.nid, s.kind, +s.x.toFixed(2), +s.y.toFixed(3), +s.z.toFixed(2), +s.yaw.toFixed(3), +s.fuel.toFixed(1), s.lit ? 1 : 0, +s.prog.toFixed(1), packInv(s.inv), s.deck ?? 0]),
     };
 }
 
 export function placeStruct(g: Game, row: any[]) {
-    const [nid, kind, x, yIn, z, yaw, fuel, lit, prog, inv] = row;
+    const [nid, kind, x, yIn, z, yaw, fuel, lit, prog, inv, deck] = row;
     const y = yIn < -100 ? g.structures.ground(x, z) : yIn;
-    const s = g.structures.place(kind as PlaceKind, { ok: true, reason: "", x, y, z, yaw }, nid, true);
+    const s = g.structures.place(kind as PlaceKind, { ok: true, reason: "", x, y, z, yaw }, nid, true, deck && typeof deck.n === "string" && Array.isArray(deck.l) ? deck : null);
     if (!s) return;
     s.fuel = fuel;
     s.lit = !!lit;

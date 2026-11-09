@@ -2087,7 +2087,8 @@ export class Game {
         if (this.roofT <= 0) { this.roofT = 0.4; this.roofed = onIsland && this.structures.ceilingAt?.(me.x, me.y, me.z) != null; }
         // boats, and the storm out at sea (it only ever blows round whoever is far out)
         this.boats.setSelf(me.x, me.z);
-        { const on = this.boats.on; this.boats.compass = !!on && this.structures.list.some((s) => s.kind === "compass" && s.deck?.n === on.nid); }
+        // (a compass anywhere on the deck you are on: set on it, or simply standing on it)
+        { const on = this.boats.on; this.boats.compass = !!on && this.structures.list.some((s) => s.kind === "compass" && (s.deck?.n === on.nid || (Math.hypot(s.x - on.x, s.z - on.z) < 14 && Math.abs(s.y - on.y) < 4 && this.boats.deckSpot(s.x, s.y + 0.05, s.z, 0)?.n === on.nid))); }
         {
             const bx0 = me.x, by0 = me.y, bz0 = me.z;
             this.boats.update(dt, performance.now() / 1000, { x: this.input.move.x, y: this.input.move.y, boost: this.input.wantsSprint }, me, p,

@@ -6,6 +6,13 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-11-21", title: "Raft fixes",
+        items: [
+            "The compass on your raft is always recognised, for every player and after loading a save, so the storm past the reef can't sweep you away when you have one aboard.",
+            "Furnaces, workbenches and other stone or wooden things set on a raft keep their look as you sail: no more textures sliding over them.",
+        ],
+    },
+    {
         date: "2026-11-20", title: "Sail any way you like",
         items: [
             "No more invisible wall: sail away from the island in any direction. Whichever way you go you meet the same journey: the storm past the reef, the islets and wrecks, drift ice, the icebergs and their storm, and in the end the Arctic, which now rings the whole sea.",

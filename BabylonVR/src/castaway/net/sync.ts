@@ -57,7 +57,7 @@ export class WorldSync {
         building.onRemove = (p) => session.sendEvent({ k: "br", t: p.kind, i: p.i, j: p.j, a: p.axis, L: p.L });
         building.onUpgrade = (p) => session.sendEvent({ k: "bs", t: p.kind, i: p.i, j: p.j, a: p.axis, L: p.L });
         building.onWindow = (p, o, s) => session.sendEvent({ k: "bw", i: p.i, j: p.j, a: p.axis, L: p.L, o: o ? 1 : 0, s });
-        structures.onPlace = (s) => session.sendEvent({ k: "sp", n: s.nid, t: s.kind, x: +s.x.toFixed(2), y: +s.y.toFixed(3), z: +s.z.toFixed(2), r: +s.yaw.toFixed(3) });
+        structures.onPlace = (s) => session.sendEvent({ k: "sp", n: s.nid, t: s.kind, x: +s.x.toFixed(2), y: +s.y.toFixed(3), z: +s.z.toFixed(2), r: +s.yaw.toFixed(3), d: s.deck ?? 0 });
         structures.onRemove = (s) => session.sendEvent({ k: "sr", n: s.nid });
         structures.onFlag = (s) => session.sendEvent({ k: "sf", n: s.nid, d: s.cloth?.data ?? "" });
 
@@ -311,7 +311,7 @@ export class WorldSync {
                 break;
             }
             case "br": { const p = g.building.find(e.t, e.i, e.j, e.a, e.L ?? 0); if (p) g.building.remove(p, true); break; }
-            case "sp": if (!g.structures.list.some((s) => s.nid === e.n)) g.structures.place(e.t, { ok: true, reason: "", x: e.x, y: e.y, z: e.z, yaw: e.r }, e.n, true); break;
+            case "sp": if (!g.structures.list.some((s) => s.nid === e.n)) g.structures.place(e.t, { ok: true, reason: "", x: e.x, y: e.y, z: e.z, yaw: e.r }, e.n, true, e.d && typeof e.d.n === "string" && Array.isArray(e.d.l) ? e.d : null); break;
             case "sr": { const s = g.structures.list.find((q) => q.nid === e.n); if (s && g.openStruct !== s) g.structures.remove(s, true); break; }
             case "ss": this.applyStation(e); break;
             case "sa": for (const row of e.list) this.applyStation(row); break;

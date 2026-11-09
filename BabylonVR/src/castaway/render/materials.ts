@@ -58,14 +58,17 @@ async function rockTextures(scene: Scene) {
  * `ore`: a near-black iron-rich rock threaded with veins of polished metal (brassy, silvery, with a tarnished rainbow sheen)
  * that mirror the sky, and tiny crystals in them that glint as you move.
  */
-export function rockMaterial(scene: Scene, ore = false): PBRCustomMaterial {
-    return once(`rock:${ore}`, () => {
-        const m = new PBRCustomMaterial(ore ? "oreRock" : "rock", scene);
+export function rockMaterial(scene: Scene, ore = false, local = false): PBRCustomMaterial {
+    return once(`rock:${ore}:${local}`, () => {
+        const m = new PBRCustomMaterial(ore ? "oreRock" : local ? "rockLocal" : "rock", scene);
+        // (`local`: worked out on the mesh's own coordinates, for something that moves (a furnace on a raft): the stone goes
+        //  with it instead of sliding over it)
+        if (local) { m.Vertex_Definitions("varying vec3 vLocP; varying vec3 vLocN;"); m.Vertex_MainEnd("vLocP = positionUpdated; vLocN = normalUpdated;"); }
         m.metallic = 0;
         m.roughness = ore ? 0.6 : 0.82;
         m.AddUniform("rockTex", "sampler2D", null as never);
         m.AddUniform("rockReady", "float", 0);
-        m.Fragment_Definitions(NOISE_GLSL + `
+        m.Fragment_Definitions((local ? "varying vec3 vLocP; varying vec3 vLocN;\n" : "") + NOISE_GLSL + `
 float rockVein(vec3 wp) {
     // seams running through the rock, and nuggets where they swell
     float v = abs(cNoise(wp * 1.7 + 7.0) + cNoise(wp * 5.0) * 0.18);
@@ -75,8 +78,8 @@ float rockVein(vec3 wp) {
 }
 `);
         m.Fragment_Custom_Albedo(`
-            vec3 wp = vPositionW;
-            vec3 nW = normalize(vNormalW);
+            vec3 wp = ${local ? "(vLocP + vec3(0.0, 2.0, 0.0))" : "vPositionW"};
+            vec3 nW = normalize(${local ? "vLocN" : "vNormalW"});
             float n1 = cNoise(wp * 0.7), n2 = cNoise(wp * 4.0), n3 = cNoise(wp * 14.0), n4 = cNoise(wp * 1.9 + 5.0);
             // the photographed rock, for its grain and pits only (its colour is the stone's own)
             float det = 1.0;
@@ -121,8 +124,8 @@ float rockVein(vec3 wp) {
             metallicRoughness.g = mix(0.78, 0.2 + 0.12 * (cNoise(vPositionW * 9.0) * 0.5 + 0.5), veinM);
         ` : `
             // quartz grains glint, the wet foot of the rock shines; the rest is matt
-            float q = smoothstep(0.55, 0.72, cNoise(vPositionW * 31.0 + 11.0));
-            float wetR = 1.0 - smoothstep(0.0, 1.0, vPositionW.y);
+            float q = smoothstep(0.55, 0.72, cNoise(${local ? "vLocP" : "vPositionW"} * 31.0 + 11.0));
+            float wetR = ${local ? "0.0" : "1.0 - smoothstep(0.0, 1.0, vPositionW.y)"};
             metallicRoughness.g = mix(mix(0.82, 0.32, q), 0.3, wetR);
         `);
         if (ore) {

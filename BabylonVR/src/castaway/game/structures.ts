@@ -2,7 +2,7 @@ import { type AbstractMesh, Color3, Quaternion, Constants, DynamicTexture, type 
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { bakeGroup, disposeBaked, tok } from "../render/bake";
-import { ghostMaterial, glow as glowMat, rockMaterial, setGhostOk, solid, woodMaterials as woodMats } from "../render/materials";
+import { deckMaterial, deckWallMaterial, ghostMaterial, glow as glowMat, rockMaterial, setGhostOk, solid, woodMaterials as woodMats } from "../render/materials";
 import { heightAt } from "../world/island";
 import type { Collider, ColliderGrid } from "../world/vegetation";
 import { rayGround } from "./building";
@@ -25,8 +25,12 @@ const S_TOK = {
 const W_TOK = { wall: tok("wall"), slab: tok("slab"), beam: tok("beam"), pile: tok("pile") };
 
 /** Real materials for the stand-in keys used by the model code. */
-function matFor(scene: Scene, key: string): Material {
+/** `local`: for something on a moving deck: the stone's and the boards' patterns go with it, not slide over it */
+function matFor(scene: Scene, key: string, local = false): Material {
   const W = woodMats(scene);
+  if (local && key === "wall") return deckWallMaterial(scene);
+  if (local && key === "slab") return deckMaterial(scene);
+  if (local && key === "stone") return rockMaterial(scene, false, true);
   switch (key) {
     case "wall": return W.wall;
     case "slab": return W.slab;
@@ -646,10 +650,13 @@ export class StructureManager {
 
   hideGhost() { for (const g of this.ghosts.values()) g.setEnabled(false); }
 
-  place(kind: PlaceKind, a: PlaceAim, nid?: string, silent = false): Structure | null {
+  place(kind: PlaceKind, a: PlaceAim, nid?: string, silent = false, deckHint?: { n: string; l: [number, number, number, number] } | null): Structure | null {
     if (!a.ok) return null;
-    // (on a boat's deck: it rides with the boat, no plinth under it and no fixed collider)
-    const deck = this.deckSpot?.(a.x, a.y, a.z, a.yaw) ?? null;
+    // (on a boat's deck: it rides with the boat, no plinth under it and no fixed collider. Told exactly which deck and
+    //  where on it (another player's, a save) when known, rather than guessed from where the boat happens to be now)
+    let deck = deckHint && this.deckWorld?.(deckHint.n, deckHint.l, this.deckTmp) ? deckHint : null;
+    if (deck) { const w = this.deckTmp; a = { ...a, x: w.x, y: w.y, z: w.z, yaw: w.yaw }; }
+    else deck = this.deckSpot?.(a.x, a.y, a.z, a.yaw) ?? null;
     let hook = 0;
     if (kind === "lantern") {
       const c = this.ceilingAt?.(a.x, a.y, a.z);
@@ -668,7 +675,7 @@ export class StructureManager {
       sk.position.set(lx, -depth / 2 + 0.005, lz);
       m.group.add(sk);
     }
-    const baked = bakeGroup(`struct_${kind}`, m.group, this.scene, (key) => matFor(this.scene, key), this.shadows);
+    const baked = bakeGroup(`struct_${kind}`, m.group, this.scene, (key) => matFor(this.scene, key, !!deck), this.shadows);
     const node = baked.node;
     node.position.set(a.x, a.y, a.z);
     node.rotation.y = a.yaw;
