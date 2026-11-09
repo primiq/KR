@@ -66,6 +66,12 @@ export class VRPanel {
     private wristUI: AdvancedDynamicTexture;
     private board: Mesh;
     private boardUI: AdvancedDynamicTexture;
+    /** the board's own controls (moved onto the screen overlay on a flat screen) */
+    private boardRoot!: Rectangle;
+    /** on a flat screen the board is a screen overlay: square on and the same size whichever way you look, and drawn after
+     *  the picture's tone mapping, vignette and ambient occlusion (on the 3D plane they darkened it) */
+    private flatUI: AdvancedDynamicTexture | null = null;
+    private onFlatUI = false;
     private vit: { fill: Rectangle; label: TextBlock }[] = [];
     private hot: ReturnType<typeof slotControl>[] = [];
     private prompt: TextBlock;
@@ -219,7 +225,7 @@ export class VRPanel {
         this.board.renderingGroupId = 1;
         this.boardUI = AdvancedDynamicTexture.CreateForMesh(this.board, 1650, 1125, true);
         this.boardUI.anisotropicFilteringLevel = 8;
-        const b = new Rectangle("bbg");
+        const b = (this.boardRoot = new Rectangle("bbg"));
         b.background = B_BG;
         b.cornerRadius = 44;
         b.thickness = 4;
@@ -698,6 +704,28 @@ export class VRPanel {
      * filling most of the view, and close (nearer than your own hands, so the mouse or a finger always reaches it).
      */
     flat = false;
+    /** the board's controls go onto the screen overlay (flat screen) or back onto the plane (headset) */
+    private hostFlat(on: boolean) {
+        if (on === this.onFlatUI) return;
+        this.onFlatUI = on;
+        const b = this.boardRoot;
+        if (on) {
+            if (!this.flatUI) {
+                this.flatUI = AdvancedDynamicTexture.CreateFullscreenUI("boardFlat", true, this.scene);
+                // (scaled to fit: the whole board on screen, a little margin round it, whatever the window's shape)
+                this.flatUI.idealWidth = 1650 / 0.94;
+                this.flatUI.idealHeight = 1125 / 0.92;
+                this.flatUI.useSmallestIdeal = true;
+            }
+            this.boardUI.removeControl(b);
+            b.width = "1650px"; b.height = "1125px";
+            this.flatUI.addControl(b);
+        } else {
+            this.flatUI?.removeControl(b);
+            b.width = "100%"; b.height = "100%";
+            this.boardUI.addControl(b);
+        }
+    }
     private placeFlat() {
         const cam = this.scene.activeCamera!;
         const f = cam.getDirection(Vector3.Forward(true)).normalize();
@@ -742,6 +770,11 @@ export class VRPanel {
 
         // board
         const open = hud.inventoryOpen;
+        this.hostFlat(this.flat);
+        // (flat: the plane stays hidden, the overlay shows the board)
+        this.board.isVisible = !this.flat;
+        this.boardRoot.isVisible = !this.flat || open;
+        if (this.flatUI) this.flatUI.layer!.isEnabled = this.flat && open;
         if (open !== this.board.isEnabled()) {
             if (open) this.placeBoard();
             // (shut: next time it opens on the bag, unless it is opened on another tab on purpose)
