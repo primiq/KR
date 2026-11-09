@@ -7,7 +7,7 @@
 // Multiplayer: seats are claimed by whoever sits first (event 'su' / op 'seat'); the driver moves the sub and tells the
 // others ('mv'); everyone's avatar is placed exactly in their seat. Subs are part of the world save and the join snapshot.
 import * as THREE from 'three';
-import { heightAt } from './island';
+import { heightAt, SEA_R } from './island';
 import { STORM_R0, WRECK_R } from './boat';
 
 /** a position (Babylon's Vector3 here) */
@@ -375,7 +375,12 @@ export class Subs {
     for (const s of this.list) {
       for (let i = 0; i < 4; i++) { const p = s.seats[i]; if (p !== null && p !== this.myId && !this.present(p)) s.seats[i] = null; }
       const driver = s.seats[0];
-      if (s === this.mine && this.seat === 0) this.drive(s, dt, ctl);
+      if (s === this.mine && this.seat === 0) {
+        this.drive(s, dt, ctl);
+        // (the edge of the open sea, as for boats: a current turns you back)
+        const rs = Math.hypot(s.x, s.z);
+        if (rs > SEA_R) { s.x *= SEA_R / rs; s.z *= SEA_R / rs; s.v *= 0.9; }
+      }
       else if (driver !== null && driver !== this.myId) {
         s.tx -= Math.sin(s.tyaw) * s.tv * dt; s.tz -= Math.cos(s.tyaw) * s.tv * dt;
         const k = 1 - Math.exp(-dt * 6);

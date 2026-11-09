@@ -11,7 +11,7 @@
 // the Babylon building materials; the depth-only 'boatLid' keeps the sea out of the hull.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { heightAt } from './island';
+import { heightAt, SEA_R } from './island';
 import { CELL, type MatKey, type PieceKind, pieceGeometry, RAIL_H, STAIR_DIRS, WALL_H } from '../game/building';
 
 let WOOD: { slab: THREE.Material } | null = null;
@@ -24,6 +24,8 @@ interface PV { x: number; y: number; z: number; set(x: number, y: number, z: num
 export const STORM_R0 = 360, STORM_R1 = 430, WRECK_R = 560;
 /** how long you can stay out in the full storm before the big wave finds you (s) */
 const STORM_HOLD = 70;
+/** with a compass aboard: past here the storm starts to ease, and past here it is gone (open sea, calm) */
+export const PASS_R0 = 500, PASS_R1 = 640;
 /** how far out the big wave rises (m): you watch it come, growing, for half a minute or so */
 const WAVE_FROM = 420;
 /** the giant wave's profile across it: d along the way it travels (the face is at +d), y up (m) */
@@ -640,6 +642,9 @@ export class Boats {
   storm = 0;
   private fullT = 0;
   private warned = 0;
+  /** (set by the game) the deck I'm on carries a compass: the storm can be steered through */
+  compass = false;
+  private edgeT = 0;
   readonly wave: Wave;
   private waveFor: Boat | null = null;   // the boat (or null: just me, swimming) the wave is coming for
   private waveMine = false;              // ... and it will hit me
@@ -1013,14 +1018,17 @@ export class Boats {
     this.clock += dt;
     // ---- the storm round me
     const r = away ? 0 : Math.hypot(me.x, me.z);
-    const want = Math.max(0, Math.min(1, (r - STORM_R0) / (STORM_R1 - STORM_R0)));
+    let want = Math.max(0, Math.min(1, (r - STORM_R0) / (STORM_R1 - STORM_R0)));
+    // (a compass aboard: you hold your course through it, and out past the worst of it the storm blows itself out)
+    if (this.compass) want *= 0.85 * Math.max(0, Math.min(1, 1 - (r - PASS_R0) / (PASS_R1 - PASS_R0)));
     // (it builds over half a minute or so: the sky darkens, the rain comes on, the waves grow)
     this.storm += (want - this.storm) * Math.min(1, dt / (want > this.storm ? 22 : 6));
     if (this.storm > 0.85) this.fullT += dt; else this.fullT = Math.max(0, this.fullT - dt * 0.5);
     if (this.storm > 0.1 && this.warned < 1) { this.warned = 1; this.say?.('The sky is turning black out here…'); }
-    if (this.storm > 0.6 && this.warned < 2) { this.warned = 2; this.say?.('This is no sea for a little boat. Turn back!'); }
-    if (this.storm < 0.02) this.warned = 0;
-    if (!this.wave.active && !away && (r > WRECK_R || this.fullT > STORM_HOLD)) this.bringWave();
+    if (this.storm > 0.6 && this.warned < 2) { this.warned = 2; this.say?.(this.compass ? 'Hold her steady! The compass keeps you on course through the storm.' : 'This is no sea for a little boat. Turn back!'); }
+    if (this.compass && this.warned >= 1 && this.warned < 3 && r > PASS_R0 + 30 && want < this.storm) { this.warned = 3; this.say?.('The storm is easing. The sun breaks through the clouds and the sea calms down.'); }
+    if (this.storm < 0.02 && (r < STORM_R0 || r > PASS_R1)) this.warned = 0;
+    if (!this.wave.active && !away && !this.compass && (r > WRECK_R || this.fullT > STORM_HOLD)) this.bringWave();
 
     // ---- which deck am I on (before the boats move: I ride along with mine)
     const was = this.on;
@@ -1039,7 +1047,16 @@ export class Boats {
     for (const b of this.list) {
       if (b.helm !== null && b.helm !== this.myId && !this.present(b.helm)) b.helm = null;
       const mine = b === this.on && this.atHelm;
-      if (mine) this.drive(b, dt, time, ctl);
+      if (mine) {
+        this.drive(b, dt, time, ctl);
+        // (the edge of the open sea: a current that will not let you further, you are turned back)
+        const rb = Math.hypot(b.x, b.z);
+        if (rb > SEA_R) {
+          b.x *= SEA_R / rb; b.z *= SEA_R / rb; b.v *= 0.9;
+          if (this.edgeT <= 0) { this.edgeT = 20; this.say?.('A strong current holds you back. There is nothing out there but the empty ocean: time to turn round.'); }
+        }
+        this.edgeT -= dt;
+      }
       else if (b.helm !== null) {
         // somebody else steers: follow what they say (and guess ahead a little)
         b.tx -= Math.sin(b.tyaw) * b.tv * dt; b.tz -= Math.cos(b.tyaw) * b.tv * dt;

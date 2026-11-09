@@ -156,6 +156,19 @@ export class Offshore {
     if (!this.run && h >= 6 && h <= 18 && Math.random() < 0.18) { const w = this.pickWhale(); if (w) this.startWhale(w.x, w.z, w.h, Math.floor(Math.random() * 1e9)); }
     if (!this.shipRun && h >= 7 && h <= 16 && Math.random() < 0.035) { const s = this.pickShip(); if (s) this.startShip(s.a, s.dir, 0); }
   }
+  /** host: out on the open sea, now and then a whale comes by wherever you are (fair weather or foul) */
+  private seaT = 90;
+  atSea(dt: number, me: { x: number; z: number }) {
+    if (this.remote || this.run || Math.hypot(me.x, me.z) < 650) return;
+    this.seaT -= dt;
+    if (this.seaT > 0) return;
+    this.seaT = 120 + Math.random() * 180;
+    for (let k = 0; k < 12; k++) {
+      const a = Math.random() * Math.PI * 2, d = 120 + Math.random() * 120, x = me.x + Math.cos(a) * d, z = me.z + Math.sin(a) * d;
+      const h = a + Math.PI / 2 + (Math.random() - 0.5) * 0.8;
+      if ([0, 60, 120, 200].every((s) => heightAt(x - Math.sin(h) * s, z - Math.cos(h) * s) < -16)) { this.startWhale(x, z, h, Math.floor(Math.random() * 1e9)); return; }
+    }
+  }
   /** debug / tests: a whale or the ship in view of (x, z) looking along yaw */
   debugWhale(px: number, pz: number, yaw: number, d = 140) {
     const fx = -Math.sin(yaw), fz = -Math.cos(yaw);

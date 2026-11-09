@@ -10,11 +10,11 @@ export type ItemId =
   | 'building_plan' | 'torch' | 'sapling' | 'picture_frame' | 'flower_pot' | 'rug' | 'lantern' | 'door'
   | 'leather' | 'leather_cap' | 'leather_vest' | 'leather_pants' | 'metal_helmet' | 'metal_chestplate' | 'metal_greaves'
   | 'diamond_helmet' | 'diamond_chestplate' | 'diamond_greaves' | 'boat' | 'raft' | 'submarine' | 'table' | 'cat_bed' | 'lounger' | 'drum' | 'drumsticks'
-  | 'meat_stick' | 'roast_stick' | 'guitar' | 'sand';
+  | 'meat_stick' | 'roast_stick' | 'guitar' | 'sand' | 'compass';
 export type ArmorSlot = 'head' | 'chest' | 'legs';
 export const ARMOR_SLOTS: ArmorSlot[] = ['head', 'chest', 'legs'];
 export const ARMOR_SLOT_LABEL: Record<ArmorSlot, string> = { head: 'Head', chest: 'Chest', legs: 'Legs' };
-export type PlaceKind = 'campfire' | 'furnace' | 'workbench' | 'bed' | 'sleeping_bag' | 'box' | 'torch' | 'flower_pot' | 'rug' | 'lantern' | 'table' | 'cat_bed' | 'lounger' | 'drum';
+export type PlaceKind = 'campfire' | 'furnace' | 'workbench' | 'bed' | 'sleeping_bag' | 'box' | 'torch' | 'flower_pot' | 'rug' | 'lantern' | 'table' | 'cat_bed' | 'lounger' | 'drum' | 'compass';
 export type GatherKind = 'wood' | 'stone' | 'ore';
 export type ItemKind = 'resource' | 'tool' | 'food' | 'placeable' | 'plan' | 'armor' | 'seed';
 
@@ -295,6 +295,11 @@ export const ITEMS = {
     id: 'lantern', name: 'Lantern', stack: 5, kind: 'placeable', place: 'lantern',
     desc: 'A warm light that never goes out. Placed under a roof or an upper floor it hangs from the ceiling on a chain; anywhere else it hangs from its own hook post.',
     icon: svg('<path d="M16 3v4" stroke="#3d4348" stroke-width="2"/><path d="M10 11l6-4 6 4z" fill="#3d4348"/><rect x="11" y="11" width="10" height="13" fill="#ffc46a"/><path d="M11 11v13M21 11v13M16 11v13" stroke="#3d4348" stroke-width="1.6"/><rect x="10" y="24" width="12" height="3" fill="#3d4348"/>'),
+  },
+  compass: {
+    id: 'compass', name: 'Compass', stack: 1, kind: 'placeable', place: 'compass',
+    desc: 'A ship\u2019s compass on a stand. Set it on a raft or a boat: it shows north, south, east and west, a little house points the way home to the island, and the screen under it says how far away it is. With a compass aboard you can steer through the storm past the reef and out to the open sea.',
+    icon: svg('<rect x="13" y="18" width="6" height="11" fill="#7a5532"/><circle cx="16" cy="12" r="9" fill="#c99a3c"/><circle cx="16" cy="12" r="7" fill="#1f3140"/><path d="M16 5l2 7h-4z" fill="#e8452e"/><path d="M16 19l-2-7h4z" fill="#f4f1e6"/>'),
   },
   door: {
     id: 'door', name: 'Door', stack: 5, kind: 'resource',

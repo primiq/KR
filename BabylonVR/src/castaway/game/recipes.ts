@@ -37,6 +37,7 @@ export const RECIPES: Recipe[] = [
   { group: 'furniture', out: 'guitar', count: 1, bench: true, cost: [['wood', 20], ['fiber', 12]] },
   { group: 'furniture', out: 'lantern', count: 1, bench: true, cost: [['metal', 2], ['wood', 4], ['fiber', 2]] },
   { group: 'build', out: 'door', count: 1, bench: true, cost: [['wood', 14], ['fiber', 4]] },
+  { group: 'build', out: 'compass', count: 1, bench: true, cost: [['metal', 4], ['wood', 6], ['stone', 4]] },
   { group: 'build', out: 'raft', count: 1, cost: [['wood', 30], ['fiber', 12]] },
   { group: 'build', out: 'submarine', count: 1, bench: true, cost: [['metal', 30], ['wood', 40], ['stone', 30], ['fiber', 20]] },
   { group: 'build', out: 'boat', count: 1, bench: true, cost: [['wood', 100], ['fiber', 40], ['metal', 4]] },

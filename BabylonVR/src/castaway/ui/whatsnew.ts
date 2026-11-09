@@ -6,6 +6,15 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-11-15", title: "The compass and the open sea",
+        items: [
+            "Craft a Compass at the workbench and set it on your raft or boat. Its card always points north, a little red house shows the way home, and a screen says how far the island is.",
+            "With a compass aboard, the storm past the reef no longer ends your trip: hold your course and it blows itself out, the sun comes back and the sea calms down.",
+            "Out on the open sea: small islets with palms, rocks and sometimes a buried chest, and old shipwrecks on the reefs with treasure in the hold. Swim up to a chest and press E.",
+            "Seagulls wheel over the islets, whales come by now and then, and the weather out there turns rough and calm like it does at home.",
+        ],
+    },
+    {
         date: "2026-11-14", title: "The deep, smoother edges and the sub",
         items: [
             "Smooth edges: a new anti-aliasing setting in Graphics (off, FXAA, MSAA 4x or max). High uses max.",

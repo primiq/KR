@@ -2,7 +2,9 @@ import { type Node, type Scene, Vector3 } from "@babylonjs/core";
 import type { Input } from "../core/input";
 import { clamp } from "../core/noise";
 import { Hud } from "../ui/hud";
-import { heightAt } from "../world/island";
+import { heightAt, SEA_R } from "../world/island";
+import { OpenSea } from "../world/opensea";
+import { Gulls } from "../world/gulls";
 import type { Desert } from "../world/desert";
 import { groundAt } from "../world/desertField";
 import type { Player } from "../world/player";
@@ -131,6 +133,9 @@ export class Game {
     readonly subs: Subs;
     /** the deep sea past the reef: its glowing life and its treasure chests */
     readonly deepSea: DeepSea;
+    /** the islets and wrecks out on the open sea */
+    readonly openSea: OpenSea;
+    private gulls: Gulls;
     /** butterflies fluttering about by day */
     readonly butterflies: Butterflies;
     /** the floodlights of the nearest submarine that has them on (ahead, astern): they borrow the fire light pool */
@@ -364,6 +369,8 @@ export class Game {
         this.subs.sfx = this.sfx as never;
         this.subs.shake = (a) => this.player.shake(a);
         this.deepSea = new DeepSea(this.natureRoot);
+        this.openSea = new OpenSea(this.natureRoot, this.deepSea, o.vegetation.colliders);
+        this.gulls = new Gulls(this.natureRoot);
         this.butterflies = new Butterflies(this.natureRoot);
 
         // (the slide's tower platform and boats' decks are ground too)
@@ -988,6 +995,17 @@ export class Game {
             const cp = Math.cos(player.pitch);
             dir.set(-Math.sin(player.yaw) * cp, Math.sin(player.pitch), -Math.cos(player.yaw) * cp);
             this.assist = input.touch ? 1.4 : 1;
+        }
+
+        // ---------------- a treasure chest (on an islet, in a wreck): walk or swim up to it and press E
+        if (!this.boats.atHelm) {
+            const tc = this.deepSea.near(eye.x, eye.y - 1.2, eye.z, 2.4);
+            if (tc) {
+                this.hideBuildUi();
+                hud.setPrompt("Treasure chest", `${this.keyLabel("E")} open it`, true);
+                if (input.interactQueued) { input.interactQueued = false; this.lootDeep(tc); }
+                return;
+            }
         }
 
         // ---------------- a torch is carried (and lights the way) until you switch it to placing mode
@@ -1818,7 +1836,7 @@ export class Game {
         this.deepSea.loot(c);
         this.sfx.creak();
         const got: string[] = [];
-        for (const [id, n] of DeepSea.treasure()) {
+        for (const [id, n] of DeepSea.treasure(c.small)) {
             const it = ITEMS[id as ItemId]; if (!it) continue;
             const left = this.inv.add(id as ItemId, n);
             if (n - left > 0) got.push(`${n - left} ${it.name}`);
@@ -1945,7 +1963,7 @@ export class Game {
 
     /** footprints in the sand, and the birds and flamingos (which take off when someone comes too close) */
     private updateNature(dt: number, hour: number, away: boolean) {
-        const p = this.player, me = p.pos, onIsland = !away && Math.abs(me.x) < 900 && Math.abs(me.z) < 900 && me.y < heightAt(me.x, me.z) + 60;
+        const p = this.player, me = p.pos, onIsland = !away && Math.hypot(me.x, me.z) < SEA_R + 300 && me.y < Math.max(0, heightAt(me.x, me.z)) + 60;
         // butterflies by day round you (in the morning they come out, at dusk they are gone)
         this.butterflies.update(dt, me, Math.max(0, Math.min(1, (hour - 6.5) / 1.5, (19 - hour) / 1.5)), !onIsland || !!p.cave);
         const W = this.walkers; W.length = 0;
@@ -1968,6 +1986,9 @@ export class Game {
         }
         this.prints.update(dt, W);
         this.flowers.update(dt, me.x, me.z, onIsland);
+        this.openSea.update(dt, me, !onIsland || !!p.cave);
+        // seagulls out at sea by day: over the nearest islet, or round you
+        { const atSea = onIsland && !p.cave && Math.hypot(me.x, me.z) > 560 && hour > 6 && hour < 19.5; this.gulls.update(dt, atSea ? this.openSea.nearest(me) ?? me : null, atSea); }
         this.prints.mesh.visible = onIsland;
         this.birds.update(dt, me, threats, (this.weather?.rain ?? 0) > 0.35 ? 0 : hour, onIsland);
         this.flamingos.update(dt, me, threats, hour, onIsland);
@@ -1990,6 +2011,7 @@ export class Game {
         if (this.roofT <= 0) { this.roofT = 0.4; this.roofed = onIsland && this.structures.ceilingAt?.(me.x, me.y, me.z) != null; }
         // boats, and the storm out at sea (it only ever blows round whoever is far out)
         this.boats.setSelf(me.x, me.z);
+        { const on = this.boats.on; this.boats.compass = !!on && this.structures.list.some((s) => s.kind === "compass" && s.deck?.n === on.nid); }
         {
             const bx0 = me.x, by0 = me.y, bz0 = me.z;
             this.boats.update(dt, performance.now() / 1000, { x: this.input.move.x, y: this.input.move.y, boost: this.input.wantsSprint }, me, p,
@@ -2029,6 +2051,7 @@ export class Game {
                 this.clock.dawn = iv.sky;
             }
             this.offshore.tick(hour, wx.kind === 0);
+            if (onIsland) this.offshore.atSea(dt, me);
             this.offshore.update(dt, me, performance.now() / 1000, wx.rough, 1 - (this.clock.day ?? 1), !onIsland || !!p.cave);
             this.sfx.setWeather(local && !p.underwater ? wx.rain : 0, local ? Math.max(0, Math.min(1, (wx.wind - 1.4) / 2.8)) : 0, this.roofed, dt);
         }

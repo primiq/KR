@@ -14,9 +14,15 @@ export const SPAWN_THETA = -2.25;
 
 export const SEA_LEVEL = 0;
 export const TERRAIN_SIZE = 760; // metres, centred on the origin
+/** how far the open sea round the island goes (m from the middle): islets and wrecks out to here, then the current turns you
+ *  back. (The levels and rooms lie 3 km and more away, out of reach of any boat) */
+export const SEA_R = 2200;
 export const WORLD_RADIUS = 340; // soft limit for the player
 
 import { DESERT_FROM_Z, groundAt, inDesert } from "./desertField";
+import { SEA_END, SEA_START, seaFeatureHeight } from "./seafeatures";
+/** (squared) the ring where the open sea's islets and reefs can be */
+const SEA_START2 = (SEA_START - 150) ** 2, SEA_END2 = (SEA_END + 150) ** 2;
 const N = new Noise2D(1337);
 const N2 = new Noise2D(9001);
 
@@ -210,7 +216,11 @@ export function baseHeightAt(x: number, z: number): number {
   let h2: number;
   if (s2 < 0) h2 = underwater(-s2);
   else h2 = Math.min(s2, 10) * 0.14 + smoothstep(6, 38, s2) * 7;
-  return Math.max(h, h2);
+  h = Math.max(h, h2);
+  // ---- the open sea's islets and reefs, past the reef ----------------------
+  const r2 = x * x + z * z;
+  if (r2 > SEA_START2 && r2 < SEA_END2) h = Math.max(h, seaFeatureHeight(x, z));
+  return h;
 }
 
 /** 0..1: bare rock rather than sand or grass (cliff faces, cove shelves, the mountain's crown). Slope-based rock is added by the shader. */

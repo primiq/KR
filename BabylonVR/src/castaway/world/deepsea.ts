@@ -19,7 +19,7 @@ const LOSE = 46, FADE_S = 1.6;
 /** how far out the deep sea floor is drawn (the island's own ground ends at TERRAIN_SIZE / 2) */
 const FLOOR_R = 700, FLOOR_STEP = 20;
 
-export interface DeepChest { id: number; x: number; y: number; z: number; yaw: number; lid: THREE.Group; glow: THREE.Object3D[]; looted: number }
+export interface DeepChest { id: number; x: number; y: number; z: number; yaw: number; lid: THREE.Group; glow: THREE.Object3D[]; looted: number; /** an islet's chest: a lighter haul than the deep's */ small?: boolean }
 
 type Mats = Record<'wood' | 'band' | 'gold' | 'seam' | 'fishBody' | 'fishGlow' | 'jellyA' | 'jellyB' | 'jellyCore' | 'squid' | 'squidSpot' | 'eye' | 'angler' | 'lure' | 'teeth', THREE.Material>;
 let MATS: Mats | null = null;
@@ -103,7 +103,7 @@ function angler(M: Mats): THREE.Group {
 }
 
 // ------------------------------------------------------------------ chests
-function chestModel(M: Mats): { g: THREE.Group; lid: THREE.Group; glow: THREE.Object3D[] } {
+export function chestModel(M: Mats = mats()): { g: THREE.Group; lid: THREE.Group; glow: THREE.Object3D[] } {
   const g = new THREE.Group(), W = 0.95, D = 0.6, H = 0.5;
   const add = (geo: THREE.BufferGeometry, m: THREE.Material, to: THREE.Object3D = g) => { const o = new THREE.Mesh(geo, m); to.add(o); return o; };
   add(new THREE.BoxGeometry(W, H, D).translate(0, H / 2, 0), M.wood);
@@ -265,6 +265,11 @@ export class DeepSea {
   }
 
   // ------------------------------------------------------------------ looting
+  /** when each chest was last looted (kept for the open sea's chests too while they are not built, so nobody loots one twice) */
+  private lootT = new Map<number, number>();
+  /** an open sea chest coming into being near you (see world/opensea.ts) / going again */
+  addChest(c: DeepChest) { c.looted = this.lootT.get(c.id) ?? 0; this.chests.push(c); }
+  dropChest(c: DeepChest) { const i = this.chests.indexOf(c); if (i >= 0) this.chests.splice(i, 1); }
   /** the nearest unlooted chest within `max` of a point, or null */
   near(x: number, y: number, z: number, max: number): DeepChest | null {
     let best: DeepChest | null = null, bd = max;
@@ -278,12 +283,21 @@ export class DeepSea {
   }
   /** open it up and take what's inside (the loot, for whoever opened it); others hear it was looted */
   loot(c: DeepChest, remote = false, at = Date.now()) {
-    c.looted = at;
+    c.looted = at; this.lootT.set(c.id, at);
     if (!remote) this.onEvent?.({ i: c.id, t: at });
   }
   /** what a deep chest holds */
-  static treasure(): [string, number][] {
+  static treasure(small = false): [string, number][] {
     const r = Math.random, n = (lo: number, hi: number) => lo + Math.floor(r() * (hi - lo + 1));
+    // (an islet's chest: a castaway's stash, not a pirate's hoard)
+    if (small) {
+      const out: [string, number][] = [['metal', n(3, 8)], ['coal', n(2, 6)]];
+      if (r() < 0.4) out.push(['diamond', n(1, 2)]);
+      if (r() < 0.5) out.push(['cooked_fish', n(2, 4)]);
+      if (r() < 0.4) out.push(['leather', n(2, 5)]);
+      if (r() < 0.25) out.push(['fishing_rod', 1]);
+      return out;
+    }
     const out: [string, number][] = [['diamond', n(2, 5)], ['metal', n(8, 20)], ['coal', n(4, 10)]];
     const ARMOR = ['diamond_helmet', 'diamond_chestplate', 'diamond_greaves'];
     if (r() < 0.45) out.push([ARMOR[Math.floor(r() * 3)], 1]);
@@ -294,13 +308,19 @@ export class DeepSea {
   }
 
   // ------------------------------------------------------------------ save, network
-  capture(): [number, number][] { return this.chests.filter((c) => c.looted > 0 && Date.now() - c.looted < REFILL).map((c) => [c.id, c.looted]); }
+  capture(): [number, number][] { const now = Date.now(); return [...this.lootT].filter(([, t]) => t > 0 && now - t < REFILL); }
   restore(rows: unknown) {
+    this.lootT.clear();
     for (const c of this.chests) c.looted = 0;
-    if (Array.isArray(rows)) for (const r of rows) if (Array.isArray(r)) { const c = this.chests.find((q) => q.id === r[0]); if (c && Number.isFinite(+r[1])) c.looted = +r[1]; }
+    if (Array.isArray(rows)) for (const r of rows) if (Array.isArray(r) && Number.isFinite(+r[0]) && Number.isFinite(+r[1])) {
+      this.lootT.set(+r[0], +r[1]);
+      const c = this.chests.find((q) => q.id === +r[0]); if (c) c.looted = +r[1];
+    }
   }
   net(e: Record<string, unknown>) {
+    const at = Number.isFinite(e.t as number) ? (e.t as number) : Date.now();
+    if (Number.isFinite(e.i as number)) this.lootT.set(e.i as number, at);
     const c = this.chests.find((q) => q.id === e.i);
-    if (c) this.loot(c, true, Number.isFinite(e.t as number) ? (e.t as number) : Date.now());
+    if (c) this.loot(c, true, at);
   }
 }

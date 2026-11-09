@@ -86,7 +86,7 @@ import { planSprings } from "./game/resources";
 import { driveWind, Wind } from "./render/foliage";
 import { shadowCasters, shadowEpoch } from "./render/inst";
 import { cullRenderTarget } from "../island/cull";
-import { CLASSIC, cutBounds, findSpawn, heightAt, SPAWN_THETA, TERRAIN_SIZE } from "./world/island";
+import { CLASSIC, cutBounds, findSpawn, heightAt, SPAWN_THETA, SEA_R, TERRAIN_SIZE } from "./world/island";
 import { Waterfall } from "./world/waterfall";
 import { Seabed } from "./world/seabed";
 import { Desert } from "./world/desert";
@@ -1060,7 +1060,7 @@ async function main() {
             }
             waterfall?.update(dt, player.pos.x, player.pos.z, game.under.active);
             {
-                const onIsland = !game.under.active && Math.abs(player.pos.x) < 600 && Math.abs(player.pos.z) < 600 && player.pos.y < 120;
+                const onIsland = !game.under.active && Math.hypot(player.pos.x, player.pos.z) < SEA_R + 300 && player.pos.y < 120;
                 // (in a surfaced sub the top of the window is above the water: see subWaterline)
                 const subSplit = !!game.subs.mine && game.subs.mine.depth < 1.2;
                 subWaterline(subSplit);
