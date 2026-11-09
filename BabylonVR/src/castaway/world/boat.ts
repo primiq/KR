@@ -12,7 +12,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { heightAt, SEA_R } from './island';
-import { keepInSea } from './arctic';
+import { keepInSea, northStorm } from './arctic';
 import { CELL, type MatKey, type PieceKind, pieceGeometry, RAIL_H, STAIR_DIRS, WALL_H } from '../game/building';
 
 let WOOD: { slab: THREE.Material } | null = null;
@@ -646,6 +646,7 @@ export class Boats {
   /** (set by the game) the deck I'm on carries a compass: the storm can be steered through */
   compass = false;
   private edgeT = 0;
+  private warnN = 0;
   readonly wave: Wave;
   private waveFor: Boat | null = null;   // the boat (or null: just me, swimming) the wave is coming for
   private waveMine = false;              // ... and it will hit me
@@ -1022,6 +1023,9 @@ export class Boats {
     let want = Math.max(0, Math.min(1, (r - STORM_R0) / (STORM_R1 - STORM_R0)));
     // (the storm only rages over the reef's ring: once you are through it, out on the open sea or up north, it is behind you)
     if (r > PASS_R1) want = 0;
+    // (the second storm, up among the big icebergs: rides out with or without a wave, as the reef's does with a compass)
+    const north = away ? 0 : northStorm(me.x, me.z);
+    want = Math.max(want, 0.85 * north);
     // (a compass aboard: you hold your course through it, and out past the worst of it the storm blows itself out)
     if (this.compass) want *= 0.85 * Math.max(0, Math.min(1, 1 - (r - PASS_R0) / (PASS_R1 - PASS_R0)));
     // (it builds over half a minute or so: the sky darkens, the rain comes on, the waves grow)
@@ -1030,6 +1034,9 @@ export class Boats {
     if (this.storm > 0.1 && this.warned < 1) { this.warned = 1; this.say?.('The sky is turning black out here…'); }
     if (this.storm > 0.6 && this.warned < 2) { this.warned = 2; this.say?.(this.compass ? 'Hold her steady! The compass keeps you on course through the storm.' : 'This is no sea for a little boat. Turn back!'); }
     if (this.compass && this.warned >= 1 && this.warned < 3 && r > PASS_R0 + 30 && want < this.storm) { this.warned = 3; this.say?.('The storm is easing. The sun breaks through the clouds and the sea calms down.'); }
+    if (north > 0.3 && this.warnN === 0) { this.warnN = 1; this.say?.('Another storm is blowing up among the icebergs! Steer carefully: they are hard to see.'); }
+    if (this.warnN === 1 && north < 0.05 && this.storm > 0.3) { this.warnN = 2; this.say?.('The storm passes. The sky clears over the ice.'); }
+    if (north < 0.01 && this.storm < 0.05) this.warnN = 0;
     if (this.storm < 0.02 && (r < STORM_R0 || r > PASS_R1)) this.warned = 0;
     if (!this.wave.active && !away && !this.compass && r < PASS_R1 && (r > WRECK_R || this.fullT > STORM_HOLD)) this.bringWave();
 

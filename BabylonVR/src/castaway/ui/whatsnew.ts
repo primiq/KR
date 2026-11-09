@@ -6,6 +6,15 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-11-18", title: "Music, and a storm among the icebergs",
+        items: [
+            "A new instrument: the Flute. In VR bring it to your lips and squeeze the right trigger to blow (softly or hard); X, Y and the left trigger are your fingers for eight notes, the left grip plays higher. On a screen hold the mouse button and press 1-8. Everybody hears you play.",
+            "The guitar sounds much better: a real wooden body, a soft room round it, gentle strums mellow and hard ones bright.",
+            "The drum answers how you play it: a soft tap is a quiet thud, a slam a big boom, and hitting nearer the rim rings higher, so you can play a tune on it.",
+            "Sailing north, a second storm blows up as you reach the big icebergs and clears before the Arctic. On the way home you meet it again.",
+        ],
+    },
+    {
         date: "2026-11-17", title: "Fly your own flag",
         items: [
             "Craft a Flag at the workbench: a tall pole flying a white flag. Set it up anywhere, on your raft or boat too, and sail away under it.",

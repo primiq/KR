@@ -10,7 +10,7 @@ export type ItemId =
   | 'building_plan' | 'torch' | 'sapling' | 'picture_frame' | 'flower_pot' | 'rug' | 'lantern' | 'door'
   | 'leather' | 'leather_cap' | 'leather_vest' | 'leather_pants' | 'metal_helmet' | 'metal_chestplate' | 'metal_greaves'
   | 'diamond_helmet' | 'diamond_chestplate' | 'diamond_greaves' | 'boat' | 'raft' | 'submarine' | 'table' | 'cat_bed' | 'lounger' | 'drum' | 'drumsticks'
-  | 'meat_stick' | 'roast_stick' | 'guitar' | 'sand' | 'compass' | 'flag';
+  | 'meat_stick' | 'roast_stick' | 'guitar' | 'sand' | 'compass' | 'flag' | 'flute';
 export type ArmorSlot = 'head' | 'chest' | 'legs';
 export const ARMOR_SLOTS: ArmorSlot[] = ['head', 'chest', 'legs'];
 export const ARMOR_SLOT_LABEL: Record<ArmorSlot, string> = { head: 'Head', chest: 'Chest', legs: 'Legs' };
@@ -46,6 +46,8 @@ export interface ItemDef {
   roast?: ItemId;
   /** a musical instrument: strum it */
   instrument?: boolean;
+  /** the flute: blow it */
+  flute?: boolean;
 }
 
 const svg = (inner: string) => `<svg viewBox="0 0 32 32" aria-hidden="true">${inner}</svg>`;
@@ -205,6 +207,11 @@ export const ITEMS = {
     desc: 'Roasted right over the flames. Smoky, hot and very filling.',
     icon: svg('<path d="M4 29 24 9" stroke="#6b4a2c" stroke-width="2.4" stroke-linecap="round"/><ellipse cx="22" cy="11" rx="7" ry="5" transform="rotate(-45 22 11)" fill="#7a3f1e"/><path d="M18 11c2-3 5-4 7-3" stroke="#c98a52" stroke-width="1.6" fill="none"/><path d="M17 15l2-1M20 16l2-2M23 14l1-2" stroke="#3a1c0c" stroke-width="1.2"/><path d="M27 6l2-2" stroke="#6b4a2c" stroke-width="2" stroke-linecap="round"/>'),
     food: { hunger: 48, thirst: -2, health: 8 },
+  },
+  flute: {
+    id: 'flute', name: 'Flute', stack: 1, kind: 'resource', flute: true,
+    desc: 'A little wooden flute. Hold the mouse button to blow; while blowing, keys 1-8 play do re mi fa sol la ti do (R steps through them) and Shift is the octave up. In VR: bring it to your lips and squeeze the right trigger to blow (softly or hard); X, Y and the left trigger are your fingers (eight notes), the left grip the octave up.',
+    icon: svg('<path d="M6 27 25 5" stroke="#d8b27a" stroke-width="4.5" stroke-linecap="round"/><path d="M23 7l3-3" stroke="#5a3a1e" stroke-width="4.5" stroke-linecap="round"/><circle cx="20.5" cy="11.5" r="1.1" fill="#3a2414"/><circle cx="17.5" cy="15" r="1.1" fill="#3a2414"/><circle cx="14.5" cy="18.5" r="1.1" fill="#3a2414"/><circle cx="11.5" cy="22" r="1.1" fill="#3a2414"/>'),
   },
   guitar: {
     id: 'guitar', name: 'Guitar', stack: 1, kind: 'resource', instrument: true,

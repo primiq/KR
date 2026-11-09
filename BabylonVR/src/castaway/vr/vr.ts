@@ -354,7 +354,15 @@ export class CastawayVR {
             input.jumpHeld = b && !this.panel.pointerBusy;
             R.trig = trig; R.sq = sq; R.a = a; R.b = b;
         }
-        if (L && game.equipped?.id === "guitar") {
+        if (L && game.equipped?.id === "flute") {
+            // holding the flute: X, Y and the left trigger are the fingers (8 notes), the right trigger the breath, the
+            // left grip the octave up; it only sounds with the flute up at your lips
+            const x = btn(L, 4), y = btn(L, 5);
+            const grip = R?.src.grip ?? R?.src.pointer, head = game.vr.head ?? game.vr.eye;
+            const mouth = !!grip && Math.hypot(grip.absolutePosition.x - head.x, grip.absolutePosition.y - head.y, grip.absolutePosition.z - head.z) < 0.33;
+            game.flute.vrIn = { bits: (x ? 1 : 0) | (y ? 2 : 0) | (lTrig ? 4 : 0), breath: R ? val(R, 0) : 0, oct: lGrip, mouth };
+            L.x = x; L.y = y;
+        } else if (L && game.equipped?.id === "guitar") {
             // holding the guitar: X, Y and the left trigger are the chord fingers (8 chords), nothing else
             const x = btn(L, 4), y = btn(L, 5);
             game.guitar.chord = (x ? 1 : 0) | (y ? 2 : 0) | (lTrig ? 4 : 0);
@@ -603,7 +611,7 @@ export class CastawayVR {
     }
 
     /** at the drum: a stick in each hand; a stick coming down through the head hits it (as hard as it was moving) */
-    private sticks = new Map<string, { g: THREE.Group; prev: Vector3 | null; cd: number }>();
+    private sticks = new Map<string, { g: THREE.Group; prev: Vector3 | null; cd: number; vy: number; vh: number }>();
     private drumSticks(dt: number) {
         const s = this.game.drum.active;
         for (const h of this.hands.values()) {
@@ -618,19 +626,26 @@ export class CastawayVR {
                 // (the same hold as a tool: along the handle, forward and a little up)
                 g.rotation.x = -Math.PI / 2 + 0.35;
                 h.rig.add(g);
-                st = { g, prev: null, cd: 0 };
+                st = { g, prev: null, cd: 0, vy: 0, vh: 0 };
                 this.sticks.set(h.side, st);
             }
             st.cd -= dt;
             const grip = h.src.grip ?? h.src.pointer;
             const tip = grip.absolutePosition.add(grip.getDirection(_tipDir).scale(0.39));
             const top = s.y + DRUM_TOP;
-            if (st.prev && st.prev.y > top && tip.y <= top + 0.01 && st.cd <= 0 && Math.hypot(tip.x - s.x, tip.z - s.z) < DRUM_R + 0.04) {
-                const vy = (st.prev.y - tip.y) / Math.max(dt, 1 / 120);
-                const v = Math.max(0.08, Math.min(1, (vy - 0.3) / 3.5));
-                this.game.drum.strike(s, v);
-                this.pulse(h.side, 0.2 + 0.6 * v);
-                st.cd = 0.09;
+            // the stick's speed: smoothed over the last few frames (one frame's step is too jittery to tell a tap from a slam)
+            if (st.prev) {
+                const k = Math.max(dt, 1 / 144), vy = (st.prev.y - tip.y) / k, vh = Math.hypot(tip.x - st.prev.x, tip.z - st.prev.z) / k;
+                st.vy = st.vy * 0.45 + vy * 0.55; st.vh = st.vh * 0.45 + vh * 0.55;
+            }
+            const r = Math.hypot(tip.x - s.x, tip.z - s.z);
+            if (st.prev && st.prev.y > top && tip.y <= top + 0.01 && st.cd <= 0 && r < DRUM_R + 0.05) {
+                // how hard: mostly how fast it came down (a glancing sweep counts a little); a gentle tap is soft, a slam loud
+                const speed = Math.max(0, st.vy) + 0.25 * st.vh;
+                const v = Math.max(0.03, Math.min(1, ((speed - 0.12) / 4.2) ** 0.75));
+                this.game.drum.strike(s, v, Math.min(1, r / DRUM_R));
+                this.pulse(h.side, 0.12 + 0.75 * v);
+                st.cd = 0.06;
             }
             st.prev = tip;
         }

@@ -2,6 +2,9 @@ import { getPref, setPref } from '../core/prefs';
 // Tiny synthesized sound set: no audio files to download. Everything starts after the first click (autoplay rules).
 export type HitKind = 'wood' | 'stone' | 'ore' | 'leaf';
 
+/** a flute voice: `set` plays (or slides to) a note with a breath of 0..1; `stop` lets it fade */
+export interface FluteVoice { set(midi: number, breath: number, at?: { x: number; y: number; z: number }): void; stop(): void }
+
 export class Sfx {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -495,74 +498,193 @@ export class Sfx {
   // rendered once per note and cached, then played through a soft body resonance
   private strings = new Map<number, AudioBuffer>();
   private gtBus: AudioNode | null = null;
-  private stringBuf(midi: number) {
-    let b = this.strings.get(midi);
+  /**
+   * One string's ring, rendered once per note and strength (soft / medium / hard) and cached. Karplus-Strong: a burst
+   * of noise round a damped delay line. The burst is shaped like a real pluck: darker for a soft one, brighter for a
+   * hard one, and with the notch a pick leaves when it plucks near the bridge (the hollow, guitar-y colour).
+   */
+  private stringBuf(midi: number, layer = 1) {
+    const key = midi * 4 + layer;
+    let b = this.strings.get(key);
     if (b) return b;
     const c = this.ctx!, sr = c.sampleRate, f = 440 * 2 ** ((midi - 69) / 12);
-    const P = Math.max(2, Math.round(sr / f + 0.5)), len = Math.floor(sr * (midi < 52 ? 3.2 : 2.4));
+    const P = Math.max(2, Math.round(sr / f + 0.5)), len = Math.floor(sr * (midi < 52 ? 3.6 : 2.8));
     b = c.createBuffer(1, len, sr);
-    const d = b.getChannelData(0), line = new Float32Array(P);
-    // a softened pluck: low-passed noise with the DC taken out, so it starts warm rather than scratchy
+    const d = b.getChannelData(0), line = new Float32Array(P), raw = new Float32Array(P);
+    const soft = [0.28, 0.5, 0.78][layer];
     let lp = 0, mean = 0;
-    for (let i = 0; i < P; i++) { lp += (Math.random() * 2 - 1 - lp) * 0.55; line[i] = lp; mean += lp; }
+    for (let i = 0; i < P; i++) { lp += (Math.random() * 2 - 1 - lp) * soft; raw[i] = lp; }
+    // (plucked about an eighth of the way along: that harmonic and its kin are missing)
+    const pp = Math.max(1, Math.round(P * 0.12));
+    for (let i = 0; i < P; i++) { line[i] = raw[i] - 0.85 * raw[(i + pp) % P]; mean += line[i]; }
     mean /= P; for (let i = 0; i < P; i++) line[i] -= mean;
-    // the loss per trip round the loop: about the same ring time (T60) for every pitch, bass a little longer
-    const t60 = midi < 52 ? 2.6 : midi < 60 ? 2.0 : 1.5, g = 10 ** (-3 / (t60 * f)), damp = 0.5;
+    // the loss per trip round the loop: about the same ring time for every pitch (bass longer); the highs fade first
+    const t60 = midi < 52 ? 3.0 : midi < 60 ? 2.3 : 1.7, g = 10 ** (-3 / (t60 * f)), damp = midi < 52 ? 0.42 : 0.47;
+    let peak = 0;
     for (let i = 0; i < len; i++) {
       const k = i % P, y = line[k];
-      d[i] = y;
+      d[i] = y; peak = Math.max(peak, Math.abs(y));
       line[k] = g * ((1 - damp) * y + damp * line[(k + 1) % P]);
     }
-    // a tiny fade-in so the start never clicks
-    for (let i = 0; i < 48 && i < len; i++) d[i] *= i / 48;
-    this.strings.set(midi, b);
+    // (every note as loud as the others), and a tiny fade-in so the start never clicks
+    const norm = peak > 0 ? 0.9 / peak : 1;
+    for (let i = 0; i < len; i++) d[i] *= norm * (i < 48 ? i / 48 : 1);
+    this.strings.set(key, b);
     return b;
   }
   private guitarBus() {
     if (this.gtBus) return this.gtBus;
     const c = this.ctx!;
-    // the hollow body: a warm low bump, a soft top, nothing harsh
-    const body = c.createBiquadFilter(); body.type = 'peaking'; body.frequency.value = 180; body.Q.value = 1.1; body.gain.value = 5;
-    const air = c.createBiquadFilter(); air.type = 'lowshelf'; air.frequency.value = 110; air.gain.value = 3;
-    const top = c.createBiquadFilter(); top.type = 'lowpass'; top.frequency.value = 4200; top.Q.value = 0.5;
-    const comp = c.createDynamicsCompressor(); comp.threshold.value = -20; comp.ratio.value = 3; comp.attack.value = 0.003; comp.release.value = 0.25;
-    body.connect(air); air.connect(top); top.connect(comp); comp.connect(this.master!);
-    this.gtBus = body;
-    return body;
+    // the hollow body: the air resonance low down, the top plate's warmth, the sparkle rounded off
+    const air = c.createBiquadFilter(); air.type = 'peaking'; air.frequency.value = 105; air.Q.value = 2.2; air.gain.value = 6;
+    const body = c.createBiquadFilter(); body.type = 'peaking'; body.frequency.value = 210; body.Q.value = 1.2; body.gain.value = 4;
+    const box = c.createBiquadFilter(); box.type = 'peaking'; box.frequency.value = 520; box.Q.value = 1.4; box.gain.value = -2.5;
+    const top = c.createBiquadFilter(); top.type = 'lowpass'; top.frequency.value = 5200; top.Q.value = 0.45;
+    const comp = c.createDynamicsCompressor(); comp.threshold.value = -18; comp.ratio.value = 2.5; comp.attack.value = 0.004; comp.release.value = 0.3;
+    air.connect(body); body.connect(box); box.connect(top); top.connect(comp); comp.connect(this.master!);
+    // ... and a soft room round it (a short, warm reverb), so it sounds played somewhere, not straight into your ear
+    const verb = c.createConvolver(), sr = c.sampleRate, L = Math.floor(sr * 1.6), ir = c.createBuffer(2, L, sr);
+    for (let ch = 0; ch < 2; ch++) {
+      const o = ir.getChannelData(ch); let lpv = 0;
+      for (let i = 0; i < L; i++) { const tt = i / sr; lpv += (Math.random() * 2 - 1 - lpv) * (0.5 - 0.35 * Math.min(1, tt / 1.2)); o[i] = lpv * Math.exp(-tt * 3.2) * (i < sr * 0.012 ? i / (sr * 0.012) : 1); }
+    }
+    verb.buffer = ir;
+    const wet = c.createGain(); wet.gain.value = 0.22;
+    top.connect(verb); verb.connect(wet); wet.connect(this.master!);
+    this.gtBus = air;
+    return air;
   }
   /**
    * A big deep drum: a low membrane tone that drops in pitch as it rings, a softer overtone, and the slap of the stick on
    * the hide. `vel` 0..1 how hard (louder, longer, a touch higher and brighter); `vol` the listener's distance falloff.
    */
-  bigDrum(vel: number, vol = 1) {
+  bigDrum(vel: number, vol = 1, edge = 0) {
     const c = this.ctx; if (!c || !this.master || vol < 0.01) return;
-    const t = c.currentTime, v = Math.max(0.05, Math.min(1, vel)), peak = (0.18 + 0.7 * v) * vol, ring = 0.55 + 0.75 * v;
-    const f0 = 58 + 22 * v;
+    const t = c.currentTime, v = Math.max(0.02, Math.min(1, vel)), e = Math.max(0, Math.min(1, edge));
+    // a real drum's range: a tap is a soft, dark, short thud; a slam a loud, bright boom that rings on
+    const peak = (0.03 + 0.85 * v ** 1.5) * vol, ring = (0.35 + 1.1 * v) * (1 - 0.45 * e);
+    // the middle of the head: the deep fundamental; towards the rim: higher, thinner, more overtone (play a tune on it)
+    const f0 = (56 + 14 * v) * (1 + 0.55 * e * e), bend = 1.25 + 0.9 * v;
     const tone = (f: number, k: number, dur: number) => {
+      if (k < 0.002) return;
       const o = c.createOscillator(); o.type = 'sine';
-      o.frequency.setValueAtTime(f * 1.8, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.035); o.frequency.exponentialRampToValueAtTime(f * 0.86, t + dur);
-      const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak * k, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      o.connect(g); g.connect(this.master!); o.start(t); o.stop(t + dur + 0.05);
+      o.frequency.setValueAtTime(f * bend, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.02 + 0.03 * v); o.frequency.exponentialRampToValueAtTime(f * 0.9, t + dur);
+      const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak * k, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(this.out ?? this.master!); o.start(t); o.stop(t + dur + 0.05);
     };
-    tone(f0, 1, ring); tone(f0 * 1.59, 0.32, ring * 0.45); tone(f0 * 2.14, 0.12 * v, ring * 0.25);
+    tone(f0, 1 - 0.4 * e, ring);
+    tone(f0 * 1.59, 0.25 + 0.35 * e, ring * 0.5);
+    tone(f0 * 2.14, (0.05 + 0.3 * e) * v, ring * 0.3);
+    tone(f0 * 2.65, 0.18 * e * v, ring * 0.22);
     if (this.noise) {
+      // the stick on the hide: barely a whisper on a tap, a crack on a slam, a sharper click at the rim
       const n = c.createBufferSource(); n.buffer = this.noise;
-      const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 350 + 1900 * v;
-      const g = c.createGain(); g.gain.setValueAtTime(peak * 0.5, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
-      n.connect(lp); lp.connect(g); g.connect(this.master); n.start(t); n.stop(t + 0.1);
+      const lp = c.createBiquadFilter(); lp.type = e > 0.6 ? 'bandpass' : 'lowpass'; lp.frequency.value = 250 + 2600 * v * v + 1800 * e; lp.Q.value = e > 0.6 ? 1.2 : 0.7;
+      const g = c.createGain(); g.gain.setValueAtTime(peak * (0.25 + 0.5 * v + 0.4 * e), t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.03 + 0.06 * v);
+      n.connect(lp); lp.connect(g); g.connect(this.out ?? this.master); n.start(t); n.stop(t + 0.12);
     }
   }
+  /**
+   * A flute voice that plays as long as it is blown: a soft, pure tone (a little second and third harmonic), breath
+   * noise round the note and a breathy hiss, a puff of air ("chiff") as each note starts, and a gentle vibrato that
+   * comes in when a note is held. `at` given: it sounds from there (another player's flute), else in your ears.
+   */
+  fluteVoice(): FluteVoice {
+    let nodes: { o: OscillatorNode[]; vib: OscillatorNode; depth: GainNode; nG: GainNode; hG: GainNode; lp: BiquadFilterNode; bp: BiquadFilterNode; env: GainNode; src: AudioBufferSourceNode | null; pan: PannerNode | null } | null = null;
+    let cur = -1, stopT: ReturnType<typeof setTimeout> | null = null;
+    const build = (at: boolean) => {
+      const c = this.ctx!, now = c.currentTime;
+      const env = c.createGain(); env.gain.value = 0;
+      const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3000; lp.Q.value = 0.3;
+      lp.connect(env);
+      let pan: PannerNode | null = null;
+      if (at) { pan = c.createPanner(); pan.panningModel = 'HRTF'; pan.distanceModel = 'inverse'; pan.refDistance = 2; pan.maxDistance = 60; pan.rolloffFactor = 1.2; env.connect(pan); pan.connect(this.master!); }
+      else env.connect(this.master!);
+      const o: OscillatorNode[] = [], vib = c.createOscillator(), depth = c.createGain();
+      vib.frequency.value = 5.2; depth.gain.value = 0; vib.connect(depth);
+      for (const [type, k, mul] of [['sine', 1, 1], ['triangle', 0.09, 2.003], ['sine', 0.035, 3]] as [OscillatorType, number, number][]) {
+        const osc = c.createOscillator(); osc.type = type; osc.frequency.value = 440 * mul;
+        const g = c.createGain(); g.gain.value = k; osc.connect(g); g.connect(lp);
+        const dm = c.createGain(); dm.gain.value = mul; depth.connect(dm); dm.connect(osc.frequency);
+        osc.start(now); o.push(osc);
+      }
+      vib.start(now);
+      let src: AudioBufferSourceNode | null = null;
+      const nG = c.createGain(), hG = c.createGain(), bp = c.createBiquadFilter(), hp = c.createBiquadFilter();
+      nG.gain.value = 0; hG.gain.value = 0;
+      if (this.noise) {
+        src = c.createBufferSource(); src.buffer = this.noise; src.loop = true;
+        bp.type = 'bandpass'; bp.Q.value = 7; bp.frequency.value = 440;
+        hp.type = 'highpass'; hp.frequency.value = 4500;
+        src.connect(bp); bp.connect(nG); nG.connect(env);
+        src.connect(hp); hp.connect(hG); hG.connect(env);
+        src.start(now);
+      }
+      nodes = { o, vib, depth, nG, hG, lp, bp, env, src, pan };
+    };
+    const kill = () => {
+      if (!nodes) return;
+      const n = nodes; nodes = null; cur = -1;
+      try { for (const x of n.o) x.stop(); n.vib.stop(); n.src?.stop(); } catch { /* gone */ }
+    };
+    return {
+      set: (midi, breath, at) => {
+        const c = this.ctx; if (!c || !this.master) return;
+        if (stopT) { clearTimeout(stopT); stopT = null; }
+        if (!nodes) build(!!at);
+        const n = nodes!, now = c.currentTime, f = 440 * 2 ** ((midi - 69) / 12), b = Math.max(0, Math.min(1, breath));
+        if (at && n.pan) { n.pan.positionX.setTargetAtTime(at.x, now, 0.05); n.pan.positionY.setTargetAtTime(at.y, now, 0.05); n.pan.positionZ.setTargetAtTime(at.z, now, 0.05); }
+        if (midi !== cur) {
+          // a new note: a quick slide to it (no click), the vibrato starting again from nothing, and a puff of air
+          const first = cur < 0;
+          for (let i = 0; i < 3; i++) n.o[i].frequency.setTargetAtTime(f * [1, 2.003, 3][i], now, first ? 0.001 : 0.012);
+          n.bp.frequency.setTargetAtTime(f, now, 0.01);
+          n.depth.gain.cancelScheduledValues(now); n.depth.gain.setValueAtTime(0, now); n.depth.gain.setTargetAtTime(f * 0.0065, now + 0.28, 0.25);
+          if (this.noise) {
+            const ch = c.createBufferSource(); ch.buffer = this.noise;
+            const cb = c.createBiquadFilter(); cb.type = 'bandpass'; cb.frequency.value = f * 2.2; cb.Q.value = 2;
+            const cg = c.createGain(); cg.gain.setValueAtTime(0.05 * (0.4 + b), now); cg.gain.exponentialRampToValueAtTime(0.0001, now + 0.07);
+            ch.connect(cb); cb.connect(cg); cg.connect(n.env); ch.start(now, Math.random()); ch.stop(now + 0.09);
+          }
+          cur = midi;
+        }
+        // breath: louder and a little brighter and breathier the harder you blow
+        n.env.gain.setTargetAtTime(0.16 * b ** 0.8, now, 0.035);
+        n.lp.frequency.setTargetAtTime(1800 + 4200 * b, now, 0.05);
+        n.nG.gain.setTargetAtTime(0.35 * b, now, 0.05);
+        n.hG.gain.setTargetAtTime(0.05 * b, now, 0.05);
+      },
+      stop: () => {
+        const c = this.ctx; if (!c || !nodes) return;
+        nodes.env.gain.setTargetAtTime(0, c.currentTime, 0.04);
+        cur = -1;
+        if (!stopT) stopT = setTimeout(() => { stopT = null; kill(); }, 400);
+      },
+    };
+  }
+
   /** one plucked string: `vel` 0..1 how hard (louder and brighter), `vol` 0..1 the listener's distance falloff, `delay` seconds */
   pluck(midi: number, vel: number, vol = 1, delay = 0) {
     const c = this.ctx; if (!c || !this.master || vol < 0.01) return;
-    const src = c.createBufferSource(); src.buffer = this.stringBuf(midi);
+    const layer = vel < 0.4 ? 0 : vel < 0.75 ? 1 : 2;
+    const src = c.createBufferSource(); src.buffer = this.stringBuf(midi, layer);
     // the loop is a whole number of samples (less the half sample the averaging filter takes off): retune with the playback rate
     const f = 440 * 2 ** ((midi - 69) / 12), P = Math.max(2, Math.round(c.sampleRate / f + 0.5));
     src.playbackRate.value = ((P - 0.5) * f) / c.sampleRate;
-    const tone = c.createBiquadFilter(); tone.type = 'lowpass'; tone.frequency.value = 1400 + 4200 * vel; tone.Q.value = 0.4;
-    const g = c.createGain(); g.gain.value = (0.05 + 0.11 * vel) * vol;
-    src.connect(tone); tone.connect(g); g.connect(this.guitarBus());
+    const tone = c.createBiquadFilter(); tone.type = 'lowpass'; tone.frequency.value = 1600 + 5200 * vel; tone.Q.value = 0.35;
+    const g = c.createGain(); g.gain.value = (0.03 + 0.13 * vel) * vol;
+    // (the strings a little apart, low ones to the left, high to the right, as you hear a guitar in front of you)
+    const pan = c.createStereoPanner(); pan.pan.value = Math.max(-0.35, Math.min(0.35, (midi - 55) / 40));
+    src.connect(tone); tone.connect(g); g.connect(pan); pan.connect(this.guitarBus());
     const t = c.currentTime + delay;
     src.start(t); src.stop(t + src.buffer!.duration);
+    // the pick catching the string: a tiny bright click, more on a hard strum
+    if (this.noise && vel > 0.25) {
+      const n = c.createBufferSource(); n.buffer = this.noise;
+      const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2600 + 1500 * vel; bp.Q.value = 1.5;
+      const ng = c.createGain(); ng.gain.setValueAtTime(0.012 * vel * vol, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.012);
+      n.connect(bp); bp.connect(ng); ng.connect(pan); n.start(t, Math.random()); n.stop(t + 0.02);
+    }
   }
+
 }

@@ -30,6 +30,9 @@ const smooth = (a: number, b: number, v: number) => { const t = clamp01((v - a) 
 
 /** inside the northern corridor (the only way on past the islets) */
 export const inCorridor = (x: number, z: number) => Math.abs(x) < ARC_W && z < -400 && z > ARC_END;
+/** 0..1: the second storm, up among the big icebergs: it blows up as you come into the snow and the bigger bergs, and
+ *  clears again well before the Arctic (on the way home the same, the other way round) */
+export const northStorm = (x: number, z: number) => (Math.abs(x) < ARC_W + 300 ? smooth(BERG_Z0 - 250, BERG_Z0 - 650, z) * (1 - smooth(BERG_Z0 - 1500, BERG_Z0 - 2100, z)) : 0);
 /** 0..1: how far into the cold you are (0 by the islets, 1 at the ice cliffs) */
 export const coldAt = (x: number, z: number) => (Math.abs(x) < ARC_W + 600 ? smooth(ICE_Z0 + 300, LAND.z + LAND.r + 200, z) : 0);
 

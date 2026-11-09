@@ -4,7 +4,8 @@
 import type { Sfx } from "./audio";
 import type { Structure } from "./structures";
 
-export interface DrumHit { x: number; y: number; z: number; v: number }
+/** where and how hard a drum was hit; `e`: 0 the middle of the head .. 1 the rim */
+export interface DrumHit { x: number; y: number; z: number; v: number; e?: number }
 /** how far a drum carries (m) */
 const HEAR = 80;
 
@@ -19,17 +20,17 @@ export class Drum {
 
     constructor(private readonly sfx: Sfx) {}
 
-    /** a hit of strength `v` (0..1) */
-    strike(s: Structure, v: number) {
-        v = Math.max(0.05, Math.min(1, v));
-        this.sfx.bigDrum(v);
+    /** a hit of strength `v` (0..1), `e` from the middle (0) to the rim (1) */
+    strike(s: Structure, v: number, e = 0) {
+        v = Math.max(0.02, Math.min(1, v)); e = Math.max(0, Math.min(1, e));
+        this.sfx.bigDrum(v, 1, e);
         this.kick(s, v);
-        this.onHit?.({ x: +s.x.toFixed(2), y: +s.y.toFixed(2), z: +s.z.toFixed(2), v: +v.toFixed(2) });
+        this.onHit?.({ x: +s.x.toFixed(2), y: +s.y.toFixed(2), z: +s.z.toFixed(2), v: +v.toFixed(2), e: +e.toFixed(2) });
     }
     /** somebody else hit a drum: hear it (fainter far off) and see the drum jump */
     remote(e: DrumHit, listener: { x: number; y: number; z: number }, drums: Structure[]) {
         const d = Math.hypot(listener.x - e.x, listener.y - e.y, listener.z - e.z);
-        if (d < HEAR) this.sfx.bigDrum(e.v, Math.max(0, 1 - d / HEAR) ** 1.5);
+        if (d < HEAR) this.sfx.at(e.x, e.y + 0.8, e.z, () => this.sfx.bigDrum(e.v, Math.max(0, 1 - d / HEAR) ** 1.5, e.e ?? 0));
         const s = drums.find((q) => q.kind === "drum" && Math.hypot(q.x - e.x, q.z - e.z) < 0.3);
         if (s) this.kick(s, e.v);
     }

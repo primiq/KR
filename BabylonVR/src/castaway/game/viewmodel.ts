@@ -45,6 +45,12 @@ export function heldModel(id: ItemId): THREE.Group {
         g.add(m(new THREE.CylinderGeometry(0.045, 0.035, 0.1, 8), T.soot, 0, 0.47, 0));
         const f = m(new THREE.ConeGeometry(0.05, 0.16, 8), T.flame, 0, 0.6, 0);
         g.add(f);
+    } else if (id === "flute") {
+        // a wooden flute along +y: the beak at the top, finger holes facing you (-z)
+        g.add(m(new THREE.CylinderGeometry(0.013, 0.016, 0.36, 12), T.straw, 0, 0.05, 0));
+        g.add(m(new THREE.CylinderGeometry(0.011, 0.014, 0.05, 12), T.handle, 0, 0.255, 0));
+        g.add(m(new THREE.CylinderGeometry(0.019, 0.016, 0.03, 12), T.handle, 0, -0.14, 0));
+        for (let k = 0; k < 7; k++) g.add(m(new THREE.CylinderGeometry(0.0038, 0.0038, 0.004, 8).rotateX(Math.PI / 2), T.soot, 0, 0.16 - k * 0.034, -0.0145));
     } else if (id === "guitar") {
         // neck along +y (held at the nut end), the top facing -z, the body hanging below: two bouts, a sound hole, strings
         const bout = (r: number, y: number) => m(new THREE.CylinderGeometry(r, r, 0.07, 20).rotateX(Math.PI / 2), T.guitar, 0, y, 0);

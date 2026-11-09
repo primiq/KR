@@ -19,7 +19,7 @@ import { ARMOR_SLOTS, type GatherKind, GATHER_ITEM, GATHER_LABEL, ITEMS, type It
 import { BENCH_REACH, COAL_BURN, MAX_FUEL, type Recipe, craft } from "./recipes";
 import { type HitFx, Resources, type Target } from "./resources";
 import { Stats } from "./survival";
-import { LOUNGER, type PlaceAim, STRUCT_NAME, type Structure, StructureManager } from "./structures";
+import { DRUM_R, DRUM_TOP, LOUNGER, type PlaceAim, STRUCT_NAME, type Structure, StructureManager } from "./structures";
 import { ViewModel } from "./viewmodel";
 import { Fishing } from "./fishing";
 import { type Animal, Fauna, type FaunaTarget } from "./fauna";
@@ -38,6 +38,7 @@ import { druidMaterial } from "../world/druidView";
 import { Warp } from "../world/warp";
 import { Invaders } from "../world/invaders";
 import { CHORDS, Guitar } from "./guitar";
+import { Flute, NOTE_NAMES } from "./flute";
 import { Drum } from "./drum";
 import { Slide } from "../world/slide";
 import { type Boat, Boats, type RaftAim } from "../world/boat";
@@ -123,6 +124,9 @@ export class Game {
     private ivEye = new THREE.Vector3();
     /** the guitar: a click strums the chord (R changes it); in VR the strings are real */
     readonly guitar: Guitar;
+    /** the flute: blow it (hold the button), the finger buttons or keys 1-8 are the notes */
+    readonly flute: Flute;
+    private fluteHinted = false;
     /** the drum you are playing, and every drum's sound */
     readonly drum: Drum;
     private guitarHinted = false;
@@ -353,6 +357,7 @@ export class Game {
             this.hud.message("You pop out of the pipe, back on the island.");
         };
         this.guitar = new Guitar(this.sfx);
+        this.flute = new Flute(this.sfx);
         this.drum = new Drum(this.sfx);
         this.slide = new Slide(this.natureRoot, o.vegetation.colliders, o.shadows);
         this.slide.say = (t) => this.hud.message(t);
@@ -1013,6 +1018,8 @@ export class Game {
             return;
         }
 
+        // (playing the flute on a screen: while blowing, keys 1-8 are the notes, not the hotbar)
+        if (this.equipped?.id === "flute" && input.attackHeld && input.hotbarSelect !== null && !this.vr.active) { this.flute.note = Math.max(0, Math.min(7, input.hotbarSelect)); input.hotbarSelect = null; }
         // hotbar
         if (input.hotbarSelect !== null) { hud.select(input.hotbarSelect); input.hotbarSelect = null; }
         if (input.hotbarDelta) { hud.select(hud.selected + input.hotbarDelta); input.hotbarDelta = 0; }
@@ -1076,6 +1083,26 @@ export class Game {
                     hud.message(this.vr.active ? "Guitar: strum it with the trigger. X, Y and the left trigger change the chord." : input.touch ? "Guitar: tap HIT to strum, ⟳ to change chord" : "Guitar: click to strum, R to change chord");
                 }
             } else this.guitar.reset();
+            // the flute: it sounds as long as you blow it
+            {
+                let breath = 0, note = this.flute.note, oct = false;
+                if (def?.flute) {
+                    if (this.vr.active) {
+                        const v = this.flute.vrIn;
+                        if (v?.mouth) { breath = v.breath > 0.06 ? 0.15 + 0.85 * v.breath : 0; note = v.bits; oct = v.oct; }
+                    } else {
+                        if (input.rotateQueued) { this.flute.note = (this.flute.note + input.rotateQueued + 32) % 8; input.rotateQueued = 0; hud.message(`Note: ${NOTE_NAMES[this.flute.note]}`); }
+                        breath = input.attackHeld ? 0.75 : 0; note = this.flute.note; oct = input.wantsSprint;
+                    }
+                    // (blowing a flute is not hitting anything)
+                    input.attackQueued = false;
+                    if (!this.fluteHinted) {
+                        this.fluteHinted = true;
+                        hud.message(this.vr.active ? "Flute: bring it to your lips and squeeze the right trigger to blow. X, Y and the left trigger are your fingers; the left grip plays higher." : input.touch ? "Flute: hold HIT to blow, ⟳ changes the note" : "Flute: hold the mouse button to blow; keys 1-8 play the notes while you blow, Shift plays higher");
+                    }
+                }
+                this.flute.update(dt, breath, note, oct, player.pos);
+            }
             document.body.classList.toggle("holdmode", isTorch && !ug.active);
             document.body.classList.toggle("placemode", this.torchPlace);
         }
@@ -1293,7 +1320,12 @@ export class Game {
                 // (timed by the clock, not frames: a slow frame must not make a long press a soft hit)
                 const now = performance.now() / 1000;
                 if (input.attackHeld) { if (this.drum.hold < 0) this.drum.hold = now; }
-                else if (this.drum.hold >= 0) { this.drum.strike(dr, 0.25 + Math.min(1, (now - this.drum.hold) / 0.5) * 0.75); this.drum.hold = -1; view.place(); }
+                else if (this.drum.hold >= 0) {
+                    // (where the crosshair is on the head: the middle booms deep, nearer the rim it rings higher)
+                    const top = dr.y + DRUM_TOP, tt = dir.y < -0.05 ? (top - eye.y) / dir.y : -1;
+                    const edge = tt > 0 ? Math.min(1, Math.hypot(eye.x + dir.x * tt - dr.x, eye.z + dir.z * tt - dr.z) / DRUM_R) : 0;
+                    this.drum.strike(dr, 0.12 + Math.min(1, (now - this.drum.hold) / 0.5) * 0.88, edge); this.drum.hold = -1; view.place();
+                }
                 input.attackQueued = false;
             } else input.attackQueued = false;
         }

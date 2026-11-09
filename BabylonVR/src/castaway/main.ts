@@ -1083,8 +1083,8 @@ async function main() {
                     arctic.update(dt, c, !onIsland);
                     clock.cold = onIsland ? coldAt(c.x, c.z) : 0;
                     // (up there it snows: lightly always, hard when the weather turns)
-                    const w = game.weather, snowK = Math.max(0, (clock.cold - 0.55) / 0.45) * (player.underwater ? 0 : 1);
-                    if (w) w.snowy = Math.min(1, clock.cold * 1.6);
+                    const w = game.weather, snowK = Math.min(1, Math.max(0, (clock.cold - 0.3) / 0.5)) * (player.underwater ? 0 : 1);
+                    if (w) w.snowy = Math.min(1, clock.cold * 2.6);
                     snowfall.update(dt, c, snowK * (0.3 + 0.7 * Math.max(w?.overcast ?? 0, w?.rain ?? 0)), 0.35 + 0.65 * clock.day, (w?.wind ?? 1) * 0.5);
                 }
                 // (the specks: lit by the day, dim in the deep, bright in a floodlight's beam; none inside a sub)

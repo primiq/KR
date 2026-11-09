@@ -325,6 +325,17 @@ function build(id: ItemId, left = false): THREE.Group {
       g.add(mesh(mergeGeometries([band, b2])!, BLUE, 6));
       return g;
     }
+    case 'flute': {
+      // a recorder-like wooden flute along +y: the beak you blow into at the top, the window, seven finger holes, the bell
+      const wood = mat('#d8b27a', 0.6), dark = mat('#5a3a1e', 0.7);
+      const body = mesh(new THREE.CylinderGeometry(0.013, 0.016, 0.36, 12), wood, 5); body.position.y = 0.05;
+      const beak = mesh(new THREE.CylinderGeometry(0.011, 0.014, 0.05, 12), dark, 5); beak.position.y = 0.255; beak.scale.z = 0.7;
+      const bell = mesh(new THREE.CylinderGeometry(0.019, 0.016, 0.03, 12), dark, 5); bell.position.y = -0.14;
+      const win = mesh(new THREE.BoxGeometry(0.008, 0.012, 0.004), dark, 5); win.position.set(0, 0.205, -0.0135);
+      const g = grp(body, beak, bell, win);
+      for (let k = 0; k < 7; k++) { const h = mesh(new THREE.CylinderGeometry(0.0038, 0.0038, 0.004, 8).rotateX(Math.PI / 2), dark, 5); h.position.set(0, 0.16 - k * 0.034, -0.0145 + k * 0.0003); g.add(h); }
+      return g;
+    }
     case 'drumsticks': {
       // one stick in each hand: a slim stick with a round felt beater on its end
       const g = grp(...handle(0.36, -0.1, 0.013));
@@ -557,7 +568,7 @@ const G_BUNDLE: Grip = { fit: F_SMALL, cy: 0.07, cz: 0.057, handle: true, gy: 0,
 const G_BIG: Grip = { fit: F_BIG, cy: 0.07, cz: 0.075, th: [0.9, 0.5, 0.35], roll: 0.2, fz: 0.1 };
 const GRIPS: Record<ItemId, Grip> = {
   rock: G_ROCK, hatchet: G_HANDLE, pickaxe: { ...G_HANDLE, gy: -0.04 }, metal_hatchet: G_HANDLE, metal_pickaxe: { ...G_HANDLE, gy: -0.04 }, diamond_pickaxe: { ...G_HANDLE, gy: -0.04 }, coal: G_STONE, diamond: G_STONE,
-  wood: G_LOG, stone: G_STONE, metal_ore: G_STONE, metal: G_LOG, fiber: G_BUNDLE, coconut: G_CUP, berries: G_BERRY, roasted_coconut: G_CUP, turtle_egg: G_BERRY, picture_frame: G_BIG, flower_pot: G_BIG, rug: G_BUNDLE, lantern: G_HANDLE, compass: G_BIG, flag: G_HANDLE, table: G_BIG, cat_bed: G_BIG, lounger: G_BIG, drum: G_BIG, drumsticks: { ...G_HANDLE, gy: -0.03 }, door: G_BIG, flower_daisy: G_HANDLE, flower_poppy: G_HANDLE, flower_bluebell: G_HANDLE, flower_sunflower: G_HANDLE, flower_hibiscus: G_HANDLE, flower_lavender: G_HANDLE, flower_orchid: G_HANDLE, flower_paradise: G_HANDLE,
+  wood: G_LOG, stone: G_STONE, metal_ore: G_STONE, metal: G_LOG, fiber: G_BUNDLE, coconut: G_CUP, berries: G_BERRY, roasted_coconut: G_CUP, turtle_egg: G_BERRY, picture_frame: G_BIG, flower_pot: G_BIG, rug: G_BUNDLE, lantern: G_HANDLE, compass: G_BIG, flag: G_HANDLE, flute: G_HANDLE, table: G_BIG, cat_bed: G_BIG, lounger: G_BIG, drum: G_BIG, drumsticks: { ...G_HANDLE, gy: -0.03 }, door: G_BIG, flower_daisy: G_HANDLE, flower_poppy: G_HANDLE, flower_bluebell: G_HANDLE, flower_sunflower: G_HANDLE, flower_hibiscus: G_HANDLE, flower_lavender: G_HANDLE, flower_orchid: G_HANDLE, flower_paradise: G_HANDLE,
   spear: { ...G_HANDLE, gy: -0.08, cy: 0.07 }, fishing_rod: { ...G_HANDLE, gy: -0.06, fit: [1.3, 1.0, 0.95] }, raw_meat: G_STONE, cooked_meat: G_STONE, raw_fish: G_BUNDLE, cooked_fish: G_BUNDLE,
   sapling: G_BUNDLE, campfire: G_BUNDLE, torch: { ...G_HANDLE, gy: -0.03 }, furnace: G_BIG, workbench: { ...G_HANDLE, gy: -0.04 }, bed: G_BUNDLE, sleeping_bag: G_BUNDLE, box: G_BIG, building_plan: G_LOG,
   leather: G_BUNDLE, leather_cap: G_BIG, leather_vest: G_BIG, leather_pants: G_BIG, metal_helmet: G_BIG, metal_chestplate: G_BIG, metal_greaves: G_BIG,

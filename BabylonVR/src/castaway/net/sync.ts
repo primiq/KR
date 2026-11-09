@@ -101,6 +101,7 @@ export class WorldSync {
             w.remote = !session.isHost; w.myId = session.myId;
             w.onEvent = (e) => session.sendEvent({ k: "ml", ...e });
             game.guitar.onStrum = (e) => session.sendEvent({ k: "gs", ...e });
+            game.flute.onPlay = (e) => session.sendEvent({ k: "fl", ...e });
             game.drum.onHit = (e) => session.sendEvent({ k: "dr", ...e });
             if (game.under.desert) game.under.desert.onEvent = (e) => session.sendEvent(e);
             w.present = (pid) => pid === session.myId || session.players.has(pid);
@@ -240,6 +241,7 @@ export class WorldSync {
         this.game.offshore.remote = false; this.game.offshore.onWhale = this.game.offshore.onShip = null;
         { const iv = this.game.invaders; iv.remote = false; iv.onEvent = null; iv.myId = 0; iv.aimOf = () => null; iv.who = (pid) => ({ name: pid === 0 ? "You" : "Friend", color: "#ffd23f" }); }
         this.game.guitar.onStrum = null;
+        this.game.flute.onPlay = null;
         this.game.drum.onHit = null;
         if (this.game.under.desert) this.game.under.desert.onEvent = null;
         this.game.deepSea.onEvent = null;
@@ -380,6 +382,7 @@ export class WorldSync {
                 break;
             }
             case "sz": if (from === 0) g.under.desert?.storm?.remote(!!e.on, +e.l || 0); break;
+            case "fl": if (typeof e.m === "number" && typeof e.x === "number") g.flute.remote(from, e); break;
             case "gs": if (typeof e.x === "number" && Array.isArray(e.s)) g.guitar.remote(e, Math.hypot(g.player.pos.x - e.x, g.player.pos.y - e.y, g.player.pos.z - e.z)); break;
             case "su": g.subs.net(e, from); break;
             case "dp": g.deepSea.net(e); break;
