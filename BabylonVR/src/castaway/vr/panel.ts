@@ -1,4 +1,4 @@
-import { Mesh, MeshBuilder, Quaternion, type Scene, Vector3, type WebXRInputSource } from "@babylonjs/core";
+import { ImageProcessingConfiguration, Matrix, Mesh, MeshBuilder, Quaternion, type Scene, type StandardMaterial, Vector3, type WebXRInputSource } from "@babylonjs/core";
 import type { GfxCustom, Quality } from "../core/quality";
 import { AdvancedDynamicTexture, Button, Control, Grid, Image, Rectangle, ScrollViewer, StackPanel, TextBlock } from "@babylonjs/gui";
 import type { Game } from "../game/game";
@@ -18,7 +18,9 @@ export function iconUrl(id: ItemId): string {
     return u;
 }
 
-const BG = "#0b1a22d8", SLOT = "#ffffff1f", SEL = "#ffd166", TXT = "#f4efe2";
+/** the HUD's background: nearly solid (the bright sea and sky showing through made the text hard to pick out) */
+const HUD_BG = "#08141bf2";
+const SLOT = "#ffffff1f", SEL = "#ffd166", TXT = "#f4efe2";
 /** the board's palette: a deep sea-green slate, warm parchment text, teal for what you can do, gold for what is picked */
 const B_BG = "#0c1a21f2", B_EDGE = "#ffd16638", CARD = "#ffffff0d", CARD_EDGE = "#ffffff1c", ACC = "#3aa58a", ACC_DIM = "#ffffff12",
     INK = "#0c1a21", MUTED = "#f4efe28c", GOOD = "#8be0b5", SHORT = "#ff9a86";
@@ -27,6 +29,20 @@ const B_BG = "#0c1a21f2", B_EDGE = "#ffd16638", CARD = "#ffffff0d", CARD_EDGE = 
 function lit(b: Button, on: boolean) {
     b.background = on ? ACC : ACC_DIM;
     b.color = on ? INK : TXT;
+}
+
+/**
+ * A panel shows its own colours: not tone-mapped, contrast-boosted or darkened by the comfort vignette like the world is
+ * (in a headset the materials do those themselves; they turned the HUD's white text grey and dimmed the lower corner it
+ * sits in).
+ */
+function plainColours(mesh: Mesh) {
+    const m = mesh.material as StandardMaterial | null;
+    if (!m) return;
+    const ip = new ImageProcessingConfiguration();
+    ip.isEnabled = false;
+    m.imageProcessingConfiguration = ip;
+    m.fogEnabled = false;
 }
 
 function slotControl(name: string, size: number): { root: Button; img: Image; cnt: TextBlock; key?: TextBlock } {
@@ -140,17 +156,24 @@ export class VRPanel {
 
     constructor(private readonly scene: Scene, private readonly game: Game) {
         // ---- wrist
-        this.wrist = MeshBuilder.CreatePlane("vrWrist", { width: 0.24, height: 0.15 }, scene);
+        // (a little bigger than it was, and drawn at twice the resolution: the layout is in 1024 x 640 units, the texture twice that)
+        this.wrist = MeshBuilder.CreatePlane("vrWrist", { width: 0.27, height: 0.16875 }, scene);
         this.wrist.isPickable = false;
         this.wrist.setEnabled(false);
         this.wrist.renderingGroupId = 1;
-        this.wristUI = AdvancedDynamicTexture.CreateForMesh(this.wrist, 1024, 640, false);
+        this.wristUI = AdvancedDynamicTexture.CreateForMesh(this.wrist, 2048, 1280, false);
+        plainColours(this.wrist);
         // (sharper text seen at an angle)
         this.wristUI.anisotropicFilteringLevel = 8;
         const w = new Rectangle("wbg");
-        w.background = BG;
+        // (nearly solid: the bright sea and sky showing through made the text hard to pick out)
+        w.background = HUD_BG;
         w.cornerRadius = 40;
         w.thickness = 0;
+        // (laid out in 1024 x 640 units and drawn at twice the size: the text is rendered sharp at the texture's resolution)
+        w.width = "1024px"; w.height = "640px";
+        w.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT; w.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+        w.transformCenterX = 0; w.transformCenterY = 0; w.scaleX = 2; w.scaleY = 2;
         this.wristUI.addControl(w);
         const col = new StackPanel("wcol");
         col.paddingTop = "26px";
@@ -176,9 +199,9 @@ export class VRPanel {
             bar.addControl(fill);
             const label = new TextBlock(`vl${i}`, names[i]);
             label.color = TXT;
-            label.fontSize = 26;
+            label.fontSize = 30;
             label.fontWeight = "bold";
-            label.outlineWidth = 4;
+            label.outlineWidth = 5;
             label.outlineColor = "#0008";
             bar.addControl(label);
             vitals.addControl(bar, 0, i);
@@ -193,14 +216,18 @@ export class VRPanel {
             s.root.paddingLeft = "8px";
             s.root.paddingRight = "8px";
             s.root.width = "156px";
+            s.root.background = "#ffffff2a";
             hot.addControl(s.root);
             this.hot.push(s);
         }
         col.addControl(hot);
         this.prompt = new TextBlock("prompt", "");
-        this.prompt.height = "150px";
+        this.prompt.height = "160px";
         this.prompt.color = TXT;
-        this.prompt.fontSize = 38;
+        this.prompt.fontSize = 44;
+        this.prompt.fontWeight = "600";
+        this.prompt.outlineWidth = 5;
+        this.prompt.outlineColor = "#000a";
         this.prompt.textWrapping = true;
         this.prompt.paddingLeft = "30px";
         this.prompt.paddingRight = "30px";
@@ -208,7 +235,9 @@ export class VRPanel {
         this.notes = new TextBlock("notes", "");
         this.notes.height = "200px";
         this.notes.color = "#ffe9a8";
-        this.notes.fontSize = 32;
+        this.notes.fontSize = 38;
+        this.notes.outlineWidth = 5;
+        this.notes.outlineColor = "#000a";
         this.notes.textWrapping = true;
         this.notes.paddingLeft = "30px";
         this.notes.paddingRight = "30px";
@@ -224,6 +253,7 @@ export class VRPanel {
         this.board.setEnabled(false);
         this.board.renderingGroupId = 1;
         this.boardUI = AdvancedDynamicTexture.CreateForMesh(this.board, 1650, 1125, true);
+        plainColours(this.board);
         this.boardUI.anisotropicFilteringLevel = 8;
         const b = (this.boardRoot = new Rectangle("bbg"));
         b.background = B_BG;
@@ -631,7 +661,8 @@ export class VRPanel {
         this.wrist.setEnabled(true);
     }
     private hudOn = false;
-    private static readonly HUD_AT = new Vector3(-0.21, -0.18, -0.62);
+    /** (nearer the middle of the view than it was, where the lenses are sharp, and turned to face your eye) */
+    private static readonly HUD_AT = new Vector3(-0.13, -0.16, -0.58);
     private followHead(_dt: number) {
         const cam = this.scene.activeCamera;
         if (!cam || !this.hudOn) return;
@@ -651,7 +682,13 @@ export class VRPanel {
             at = cam.globalPosition.add(VRPanel.HUD_AT.applyRotationQuaternion(q));
         }
         const w = this.wrist;
-        if (!w.rotationQuaternion) w.rotationQuaternion = q.clone(); else w.rotationQuaternion.copyFrom(q);
+        // turned to face the eye square on (not lying in the plane of the view, foreshortened out at the side)
+        const eye = at.subtract(VRPanel.HUD_AT.applyRotationQuaternion(q));
+        const toEye = eye.subtract(at).normalize(), upV = Vector3.Up().applyRotationQuaternion(q);
+        // (planes face +z: its +z axis points back at the eye)
+        const zA = toEye, xA = Vector3.Cross(upV, zA).normalize(), yA = Vector3.Cross(zA, xA);
+        const face = Quaternion.FromRotationMatrix(Matrix.FromValues(xA.x, xA.y, xA.z, 0, yA.x, yA.y, yA.z, 0, zA.x, zA.y, zA.z, 0, 0, 0, 0, 1));
+        if (!w.rotationQuaternion) w.rotationQuaternion = face; else w.rotationQuaternion.copyFrom(face);
         w.position.copyFrom(at);
     }
 
@@ -757,7 +794,7 @@ export class VRPanel {
         for (let i = 0; i < this.hot.length; i++) {
             const it = g.inv.slots[i];
             this.fill(this.hot[i], it?.id, it?.count ?? 0);
-            this.hot[i].root.color = i === hud.selected ? SEL : "#ffffff30";
+            this.hot[i].root.color = i === hud.selected ? SEL : "#ffffff55";
             this.hot[i].root.thickness = i === hud.selected ? 8 : 3;
         }
         const p = hud.buildText ? `${hud.buildText}\n${hud.buildKeys}` : hud.promptName ? `${hud.promptName}${hud.promptHint ? "\n" + hud.promptHint : ""}` : "";

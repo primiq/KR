@@ -12,6 +12,7 @@ export const UPDATES: Update[] = [
             "On a computer or phone the menu is a flat, bright panel on the screen, the same however you are looking.",
             "Windows no longer flicker round their frames.",
             "VR: other players now see your tool exactly as you hold it, pointing and tilting with your hand.",
+            "VR: the heads-up display (vitals, hotbar, hints) is sharper, bigger, nearer the middle of your view and turned to face you, with brighter, clearer text.",
         ],
     },
     {
