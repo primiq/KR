@@ -384,6 +384,11 @@ export class Sfx {
   tilePress() { this.tone(110, 0.14, 'square', 0.3, 0.6); this.burst(0.08, 900, 1.5, 0.25, 'lowpass'); }
   // ---- Locations, Locations: a quiet street
   /** a small bird: two or three quick rising whistles */
+  /** a penguin's call: a few short nasal honks, a chick's higher and thinner */
+  squawk(v = 0.6, chick = false) {
+    const f = (chick ? 900 : 520) * (0.9 + Math.random() * 0.2), n = 2 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < n; i++) this.later(i * 120, () => { this.tone(f * (1 + 0.06 * i), 0.11, 'sawtooth', 0.035 * v, 0.82); this.tone(f * 2.01, 0.09, 'square', 0.01 * v, 0.85); });
+  }
   chirp(v = 0.3) { const f = 2600 + Math.random() * 1600; for (let i = 0; i < 2 + Math.floor(Math.random() * 2); i++) setTimeout(() => this.tone(f + i * 140, 0.07, 'sine', 0.05 * v, 1.25), i * 95); }
   /** a cricket at night */
   cricket(v = 0.2) { for (let i = 0; i < 3; i++) setTimeout(() => this.tone(4600, 0.035, 'square', 0.018 * v), i * 55); }

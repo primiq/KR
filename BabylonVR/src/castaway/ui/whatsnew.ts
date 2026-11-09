@@ -6,6 +6,15 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-11-16", title: "Into the frozen north",
+        items: [
+            "Sail north past the islets (follow the N on your compass) and the air turns cold. First little floes of drift ice, then icebergs: sharp peaks with huge white bulks hidden under the water, and flat-topped bergs taller than a house. Steer between them, they are solid!",
+            "Keep going, a long way, and you reach the Arctic: ice cliffs, a snowy plateau, deep blue crevices and clear melt pools you can drink from.",
+            "Penguins live along its shore, huddled together with their fluffy grey chicks. They are friendly: walk up and they look up at you, flap and call.",
+            "It snows up there, and the ice glints and glows blue in the sun. The way home is always back south: the little house on your compass shows it.",
+        ],
+    },
+    {
         date: "2026-11-15", title: "The compass and the open sea",
         items: [
             "Craft a Compass at the workbench and set it on your raft or boat. Its card always points north, a little red house shows the way home, and a screen says how far the island is.",

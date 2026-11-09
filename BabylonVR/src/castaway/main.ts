@@ -1,4 +1,6 @@
 import { SAX as SUB_SAX, SAZ as SUB_SAZ } from "./world/sub";
+import { coldAt, inSeaWorld } from "./world/arctic";
+import { ArcticView, Snowfall } from "./world/arcticView";
 import {
     Color3,
     CascadedShadowGenerator,
@@ -461,6 +463,9 @@ async function main() {
     // (the shared environment's flat sun disc faced one way only and read as an ellipse: SkyDeco draws a round sun instead)
     sunMesh.setEnabled(false);
     const clock = new Atmosphere(scene, sun, skybox, env, ocean, null, q.name !== "high");
+    // the far north: drift ice, icebergs, the Arctic (built only when you are up there)
+    const arctic = new ArcticView(scene, () => clock.sunDir, () => clock.day, headset);
+    const snowfall = new Snowfall(scene);
     // ---- Settings > Developer: flying and the time of day (no keys for them any more)
     let devStorm: (() => boolean) | null = null;
     const devTools = {
@@ -1060,7 +1065,7 @@ async function main() {
             }
             waterfall?.update(dt, player.pos.x, player.pos.z, game.under.active);
             {
-                const onIsland = !game.under.active && Math.hypot(player.pos.x, player.pos.z) < SEA_R + 300 && player.pos.y < 120;
+                const onIsland = !game.under.active && inSeaWorld(player.pos.x, player.pos.z, SEA_R + 300) && player.pos.y < 120;
                 // (in a surfaced sub the top of the window is above the water: see subWaterline)
                 const subSplit = !!game.subs.mine && game.subs.mine.depth < 1.2;
                 subWaterline(subSplit);
@@ -1072,6 +1077,15 @@ async function main() {
                     clock.deep += (want - clock.deep) * Math.min(1, dt * 1.5);
                     game.deepSea.update(dt, e, clock.deep);
                     deepGlow(clock.deep);
+                }
+                {
+                    const c = camera.globalPosition;
+                    arctic.update(dt, c, !onIsland);
+                    clock.cold = onIsland ? coldAt(c.x, c.z) : 0;
+                    // (up there it snows: lightly always, hard when the weather turns)
+                    const w = game.weather, snowK = Math.max(0, (clock.cold - 0.55) / 0.45) * (player.underwater ? 0 : 1);
+                    if (w) w.snowy = Math.min(1, clock.cold * 1.6);
+                    snowfall.update(dt, c, snowK * (0.3 + 0.7 * Math.max(w?.overcast ?? 0, w?.rain ?? 0)), 0.35 + 0.65 * clock.day, (w?.wind ?? 1) * 0.5);
                 }
                 // (the specks: lit by the day, dim in the deep, bright in a floodlight's beam; none inside a sub)
                 seabed.snowDim = Math.max(0.03, (0.3 + 0.7 * clock.day) * (1 - 0.97 * clock.deep));

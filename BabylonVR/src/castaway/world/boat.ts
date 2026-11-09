@@ -12,6 +12,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { heightAt, SEA_R } from './island';
+import { keepInSea } from './arctic';
 import { CELL, type MatKey, type PieceKind, pieceGeometry, RAIL_H, STAIR_DIRS, WALL_H } from '../game/building';
 
 let WOOD: { slab: THREE.Material } | null = null;
@@ -1019,6 +1020,8 @@ export class Boats {
     // ---- the storm round me
     const r = away ? 0 : Math.hypot(me.x, me.z);
     let want = Math.max(0, Math.min(1, (r - STORM_R0) / (STORM_R1 - STORM_R0)));
+    // (the storm only rages over the reef's ring: once you are through it, out on the open sea or up north, it is behind you)
+    if (r > PASS_R1) want = 0;
     // (a compass aboard: you hold your course through it, and out past the worst of it the storm blows itself out)
     if (this.compass) want *= 0.85 * Math.max(0, Math.min(1, 1 - (r - PASS_R0) / (PASS_R1 - PASS_R0)));
     // (it builds over half a minute or so: the sky darkens, the rain comes on, the waves grow)
@@ -1028,7 +1031,7 @@ export class Boats {
     if (this.storm > 0.6 && this.warned < 2) { this.warned = 2; this.say?.(this.compass ? 'Hold her steady! The compass keeps you on course through the storm.' : 'This is no sea for a little boat. Turn back!'); }
     if (this.compass && this.warned >= 1 && this.warned < 3 && r > PASS_R0 + 30 && want < this.storm) { this.warned = 3; this.say?.('The storm is easing. The sun breaks through the clouds and the sea calms down.'); }
     if (this.storm < 0.02 && (r < STORM_R0 || r > PASS_R1)) this.warned = 0;
-    if (!this.wave.active && !away && !this.compass && (r > WRECK_R || this.fullT > STORM_HOLD)) this.bringWave();
+    if (!this.wave.active && !away && !this.compass && r < PASS_R1 && (r > WRECK_R || this.fullT > STORM_HOLD)) this.bringWave();
 
     // ---- which deck am I on (before the boats move: I ride along with mine)
     const was = this.on;
@@ -1050,10 +1053,10 @@ export class Boats {
       if (mine) {
         this.drive(b, dt, time, ctl);
         // (the edge of the open sea: a current that will not let you further, you are turned back)
-        const rb = Math.hypot(b.x, b.z);
-        if (rb > SEA_R) {
-          b.x *= SEA_R / rb; b.z *= SEA_R / rb; b.v *= 0.9;
-          if (this.edgeT <= 0) { this.edgeT = 20; this.say?.('A strong current holds you back. There is nothing out there but the empty ocean: time to turn round.'); }
+        const back = keepInSea(b.x, b.z, SEA_R);
+        if (back) {
+          b.x = back[0]; b.z = back[1]; b.v *= 0.9;
+          if (this.edgeT <= 0) { this.edgeT = 20; this.say?.('A strong current holds you back. Nothing out here but empty ocean. Only the way north, where the air turns cold, goes on.'); }
         }
         this.edgeT -= dt;
       }

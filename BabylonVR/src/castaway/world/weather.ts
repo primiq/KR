@@ -87,6 +87,8 @@ export class Weather {
     rain = 0; overcast = 0; wind = 1; rough = 0; wet = 0;
     /** 0..1: the storm far out at sea round this player (the boat's business, not the host's): it overrides the look */
     sea = 0;
+    /** 0..1: it is cold enough that rain falls as snow (no rain drawn) */
+    snowy = 0;
     /** host: tell the others the weather changed */
     onChange: ((kind: WeatherKind, left: number) => void) | null = null;
     /** a lightning strike at this distance (m): the thunder follows by the speed of sound */
@@ -235,7 +237,8 @@ export class Weather {
 
         // ---- rain round the camera
         this.shelter = ease(this.shelter, local && !roof && !under ? 1 : 0, 0.6, 0.4);
-        const shown = this.rain * this.shelter;
+        // (in the far north it falls as snow instead: see arcticView Snowfall)
+        const shown = this.rain * this.shelter * (1 - this.snowy);
         this.rainMesh.setEnabled(shown > 0.01);
         if (shown > 0.01) {
             const sub = this.rainMesh.subMeshes[0];

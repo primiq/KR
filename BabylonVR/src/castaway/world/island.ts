@@ -21,6 +21,7 @@ export const WORLD_RADIUS = 340; // soft limit for the player
 
 import { DESERT_FROM_Z, groundAt, inDesert } from "./desertField";
 import { SEA_END, SEA_START, seaFeatureHeight } from "./seafeatures";
+import { arcticHeight, ICE_Z0 } from "./arctic";
 /** (squared) the ring where the open sea's islets and reefs can be */
 const SEA_START2 = (SEA_START - 150) ** 2, SEA_END2 = (SEA_END + 150) ** 2;
 const N = new Noise2D(1337);
@@ -220,6 +221,8 @@ export function baseHeightAt(x: number, z: number): number {
   // ---- the open sea's islets and reefs, past the reef ----------------------
   const r2 = x * x + z * z;
   if (r2 > SEA_START2 && r2 < SEA_END2) h = Math.max(h, seaFeatureHeight(x, z));
+  // ---- the far north: drift ice, icebergs and the Arctic -------------------
+  if (z < ICE_Z0 + 60) h = Math.max(h, arcticHeight(x, z));
   return h;
 }
 

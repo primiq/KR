@@ -10,6 +10,7 @@ import { heightAt, RIVER_SPRING, slopeAt } from "../world/island";
 import type { Vegetation, Zone } from "../world/vegetation";
 import { type ItemId } from "./items";
 import type { ResNode } from "./nodes";
+import { ICE_Z0, POOLS } from "../world/arctic";
 
 export type HitFx = "wood" | "stone" | "ore" | "leaf" | "ember" | "flesh" | "water" | "sand";
 
@@ -595,6 +596,16 @@ export class Resources {
             if (t > 0 && t <= reach + 0.6) {
                 const hx = ox + dx * t, hz = oz + dz * t;
                 if (wetAt(hx, hz)) best = { type: "spring", spring: { x: hx, y: OASIS_WATER, z: hz } as unknown as Spring, dist: t, point: new Vector3(hx, OASIS_WATER, hz) };
+            }
+        }
+        // the Arctic's melt pools: clear fresh water to drink
+        if (!best && dy < -0.03 && oz < ICE_Z0) {
+            for (const p of POOLS) {
+                if (Math.hypot(p.x - ox, p.z - oz) > p.r + reach + 2) continue;
+                const t = (p.level - oy) / dy;
+                if (t <= 0 || t > reach + 0.6) continue;
+                const hx = ox + dx * t, hz = oz + dz * t;
+                if (Math.hypot(hx - p.x, hz - p.z) < p.r) { best = { type: "spring", spring: { x: hx, y: p.level, z: hz } as unknown as Spring, dist: t, point: new Vector3(hx, p.level, hz) }; break; }
             }
         }
         return best;

@@ -150,6 +150,8 @@ export class Atmosphere {
     desert = 0;
     /** 0..1: a sandstorm (main sets it), and how thick its dust is where you are (fog density) */
     dust = 0;
+    /** 0..1: how far into the cold north you are (a pale, icy haze, thicker) */
+    cold = 0;
     dustDensity = 0.3;
 
     update(dt: number) {
@@ -283,13 +285,19 @@ export class Atmosphere {
                 away.copyFrom(Color3.Lerp(away, new Color3(0.86, 0.74, 0.58), k * 0.75));
                 toSun.copyFrom(Color3.Lerp(toSun, new Color3(0.97, 0.84, 0.64), k * 0.75));
             }
+            // (in the far north: a pale, icy blue-white haze)
+            if (this.cold > 0) {
+                const k = this.cold * (1 - hzNight) * 0.7;
+                away.copyFrom(Color3.Lerp(away, new Color3(0.82, 0.89, 0.95), k));
+                toSun.copyFrom(Color3.Lerp(toSun, new Color3(0.92, 0.95, 0.98), k));
+            }
             this.hzAway = Color3.Lerp(away, grey, ov).scale(dim);
             this.hzSun = Color3.Lerp(toSun, grey, ov).scale(dim);
             this.deco.setHorizon(this.hzAway, this.hzSun, this.sunDir);
             if (this.ocean) this.ocean.horizon = { away: this.hzAway, toSun: this.hzSun, sunX: this.sunDir.x, sunZ: this.sunDir.z };
             // the fog is never switched off (that would rebuild every lit shader: a freeze, just as a storm blows up)
             if (this.scene.fogMode !== Scene.FOGMODE_EXP2) this.scene.fogMode = Scene.FOGMODE_EXP2;
-            this.scene.fogDensity = 0.0008 + 0.0017 * ov + 0.0008 * this.desert;
+            this.scene.fogDensity = 0.0008 + 0.0017 * ov + 0.0008 * this.desert + 0.0009 * this.cold;
             this.scene.fogColor = Color3.Lerp(this.hzAway, this.hzSun, 0.35);
             // a sandstorm: thick ochre dust, lit by what daylight gets through it
             if (this.dust > 0.001) {

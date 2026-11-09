@@ -4,7 +4,9 @@ import { clamp } from "../core/noise";
 import { Hud } from "../ui/hud";
 import { heightAt, SEA_R } from "../world/island";
 import { OpenSea } from "../world/opensea";
+import { ICE_Z0, inSeaWorld } from "../world/arctic";
 import { Gulls } from "../world/gulls";
+import { Penguins } from "../world/penguins";
 import type { Desert } from "../world/desert";
 import { groundAt } from "../world/desertField";
 import type { Player } from "../world/player";
@@ -136,6 +138,7 @@ export class Game {
     /** the islets and wrecks out on the open sea */
     readonly openSea: OpenSea;
     private gulls: Gulls;
+    private penguins: Penguins;
     /** butterflies fluttering about by day */
     readonly butterflies: Butterflies;
     /** the floodlights of the nearest submarine that has them on (ahead, astern): they borrow the fire light pool */
@@ -371,6 +374,8 @@ export class Game {
         this.deepSea = new DeepSea(this.natureRoot);
         this.openSea = new OpenSea(this.natureRoot, this.deepSea, o.vegetation.colliders);
         this.gulls = new Gulls(this.natureRoot);
+        this.penguins = new Penguins(this.natureRoot);
+        this.penguins.chirp = (x, z, v) => this.sfx.at(x, heightAt(x, z) + 0.6, z, () => this.sfx.squawk(1, v > 0.9));
         this.butterflies = new Butterflies(this.natureRoot);
 
         // (the slide's tower platform and boats' decks are ground too)
@@ -1963,9 +1968,11 @@ export class Game {
 
     /** footprints in the sand, and the birds and flamingos (which take off when someone comes too close) */
     private updateNature(dt: number, hour: number, away: boolean) {
-        const p = this.player, me = p.pos, onIsland = !away && Math.hypot(me.x, me.z) < SEA_R + 300 && me.y < Math.max(0, heightAt(me.x, me.z)) + 60;
+        const p = this.player, me = p.pos, onIsland = !away && inSeaWorld(me.x, me.z, SEA_R + 300) && me.y < Math.max(0, heightAt(me.x, me.z)) + 60;
         // butterflies by day round you (in the morning they come out, at dusk they are gone)
-        this.butterflies.update(dt, me, Math.max(0, Math.min(1, (hour - 6.5) / 1.5, (19 - hour) / 1.5)), !onIsland || !!p.cave);
+        // (none of the island's own life up in the frozen north)
+        const north = me.z < ICE_Z0 + 200;
+        this.butterflies.update(dt, me, Math.max(0, Math.min(1, (hour - 6.5) / 1.5, (19 - hour) / 1.5)), !onIsland || !!p.cave || north);
         const W = this.walkers; W.length = 0;
         const threats: { x: number; z: number; fast: boolean }[] = [];
         if (onIsland) {
@@ -1985,13 +1992,14 @@ export class Game {
             for (const t of this.turtles.adults) if (t.st >= 1 && t.st <= 5) W.push({ key: "t" + t.id, x: t.x, y: heightAt(t.x, t.z), z: t.z, kind: "flipper" });
         }
         this.prints.update(dt, W);
-        this.flowers.update(dt, me.x, me.z, onIsland);
+        this.flowers.update(dt, me.x, me.z, onIsland && !north);
         this.openSea.update(dt, me, !onIsland || !!p.cave);
+        this.penguins.update(dt, me, !onIsland || !!p.cave);
         // seagulls out at sea by day: over the nearest islet, or round you
         { const atSea = onIsland && !p.cave && Math.hypot(me.x, me.z) > 560 && hour > 6 && hour < 19.5; this.gulls.update(dt, atSea ? this.openSea.nearest(me) ?? me : null, atSea); }
         this.prints.mesh.visible = onIsland;
-        this.birds.update(dt, me, threats, (this.weather?.rain ?? 0) > 0.35 ? 0 : hour, onIsland);
-        this.flamingos.update(dt, me, threats, hour, onIsland);
+        this.birds.update(dt, me, threats, (this.weather?.rain ?? 0) > 0.35 ? 0 : hour, onIsland && !north);
+        this.flamingos.update(dt, me, threats, hour, onIsland && !north);
         // sea life: only near the sea. Some nights (about one in three) the sea glows: the host / solo player decides at dusk
         if (!this.net.bioRemote) {
             if (this.bioHour >= 0 && this.bioHour < 19.6 && hour >= 19.6) { this.bioTonight = Math.random() < 0.35; this.net.bio?.(this.bioTonight); }
