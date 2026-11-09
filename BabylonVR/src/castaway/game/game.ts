@@ -2,10 +2,10 @@ import { type Node, type Scene, Vector3 } from "@babylonjs/core";
 import type { Input } from "../core/input";
 import { clamp } from "../core/noise";
 import { Hud } from "../ui/hud";
-import { heightAt, SEA_R } from "../world/island";
+import { heightAt } from "../world/island";
 import { OpenSea } from "../world/opensea";
 import { clothPlane, CLOTH_H, CLOTH_W } from "./flag";
-import { ICE_Z0, inSeaWorld } from "../world/arctic";
+import { ICE_R0, inSeaWorld } from "../world/arctic";
 import { Gulls } from "../world/gulls";
 import { Penguins } from "../world/penguins";
 import type { Desert } from "../world/desert";
@@ -2036,10 +2036,10 @@ export class Game {
 
     /** footprints in the sand, and the birds and flamingos (which take off when someone comes too close) */
     private updateNature(dt: number, hour: number, away: boolean) {
-        const p = this.player, me = p.pos, onIsland = !away && inSeaWorld(me.x, me.z, SEA_R + 300) && me.y < Math.max(0, heightAt(me.x, me.z)) + 60;
+        const p = this.player, me = p.pos, onIsland = !away && inSeaWorld(me.x, me.z) && me.y < Math.max(0, heightAt(me.x, me.z)) + 60;
         // butterflies by day round you (in the morning they come out, at dusk they are gone)
         // (none of the island's own life up in the frozen north)
-        const north = me.z < ICE_Z0 + 200;
+        const north = Math.hypot(me.x, me.z) > ICE_R0 - 200;
         this.butterflies.update(dt, me, Math.max(0, Math.min(1, (hour - 6.5) / 1.5, (19 - hour) / 1.5)), !onIsland || !!p.cave || north);
         const W = this.walkers; W.length = 0;
         const threats: { x: number; z: number; fast: boolean }[] = [];

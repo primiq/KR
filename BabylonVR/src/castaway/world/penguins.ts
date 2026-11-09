@@ -4,16 +4,18 @@
 // flippers and chirp; they step aside rather than be trodden on. Cosmetic and local to each player.
 // Cheap to draw: every penguin is made of a few instanced parts (a draw each, whatever the count); only matrices change.
 import * as THREE from "three";
-import { COLONIES } from "./arctic";
+import { type Colony, coloniesNear } from "./arctic";
 import { heightAt } from "./island";
 
-const NEAR = 450;
+const NEAR = 450, SLOTS = 3, PER = 22;
 
 interface Pen {
   x: number; z: number; yaw: number; s: number; chick: boolean;
   /** which huddle it belongs to now, its place in it (angle, ring), or walking to another */
   colony: number; hud: number; a: number; ring: number; walking: boolean; tx: number; tz: number;
   ph: number; step: number; flap: number; look: number; wait: number;
+  /** in a colony near you just now (the colonies all along the coast take turns with the same penguins) */
+  on: boolean;
 }
 
 /** merge geometries (positions and normals) into one */
@@ -36,6 +38,10 @@ export class Penguins {
   readonly group = new THREE.Group();
   private pens: Pen[] = [];
   private huddles: { x: number; z: number; spin: number }[][] = [];
+  /** which colony each set of penguins is in (null: none) */
+  private slots: (Colony | null)[] = [];
+  private near: Colony[] = [];
+  private assignT = 0;
   private parts: THREE.InstancedMesh[];
   private dark: THREE.InstancedMesh;
   private t = 0;
@@ -63,39 +69,32 @@ export class Penguins {
     // a flipper hangs from the shoulder (its pivot at the origin); a foot is a flat orange paddle
     const flipG = egg(0.025, 0.17, 0.07, 0, -0.15, 0);
     const footG = egg(0.055, 0.02, 0.075, 0, 0.012, -0.03, 8);
-    const N = COLONIES.reduce((a, c) => a + c.n, 0);
+    const N = SLOTS * PER;
     const mk = (g: THREE.BufferGeometry, mat: THREE.Material) => { const im = new THREE.InstancedMesh(g, mat, N); im.frustumCulled = false; im.count = 0; this.group.add(im); return im; };
     this.dark = mk(darkG, black);
     this.dark.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(N * 3), 3);
     this.parts = [this.dark, mk(whiteG, white), mk(beakG, orange), mk(goldG, gold), mk(eyeG, eye), mk(shineG, shine), mk(flipG, black), mk(flipG.clone(), black), mk(footG, orange), mk(footG.clone(), orange)];
     // (the flippers share the body's colour: grey for the chicks)
     for (const k of [6, 7]) this.parts[k].instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(N * 3), 3);
-    // the colonies: two or three huddles each, everybody placed in one
+    // the penguins: a set for each colony near you (the colonies, every few hundred metres along the whole coast, take
+    // turns with them as you go); set up when a colony comes near (see assign)
     const col = new THREE.Color();
-    let n = 0;
-    COLONIES.forEach((c, ci) => {
-      const hs: { x: number; z: number; spin: number }[] = [];
-      const nh = 2 + (ci % 2);
-      for (let h = 0; h < nh; h++) { const a = h * 2.4 + ci, d = h === 0 ? 0 : 9 + h * 4; hs.push({ x: c.x + Math.cos(a) * d, z: c.z + Math.sin(a) * d, spin: (h % 2 ? 1 : -1) * 0.025 }); }
-      this.huddles.push(hs);
-      for (let k = 0; k < c.n; k++) {
-        const chick = k % 5 === 4, hud = k % nh;
-        const p: Pen = { x: 0, z: 0, yaw: 0, s: chick ? 0.6 : 0.92 + Math.random() * 0.16, chick, colony: ci, hud, a: Math.random() * Math.PI * 2, ring: Math.random(), walking: false, tx: 0, tz: 0,
-          ph: Math.random() * 10, step: 0, flap: 0, look: 0, wait: 5 + Math.random() * 40 };
-        const H = hs[hud], r = 0.4 + p.ring * 1.6;
-        p.x = H.x + Math.cos(p.a) * r; p.z = H.z + Math.sin(p.a) * r;
-        this.pens.push(p);
-        col.set(chick ? "#8d8f96" : "#17181d");
-        this.dark.setColorAt(n, col); this.parts[6].setColorAt(n, col); this.parts[7].setColorAt(n, col);
-        n++;
-      }
-    });
+    for (let n = 0; n < N; n++) {
+      const chick = n % 5 === 4;
+      this.pens.push({ x: 0, z: 0, yaw: 0, s: chick ? 0.6 : 0.92 + Math.random() * 0.16, chick, colony: Math.floor(n / PER), hud: 0, a: 0, ring: 0, walking: false, tx: 0, tz: 0,
+        ph: Math.random() * 10, step: 0, flap: 0, look: 0, wait: 5 + Math.random() * 40, on: false });
+      col.set(chick ? "#8d8f96" : "#17181d");
+      this.dark.setColorAt(n, col); this.parts[6].setColorAt(n, col); this.parts[7].setColorAt(n, col);
+    }
+    for (let k = 0; k < SLOTS; k++) { this.huddles.push([]); this.slots.push(null); }
     scene.add(this.group);
   }
 
   /** `me`: where you are (feet); `away`: in a cave, a level... */
   update(dt: number, me: { x: number; y: number; z: number }, away: boolean) {
-    const near = !away && COLONIES.some((c) => Math.hypot(c.x - me.x, c.z - me.z) < NEAR);
+    this.assignT -= dt;
+    if (this.assignT <= 0) { this.assignT = 1; this.assign(me, away); }
+    const near = this.slots.some((c) => c !== null);
     this.group.visible = near;
     if (!near) return;
     dt = Math.min(dt, 0.05);
@@ -103,6 +102,8 @@ export class Penguins {
     this.chirpT -= dt;
     let n = 0;
     for (const p of this.pens) {
+      // (a penguin not in a colony near you: an empty slot, nothing drawn)
+      if (!p.on) { this.base.makeScale(0, 0, 0); for (const im of this.parts) im.setMatrixAt(n, this.base); n++; continue; }
       const dme = Math.hypot(p.x - me.x, p.z - me.z);
       let moving = false;
       // ---- friendly: close by, it stops, turns to look up at you, flaps and chirps
@@ -136,7 +137,7 @@ export class Penguins {
           const dx = tx - p.x, dz = tz - p.z, d = Math.hypot(dx, dz);
           if (d > 0.05) { p.x += dx * Math.min(1, dt * 0.8); p.z += dz * Math.min(1, dt * 0.8); moving = d > 0.25; }
           // (huddlers face in, more or less, the same way: out of the wind)
-          let a = (0.6 + p.colony) - p.yaw; a = Math.atan2(Math.sin(a), Math.cos(a)); p.yaw += a * Math.min(1, dt * 0.5);
+          let a = (0.6 + (this.slots[p.colony]?.id ?? 0)) - p.yaw; a = Math.atan2(Math.sin(a), Math.cos(a)); p.yaw += a * Math.min(1, dt * 0.5);
           // now and then one sets off for another huddle
           p.wait -= dt;
           if (p.wait <= 0) {
@@ -168,5 +169,31 @@ export class Penguins {
       n++;
     }
     for (const im of this.parts) { im.count = n; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
+  }
+
+  /** the colonies near you get the penguins: a colony coming near gets a free set, one left behind gives its set back */
+  private assign(me: { x: number; z: number }, away: boolean) {
+    const near = away ? [] : coloniesNear(me.x, me.z, NEAR, this.near).sort((a, b) => Math.hypot(a.x - me.x, a.z - me.z) - Math.hypot(b.x - me.x, b.z - me.z)).slice(0, SLOTS);
+    for (let k = 0; k < SLOTS; k++) {
+      const c = this.slots[k];
+      if (c && !near.some((q) => q.id === c.id)) { this.slots[k] = null; for (let i = 0; i < PER; i++) this.pens[k * PER + i].on = false; }
+    }
+    for (const c of near) {
+      if (this.slots.some((q) => q?.id === c.id)) continue;
+      const k = this.slots.indexOf(null);
+      if (k < 0) break;
+      this.slots[k] = c;
+      // two or three huddles, everybody placed in one
+      const hs: { x: number; z: number; spin: number }[] = [], nh = 2 + (c.id % 2);
+      for (let h = 0; h < nh; h++) { const a = h * 2.4 + c.id, d = h === 0 ? 0 : 9 + h * 4; hs.push({ x: c.x + Math.cos(a) * d, z: c.z + Math.sin(a) * d, spin: (h % 2 ? 1 : -1) * 0.025 }); }
+      this.huddles[k] = hs;
+      for (let i = 0; i < PER; i++) {
+        const p = this.pens[k * PER + i];
+        p.on = i < Math.min(PER, c.n);
+        p.hud = i % nh; p.a = Math.random() * Math.PI * 2; p.ring = Math.random(); p.walking = false; p.look = 0; p.flap = 0;
+        const H = hs[p.hud], r = 0.4 + p.ring * 1.6;
+        p.x = H.x + Math.cos(p.a) * r; p.z = H.z + Math.sin(p.a) * r; p.yaw = Math.random() * 6.28;
+      }
+    }
   }
 }

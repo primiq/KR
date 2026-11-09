@@ -10,7 +10,7 @@ import { heightAt, RIVER_SPRING, slopeAt } from "../world/island";
 import type { Vegetation, Zone } from "../world/vegetation";
 import { type ItemId } from "./items";
 import type { ResNode } from "./nodes";
-import { ICE_Z0, POOLS } from "../world/arctic";
+import { ICE_R0, poolsNear } from "../world/arctic";
 
 export type HitFx = "wood" | "stone" | "ore" | "leaf" | "ember" | "flesh" | "water" | "sand";
 
@@ -599,8 +599,8 @@ export class Resources {
             }
         }
         // the Arctic's melt pools: clear fresh water to drink
-        if (!best && dy < -0.03 && oz < ICE_Z0) {
-            for (const p of POOLS) {
+        if (!best && dy < -0.03 && ox * ox + oz * oz > ICE_R0 * ICE_R0) {
+            for (const p of poolsNear(ox, oz, reach + 20)) {
                 if (Math.hypot(p.x - ox, p.z - oz) > p.r + reach + 2) continue;
                 const t = (p.level - oy) / dy;
                 if (t <= 0 || t > reach + 0.6) continue;

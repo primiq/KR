@@ -93,9 +93,11 @@ export function makeDial(scene: Scene, card: TransformNode, home: TransformNode,
 /** how far from (x, z) to the island's shore, walking straight towards its middle (m) */
 export function homeDistance(x: number, z: number): number {
   const r = Math.hypot(x, z);
-  if (r < 1 || heightAt(x, z) > 0) return 0;
-  // step in towards the middle until the ground comes out of the sea
-  for (let d = 0; d < r; d += 4) { const k = (r - d) / r; if (heightAt(x * k, z * k) > 0) return d; }
+  // (only the island itself is home: the islets, the ice and the Arctic further out are not)
+  const HOME = 700;
+  if (r < 1 || (r < HOME && heightAt(x, z) > 0)) return 0;
+  // step in towards the middle until the island's ground comes out of the sea
+  for (let d = Math.max(0, r - HOME); d < r; d += 4) { const k = (r - d) / r; if (heightAt(x * k, z * k) > 0) return d; }
   return r;
 }
 

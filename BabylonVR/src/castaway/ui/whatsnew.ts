@@ -6,6 +6,14 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-11-20", title: "Sail any way you like",
+        items: [
+            "No more invisible wall: sail away from the island in any direction. Whichever way you go you meet the same journey: the storm past the reef, the islets and wrecks, drift ice, the icebergs and their storm, and in the end the Arctic, which now rings the whole sea.",
+            "The storm past the reef lasts longer: a good 200 metres of rough sea before it eases.",
+            "No more messages telling you the storms are easing: the sky and the sea show it.",
+        ],
+    },
+    {
         date: "2026-11-19", title: "A tidier crafting menu",
         items: [
             "Everything you can make by hand, without a workbench, is now listed first as Essentials. The workbench recipes follow, by kind.",

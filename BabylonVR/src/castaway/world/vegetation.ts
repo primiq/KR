@@ -13,7 +13,9 @@ import { hash3 } from "./geo";
 import { DESERT_X, DESERT_Z, OASIS_R } from "./desertField";
 import { heightAt, inCut, riverDist, rockiness, slopeAt } from "./island";
 import { buildBush, buildDryFrond, buildGrassTuft, buildJungleTree, buildPalm, buildStump } from "./plants";
-import { ICE_Z0 } from "./arctic";
+import { ICE_R0 } from "./arctic";
+/** (no island grass out on the ice) */
+const ICE_GRASS2 = (ICE_R0 - 50) ** 2;
 
 /** gameplay objects: identical for every player, whatever their graphics setting */
 const CANON = { palms: 200, trees: 130, rocks: 150, berries: 22 };
@@ -772,7 +774,7 @@ export class Vegetation {
                     const r3 = (hash3(ii, jj, 3.9) + 1) * 0.5, r4 = (hash3(ii, jj, 11.7) + 1) * 0.5;
                     const x = (ii + ra) * c0, z = (jj + rb) * c0;
                     const h = heightAt(x, z);
-                    if (!(h < 2.2 || z < ICE_Z0 + 50 || inCut(x, z, 0.6) || rockiness(x, z) > 0.35 || riverDist(x, z) < 1.6)) {
+                    if (!(h < 2.2 || x * x + z * z > ICE_GRASS2 || inCut(x, z, 0.6) || rockiness(x, z) > 0.35 || riverDist(x, z) < 1.6)) {
                         const patch = this.grassNoise.fbm(x * 0.05, z * 0.05, 2) * 0.5 + 0.5;
                         const mask = sstep(2.3, 4.2, h) * (0.55 + 0.45 * patch);
                         if (!(r4 > mask) && !(slopeAt(x, z, 0.5) > 0.7)) {

@@ -5,7 +5,7 @@
 // world/opensea.ts builds the meshes for the ones near you.
 
 /** cell size (m); the open sea starts here and ends at `SEA_END` (m from the middle) */
-export const SEA_CELL = 280, SEA_START = 720, SEA_END = 2120;
+export const SEA_CELL = 280, SEA_START = 820, SEA_END = 2120;
 
 export interface SeaFeature {
   kind: "islet" | "wreck";

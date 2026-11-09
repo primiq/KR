@@ -8,7 +8,7 @@
 // for a headset.
 import { Color3, Effect, type Material, MaterialPluginBase, type MaterialDefines, Mesh, MeshBuilder, PBRMaterial, type Scene, ShaderLanguage, ShaderMaterial, StandardMaterial, type UniformBuffer, Vector3, VertexBuffer, VertexData } from "@babylonjs/core";
 import { NOISE_GLSL } from "../render/materials";
-import { type Ice, ICE_Z0, iceNear, iceWobble, inland, LAND, landHeight, creviceAt, POOLS, ARC_W } from "./arctic";
+import { creviceAt, type Ice, ICE_R0, iceNear, iceWobble, inland, landHeight, type Pool, poolsNear } from "./arctic";
 
 interface Bind { sun: () => { x: number; y: number; z: number }; day: () => number; cut: () => [number, number, number, number] }
 
@@ -104,7 +104,7 @@ function iceMaterial(scene: Scene, name: string, bind: Bind, zOffset = 0): PBRMa
     return m;
 }
 
-const BERG_CH = 256, BERG_R = 1400, FLOE_R = 700, NEAR_T = 96, NEAR_STEP = 3, NEAR_R = 300, FAR_STEP = 28;
+const BERG_CH = 256, BERG_R = 1400, FLOE_R = 700, NEAR_T = 96, NEAR_STEP = 3, NEAR_R = 300, FAR_T = 1024, FAR_STEP = 32, FAR_R = 3200;
 
 interface Chunk { mesh: Mesh | null; key: string }
 
@@ -116,8 +116,9 @@ export class ArcticView {
     private bergs = new Map<string, Chunk>();
     private floes = new Map<string, Chunk>();
     private tiles = new Map<string, Chunk>();
-    private pools = new Map<number, Mesh>();
-    private far: Mesh | null = null;
+    private pools = new Map<number, { m: Mesh; x: number; z: number }>();
+    private far = new Map<string, Chunk>();
+    private poolTmp: Pool[] = [];
     private cut: [number, number, number, number] = [0, 0, NEAR_R, 0];
     private tmp: Ice[] = [];
     private t = 0;
@@ -139,8 +140,8 @@ export class ArcticView {
 
     /** `cam`: where you look from; `away`: in a cave, a level... */
     update(dt: number, cam: { x: number; y: number; z: number }, away: boolean) {
-        const near = !away && cam.z < ICE_Z0 + BERG_R && Math.abs(cam.x) < ARC_W + 1500;
-        if (!near) { if (this.bergs.size || this.floes.size || this.tiles.size || this.far || this.pools.size) this.clear(); return; }
+        const near = !away && Math.hypot(cam.x, cam.z) > ICE_R0 - BERG_R;
+        if (!near) { if (this.bergs.size || this.floes.size || this.tiles.size || this.far.size || this.pools.size) this.clear(); return; }
         this.cut[0] = cam.x; this.cut[1] = cam.z; this.cut[3] = 1;
         this.t -= dt;
         if (this.t > 0) return;
@@ -159,9 +160,10 @@ export class ArcticView {
 
     private clear() {
         for (const m of [this.bergs, this.floes, this.tiles]) { for (const c of m.values()) c.mesh?.dispose(); m.clear(); }
-        for (const p of this.pools.values()) p.dispose();
+        for (const p of this.pools.values()) p.m.dispose();
         this.pools.clear();
-        this.far?.dispose(); this.far = null;
+        for (const c of this.far.values()) c.mesh?.dispose();
+        this.far.clear();
     }
 
     // ------------------------------------------------------------------ bergs and floes, in chunks
@@ -174,7 +176,7 @@ export class ArcticView {
         const i0 = Math.floor((cam.x - R) / BERG_CH), i1 = Math.floor((cam.x + R) / BERG_CH), j0 = Math.floor((cam.z - R) / BERG_CH), j1 = Math.floor((cam.z + R) / BERG_CH);
         for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
             const cz = (j + 0.5) * BERG_CH, cx = (i + 0.5) * BERG_CH;
-            if (cz - BERG_CH > ICE_Z0 || Math.abs(cx) - BERG_CH > ARC_W) continue;
+            if (Math.hypot(cx, cz) + BERG_CH < ICE_R0) continue;
             const d = Math.hypot(cx - cam.x, cz - cam.z);
             if (d > R || set.has(`${i},${j}`) || d >= bd) continue;
             bd = d; best = [i, j];
@@ -217,20 +219,19 @@ export class ArcticView {
 
     // ------------------------------------------------------------------ the land close up: tiles with the crevices, and its pools
     private stepTiles(cam: { x: number; z: number }): boolean {
-        const landNear = Math.hypot(cam.x - LAND.x, cam.z - LAND.z) < LAND.r * 1.3 + NEAR_R + 200;
+        const landNear = inland(cam.x, cam.z) > -(NEAR_R + 400);
         for (const [k, c] of this.tiles) {
             const [i, j] = k.split(",").map(Number);
             if (!landNear || Math.hypot((i + 0.5) * NEAR_T - cam.x, (j + 0.5) * NEAR_T - cam.z) > NEAR_R + NEAR_T * 1.6) { c.mesh?.dispose(); this.tiles.delete(k); }
         }
-        for (const [k, p] of this.pools) if (!landNear || Math.hypot(POOLS[k].x - cam.x, POOLS[k].z - cam.z) > 700) { p.dispose(); this.pools.delete(k); }
+        for (const [k, p] of this.pools) if (!landNear || Math.hypot(p.x - cam.x, p.z - cam.z) > 700) { p.m.dispose(); this.pools.delete(k); }
         if (!landNear) return false;
         // (the pools: a sheet of still, clear meltwater in each hollow)
-        for (let k = 0; k < POOLS.length; k++) {
-            const p = POOLS[k];
-            if (this.pools.has(k) || Math.hypot(p.x - cam.x, p.z - cam.z) > 600) continue;
+        for (const p of poolsNear(cam.x, cam.z, 600, this.poolTmp)) {
+            if (this.pools.has(p.id)) continue;
             const d = MeshBuilder.CreateDisc("arcticPool", { radius: p.r * 1.04, tessellation: 28 }, this.scene);
             d.rotation.x = Math.PI / 2; d.position.set(p.x, p.level, p.z); d.material = this.poolMat; d.isPickable = false;
-            this.pools.set(k, d);
+            this.pools.set(p.id, { m: d, x: p.x, z: p.z });
             return true;
         }
         let best: [number, number] | null = null, bd = Infinity;
@@ -272,13 +273,24 @@ export class ArcticView {
         return m;
     }
 
-    // ------------------------------------------------------------------ the land from afar: one coarse mesh, with a hole round you
+    // ------------------------------------------------------------------ the land from afar: coarse squares, with a hole round you
     private stepFar(cam: { x: number; z: number }) {
-        const want = Math.hypot(cam.x - LAND.x, cam.z - LAND.z) < LAND.r * 1.3 + 3500;
-        if (!want) { this.far?.dispose(); this.far = null; return; }
-        if (this.far) return;
-        const S = LAND.r * 1.35 + 420;
-        this.far = this.landMesh(LAND.x - S, LAND.z - S, S * 2, FAR_STEP, this.farMat, false, "arcticFar");
+        for (const [k, c] of this.far) {
+            const [i, j] = k.split(",").map(Number);
+            if (Math.hypot((i + 0.5) * FAR_T - cam.x, (j + 0.5) * FAR_T - cam.z) > FAR_R + FAR_T) { c.mesh?.dispose(); this.far.delete(k); }
+        }
+        let best: [number, number] | null = null, bd = Infinity;
+        const i0 = Math.floor((cam.x - FAR_R) / FAR_T), i1 = Math.floor((cam.x + FAR_R) / FAR_T), j0 = Math.floor((cam.z - FAR_R) / FAR_T), j1 = Math.floor((cam.z + FAR_R) / FAR_T);
+        for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+            const cx = (i + 0.5) * FAR_T, cz = (j + 0.5) * FAR_T, d = Math.hypot(cx - cam.x, cz - cam.z);
+            if (d > FAR_R || d >= bd || this.far.has(`${i},${j}`)) continue;
+            // (only squares the land reaches)
+            if (inland(cx, cz) < -(FAR_T * 0.75 + 420)) { this.far.set(`${i},${j}`, { mesh: null, key: "" }); continue; }
+            bd = d; best = [i, j];
+        }
+        if (!best) return;
+        const [i, j] = best;
+        this.far.set(`${i},${j}`, { mesh: this.landMesh(i * FAR_T, j * FAR_T, FAR_T, FAR_STEP, this.farMat, false, "arcticFar"), key: `${i},${j}` });
     }
 }
 
