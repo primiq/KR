@@ -61,7 +61,15 @@ export const RECIPES: Recipe[] = [
   { group: 'armor', out: 'diamond_greaves', count: 1, bench: true, cost: [['diamond', 6], ['metal', 8]] },
 ];
 
-export const GROUP_LABEL: Record<Recipe['group'], string> = { tools: 'Tools', build: 'Stations & building', furniture: 'Furniture', armor: 'Armor', food: 'Food' };
+export type CraftGroup = Recipe['group'] | 'essentials';
+export const GROUP_LABEL: Record<CraftGroup, string> = { essentials: 'Essentials (no workbench needed)', tools: 'Tools', build: 'Stations & building', furniture: 'Furniture', armor: 'Armor', food: 'Food' };
+/** where a recipe is listed in the crafting menu: everything you can make by hand comes first, as the essentials */
+export const craftGroup = (r: Recipe): CraftGroup => (r.bench ? r.group : 'essentials');
+const GROUP_ORDER: CraftGroup[] = ['essentials', 'tools', 'build', 'furniture', 'armor', 'food'];
+/** the recipes in the order the crafting menu lists them: the essentials first, then the workbench's, a group at a time */
+export const CRAFT_LIST: Recipe[] = RECIPES.map((r, i) => ({ r, i }))
+  .sort((a, b) => GROUP_ORDER.indexOf(craftGroup(a.r)) - GROUP_ORDER.indexOf(craftGroup(b.r)) || a.i - b.i)
+  .map((x) => x.r);
 
 /** Items a station turns into other items while it burns. `time` is seconds per item. */
 export interface Smelt { from: ItemId; to: ItemId; time: number }

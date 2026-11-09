@@ -6,6 +6,12 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-11-19", title: "A tidier crafting menu",
+        items: [
+            "Everything you can make by hand, without a workbench, is now listed first as Essentials. The workbench recipes follow, by kind.",
+        ],
+    },
+    {
         date: "2026-11-18", title: "Music, and a storm among the icebergs",
         items: [
             "A new instrument: the Flute. In VR bring it to your lips and squeeze the right trigger to blow (softly or hard); X, Y and the left trigger are your fingers for eight notes, the left grip plays higher. On a screen hold the mouse button and press 1-8. Everybody hears you play.",

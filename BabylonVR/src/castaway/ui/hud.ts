@@ -1,7 +1,7 @@
 import { ITEMS, ItemId, ARMOR_SLOTS, ARMOR_SLOT_LABEL } from '../game/items';
 import { Inventory } from '../game/inventory';
 import type { Stats } from '../game/survival';
-import { RECIPES, GROUP_LABEL, Recipe, canAfford, costHave, costLabel } from '../game/recipes';
+import { CRAFT_LIST, craftGroup, GROUP_LABEL, Recipe, canAfford, costHave, costLabel } from '../game/recipes';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -275,11 +275,11 @@ export class Hud {
     const list = $('craft-list');
     list.textContent = '';
     let group = '';
-    for (const r of RECIPES) {
-      if (r.group !== group) {
-        group = r.group;
+    for (const r of CRAFT_LIST) {
+      if (craftGroup(r) !== group) {
+        group = craftGroup(r);
         const h = document.createElement('div');
-        h.className = 'craft-group'; h.textContent = GROUP_LABEL[r.group];
+        h.className = 'craft-group'; h.textContent = GROUP_LABEL[craftGroup(r)];
         list.appendChild(h);
       }
       const def = ITEMS[r.out];

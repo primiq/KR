@@ -3,7 +3,7 @@ import { AA_NAMES, type Antialias, type GfxCustom, type Quality } from "../core/
 import { AdvancedDynamicTexture, Button, Control, Grid, Image, Rectangle, ScrollViewer, StackPanel, TextBlock } from "@babylonjs/gui";
 import type { Game } from "../game/game";
 import { ARMOR_SLOT_LABEL, ARMOR_SLOTS, ITEMS, type ItemId } from "../game/items";
-import { canAfford, costHave, costLabel, GROUP_LABEL, RECIPES } from "../game/recipes";
+import { canAfford, costHave, costLabel, CRAFT_LIST, craftGroup, GROUP_LABEL } from "../game/recipes";
 import { PHRASES } from "../net/chat";
 
 const iconCache = new Map<string, string>();
@@ -1050,14 +1050,14 @@ export class VRPanel {
         // two cards a row, under a heading per group
         const W = 1560, CW = 762, CH = 176;
         let group = "", row: StackPanel | null = null, n = 0;
-        for (const r of RECIPES) {
-            if (r.group !== group) {
-                group = r.group;
+        for (const r of CRAFT_LIST) {
+            if (craftGroup(r) !== group) {
+                group = craftGroup(r);
                 const h = new Rectangle(`cg${group}`);
                 h.width = `${W}px`;
                 h.height = "84px";
                 h.thickness = 0;
-                const ht = new TextBlock(`cgt${group}`, GROUP_LABEL[r.group].toUpperCase());
+                const ht = new TextBlock(`cgt${group}`, GROUP_LABEL[craftGroup(r)].toUpperCase());
                 ht.color = SEL;
                 ht.fontSize = 34;
                 ht.fontWeight = "bold";
