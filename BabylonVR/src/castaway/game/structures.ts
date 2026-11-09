@@ -790,12 +790,12 @@ export class StructureManager {
       if (s.kind === "flower_pot") { this.potFlower(s); continue; }
       if (s.kind === "lantern") {
         const d = Math.hypot(s.x - px, s.z - pz);
-        s.glow?.setEnabled(d < 60);
-        if (d < 34) cands.push({ s, d });
+        s.glow?.setEnabled(d < 350);
+        if (d < 250) cands.push({ s, d });
         continue;
       }
       if (s.kind === "torch") {
-        const d = Math.hypot(s.x - px, s.z - pz), show = d < 90;
+        const d = Math.hypot(s.x - px, s.z - pz), show = d < 350;
         s.flames.forEach((f, k) => {
           f.n.setEnabled(show);
           if (!show) return;
@@ -809,7 +809,7 @@ export class StructureManager {
           if (s.emberT <= 0) { s.emberT = 0.6 + Math.random() * 0.8; this.onEmber?.(s.x + (Math.random() - 0.5) * 0.15, s.y + 1.5, s.z + (Math.random() - 0.5) * 0.15); }
           this.fireNear = Math.max(this.fireNear, Math.max(0, 0.35 - d / 40));
         }
-        if (d < 34) cands.push({ s, d });
+        if (d < 250) cands.push({ s, d });
         continue;
       }
       if (s.kind !== "campfire" && s.kind !== "furnace") continue;
@@ -832,7 +832,7 @@ export class StructureManager {
       } else if (!work) s.prog = 0;
 
       const d = Math.hypot(s.x - px, s.z - pz);
-      const show = s.lit && d < 90;
+      const show = s.lit && d < 350;
       s.flames.forEach((f, k) => {
         f.n.setEnabled(show);
         if (!show) return;
@@ -857,7 +857,7 @@ export class StructureManager {
         if (s.emberT <= 0) { s.emberT = 0.25 + Math.random() * 0.35; this.onEmber?.(s.x + (Math.random() - 0.5) * 0.3, s.y + (s.kind === "furnace" ? 1.9 : 0.5), s.z + (Math.random() - 0.5) * 0.3); }
         this.fireNear = Math.max(this.fireNear, Math.max(0, 1 - d / 18));
       }
-      if (s.lit && d < 44) cands.push({ s, d });
+      if (s.lit && d < 250) cands.push({ s, d });
     }
     // torches other players are carrying
     const rt = this.remoteTorches?.() ?? [];
@@ -867,7 +867,7 @@ export class StructureManager {
       if (!s) { s = { kind: "torch", x: 0, y: 0, z: 0, yaw: 0, lit: true, phase: Math.random() * 10, hits: [] } as unknown as Structure; this.remote.set(r.id, s); }
       s.x = r.x; s.y = r.y - 0.15; s.z = r.z;
       const d = Math.hypot(r.x - px, r.z - pz);
-      if (d < 44) cands.push({ s, d });
+      if (d < 250) cands.push({ s, d });
     }
 
     // lamps that are not structures (a submarine's floodlights): first in line for the pool

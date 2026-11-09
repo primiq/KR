@@ -99,6 +99,8 @@ export class Skydive {
     if (p.pos.y - Math.max(0, heightAt(p.pos.x, p.pos.z)) <= 0.08) {
       p.pos.y = Math.max(0, heightAt(p.pos.x, p.pos.z)) + 0.02;
       this.stop(p); this.onLand?.(); this.say('Touchdown!');
+      // (landed: the canopy and the readout are gone; nothing below may show them again)
+      return;
     }
     this.mine.visible = this.phase === 'chute';
     this.placeCanopy(this.mine, p.pos.x, p.pos.y, p.pos.z, p.yaw, this.open);

@@ -607,7 +607,7 @@ async function main() {
     // (Settings > Developer: start or stop one now; the host's word, as always)
     devStorm = () => {
         if (sync && !sync.session.isHost) { game.hud.message("Only the host can call up a sandstorm"); return storm.on; }
-        const on = !storm.on; storm.remote(on, on ? 4 : 0); storm.onChange?.(on, storm.left);
+        const on = !storm.on; storm.remote(on, on ? 22 : 0); storm.onChange?.(on, storm.left);
         return on;
     };
     poolAt = (x, z) => game.building.poolWater(x, z);

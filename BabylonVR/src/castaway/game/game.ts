@@ -496,7 +496,7 @@ export class Game {
         this.hud.onDrop = (slot, all) => this.dropSlot(slot, all);
         this.hud.onRespawn = () => this.respawn();
         this.hud.onCraft = (r) => this.craftRecipe(r);
-        this.hud.onFuel = (n) => this.addFuel(n);
+        this.hud.onFuel = (n, kind) => this.addFuel(n, kind);
         this.hud.onXfer = (fromCont, slot) => this.transfer(fromCont, slot);
         this.hud.onChip = () => { if (this.equippedDef?.kind === "plan") this.cyclePiece(1); };
         this.input.onInventory = () => this.toggleInventory();
@@ -631,10 +631,12 @@ export class Game {
         if (craft(this.inv, r)) { this.sfx.craft(); this.hud.gain(r.out, r.count); this.hud.crafted(r.out); }
         else { this.hud.message(this.inv.canFit(r.out, r.count) < r.count ? "Inventory full" : "Missing materials"); this.sfx.denied(); }
     }
-    private addFuel(n: number) {
+    private addFuel(n: number, kind?: "wood" | "coal") {
         const s = this.openS;
         if (!s) return;
-        const coal = Math.min(n, this.inv.count("coal")), wood = Math.min(n, this.inv.count("wood"));
+        // (a chosen kind: only that; otherwise coal first, then wood)
+        const coal = kind === "wood" ? 0 : Math.min(n, this.inv.count("coal")), wood = kind === "coal" ? 0 : Math.min(n, this.inv.count("wood"));
+        if (kind && coal <= 0 && wood <= 0) { this.hud.message(`You have no ${kind}`); this.sfx.denied(); return; }
         if (coal <= 0 && wood <= 0) { this.hud.message("You need wood or coal"); this.sfx.denied(); return; }
         if (s.fuel >= MAX_FUEL - 1) { this.hud.message("It is full of fuel"); return; }
         if (coal > 0) { this.inv.remove("coal", coal); this.structures.addFuel(s, coal * COAL_BURN); }

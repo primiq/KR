@@ -2,7 +2,7 @@ import { ImageProcessingConfiguration, Matrix, Mesh, MeshBuilder, Quaternion, ty
 import type { GfxCustom, Quality } from "../core/quality";
 import { AdvancedDynamicTexture, Button, Control, Grid, Image, Rectangle, ScrollViewer, StackPanel, TextBlock } from "@babylonjs/gui";
 import type { Game } from "../game/game";
-import { ITEMS, type ItemId } from "../game/items";
+import { ARMOR_SLOT_LABEL, ARMOR_SLOTS, ITEMS, type ItemId } from "../game/items";
 import { canAfford, costHave, costLabel, GROUP_LABEL, RECIPES } from "../game/recipes";
 import { PHRASES } from "../net/chat";
 
@@ -95,6 +95,13 @@ export class VRPanel {
     private noteList: { t: string; at: number }[] = [];
     private grid: ReturnType<typeof slotControl>[] = [];
     private cont: ReturnType<typeof slotControl>[] = [];
+    /** what you wear (head, chest, legs), and how much it protects you */
+    private gear: ReturnType<typeof slotControl>[] = [];
+    private gearPct!: TextBlock;
+    /** the open furnace's / campfire's fuel: what is left, and +1 wood / +1 coal */
+    private fuelRow!: StackPanel;
+    private fuelText!: TextBlock;
+    private fuelBtns: { kind: "wood" | "coal"; btn: Button }[] = [];
     private contBox: StackPanel;
     private contTitle: TextBlock;
     private detail: TextBlock;
@@ -310,7 +317,7 @@ export class VRPanel {
 
         this.bagPane = new Grid("bag");
         this.bagPane.top = "130px";
-        this.bagPane.height = "980px";
+        this.bagPane.height = "992px";
         this.bagPane.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
         this.bagPane.addColumnDefinition(0.62);
         this.bagPane.addColumnDefinition(0.38);
@@ -321,7 +328,7 @@ export class VRPanel {
         this.bagPane.addControl(left, 0, 0);
         this.contBox = new StackPanel("cont");
         this.contTitle = new TextBlock("ctitle", "");
-        this.contTitle.height = "60px";
+        this.contTitle.height = "50px";
         this.contTitle.color = SEL;
         this.contTitle.fontSize = 36;
         this.contTitle.fontWeight = "bold";
@@ -339,9 +346,28 @@ export class VRPanel {
             this.cont.push(s);
         }
         this.contBox.addControl(contRow);
+        // a furnace or campfire burns fuel: how much is left, and wood or coal from your bag to feed it
+        const fuelRow = (this.fuelRow = new StackPanel("fuelRow"));
+        fuelRow.isVertical = false;
+        fuelRow.height = "68px";
+        this.fuelText = new TextBlock("fuelText", "");
+        this.fuelText.width = "380px";
+        this.fuelText.color = TXT;
+        this.fuelText.fontSize = 32;
+        this.fuelText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+        fuelRow.addControl(this.fuelText);
+        for (const kind of ["wood", "coal"] as const) {
+            const btn = Button.CreateSimpleButton(`fuel_${kind}`, `+1 ${kind === "wood" ? "Wood" : "Coal"}`);
+            btn.width = "220px"; btn.height = "60px"; btn.paddingLeft = "10px"; btn.paddingRight = "10px";
+            btn.cornerRadius = 30; btn.thickness = 0; btn.background = ACC; btn.color = "#ffffff"; btn.fontSize = 30; btn.fontWeight = "bold";
+            btn.onPointerUpObservable.add(() => { game.hud.onFuel?.(1, kind); this.dirty = true; });
+            fuelRow.addControl(btn);
+            this.fuelBtns.push({ kind, btn });
+        }
+        this.contBox.addControl(fuelRow);
         left.addControl(this.contBox);
         const bagHead = new TextBlock("baghead", "Backpack");
-        bagHead.height = "64px";
+        bagHead.height = "54px";
         bagHead.color = SEL;
         bagHead.fontSize = 36;
         bagHead.fontWeight = "bold";
@@ -395,7 +421,7 @@ export class VRPanel {
         this.detailName.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
         right.addControl(this.detailName);
         this.detail = new TextBlock("detail", "Point at an item and pull the trigger.");
-        this.detail.height = "430px";
+        this.detail.height = "290px";
         this.detail.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
         this.detail.color = TXT;
         this.detail.fontSize = 34;
@@ -403,6 +429,31 @@ export class VRPanel {
         this.detail.textWrapping = true;
         this.detail.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
         right.addControl(this.detail);
+        // what you wear: head, chest, legs (pick armour in the bag and press Wear, or pick it then a slot here; pick a worn
+        // piece to take it off)
+        const gearHead = new TextBlock("gearHead", "Gear");
+        gearHead.height = "50px"; gearHead.color = SEL; gearHead.fontSize = 34; gearHead.fontWeight = "bold";
+        gearHead.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+        right.addControl(gearHead);
+        const gearRow = new StackPanel("gearRow");
+        gearRow.isVertical = false; gearRow.height = "132px"; gearRow.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+        for (let i = 0; i < ARMOR_SLOTS.length; i++) {
+            const box = new StackPanel(`gearBox${i}`);
+            box.width = "150px";
+            const sl = slotControl(`gear${i}`, 100);
+            sl.root.onPointerUpObservable.add(() => { game.hud.slotClick(2, i); this.dirty = true; });
+            box.addControl(sl.root);
+            const lab = new TextBlock(`gearLab${i}`, ARMOR_SLOT_LABEL[ARMOR_SLOTS[i]]);
+            lab.height = "30px"; lab.color = MUTED; lab.fontSize = 24;
+            box.addControl(lab);
+            gearRow.addControl(box);
+            this.gear.push(sl);
+        }
+        right.addControl(gearRow);
+        this.gearPct = new TextBlock("gearPct", "");
+        this.gearPct.height = "40px"; this.gearPct.color = MUTED; this.gearPct.fontSize = 26;
+        this.gearPct.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+        right.addControl(this.gearPct);
         const act = (name: string, fn: () => void) => {
             const a = Button.CreateSimpleButton(name, name);
             a.height = "104px";
@@ -571,7 +622,7 @@ export class VRPanel {
     }
 
     private setExtra(t: "map" | "chat" | null) {
-        this.extra = t; this.menuOpen = false; this.mapT = 0; this.dirty = true;
+        this.extra = t; this.menuOpen = false; this.gfxOpen = false; this.mapT = 0; this.dirty = true;
         this.game.map.boost = t === "map";
     }
 
@@ -811,7 +862,17 @@ export class VRPanel {
         // (flat: the plane stays hidden, the overlay shows the board)
         this.board.isVisible = !this.flat;
         this.boardRoot.isVisible = !this.flat || open;
-        if (this.flatUI) this.flatUI.layer!.isEnabled = this.flat && open;
+        if (this.flatUI) {
+            this.flatUI.layer!.isEnabled = this.flat && open;
+            // the size: to fit a small screen (a little margin round it), but no bigger than about 1000 screen pixels across
+            // on a large one (filling a big monitor it was huge)
+            if (this.flat && open) {
+                const eng = this.scene.getEngine(), W = eng.getRenderWidth(), H = eng.getRenderHeight(), dpr = window.devicePixelRatio || 1;
+                const sc = Math.min((0.94 * W) / 1650, (0.92 * H) / 1125, (1000 * dpr) / (1650 * eng.getHardwareScalingLevel()));
+                const iw = W / sc, ih = H / sc;
+                if (Math.abs(this.flatUI.idealWidth - iw) > 1 || Math.abs(this.flatUI.idealHeight - ih) > 1) { this.flatUI.idealWidth = iw; this.flatUI.idealHeight = ih; }
+            }
+        }
         if (open !== this.board.isEnabled()) {
             if (open) this.placeBoard();
             // (shut: next time it opens on the bag, unless it is opened on another tab on purpose)
@@ -834,6 +895,13 @@ export class VRPanel {
             const who = this.menuActions?.players?.() ?? null;
             const t = who ?? "Playing solo: host a room from the Multiplayer tab (or join a friend's) to chat.";
             if (this.chatPlayers.text !== t) this.chatPlayers.text = t;
+        }
+        // the fuel left in an open furnace or campfire counts down while you watch
+        if (open && hud.contInfo?.station) {
+            const f = hud.fuel, m = Math.floor(f.sec / 60), sec = Math.floor(f.sec % 60);
+            const t = f.sec > 0 ? `${f.lit ? "🔥 " : "Fuel "}${m}:${String(sec).padStart(2, "0")}${f.working ? " · working" : ""}` : "No fuel";
+            if (this.fuelText.text !== t) this.fuelText.text = t;
+            for (const b of this.fuelBtns) { const have = g.inv.count(b.kind) > 0; b.btn.alpha = have ? 1 : 0.4; b.btn.isEnabled = have; }
         }
         // (a craft's highlight coming on and going off redraws the board)
         const jcNow = !!hud.justCrafted && performance.now() < hud.justCrafted.until;
@@ -871,6 +939,7 @@ export class VRPanel {
         }
         const c = hud.cont;
         this.contBox.isVisible = !!c;
+        this.fuelRow.isVisible = !!hud.contInfo?.station;
         if (c) {
             this.contTitle.text = hud.contInfo?.title ?? "";
             for (let i = 0; i < this.cont.length; i++) {
@@ -895,12 +964,24 @@ export class VRPanel {
         }
         const own = !!pick && pick.c === 0 && !!ps;
         const def = ps ? ITEMS[ps.id] : null;
+        // the gear
+        {
+            let pct = 0;
+            for (let i = 0; i < this.gear.length; i++) {
+                const it = g.worn.slots[i];
+                this.fill(this.gear[i], it?.id, 0);
+                this.gear[i].root.background = pick && pick.c === 2 && pick.i === i ? "#ffd16655" : SLOT;
+                if (it) pct += ITEMS[it.id].armor?.def ?? 0;
+            }
+            this.gearPct.text = pct ? `${Math.min(75, pct)}% protection` : "Nothing worn";
+        }
         this.actions[0].isVisible = own && (def?.kind === "food" || def?.kind === "armor");
+        if (this.actions[0].textBlock) this.actions[0].textBlock.text = def?.kind === "armor" ? "Wear" : "Eat";
         this.actions[1].isVisible = own && (ps?.count ?? 0) > 1;
         this.actions[2].isVisible = own;
-        this.actions[3].isVisible = !!ps && !!c;
+        this.actions[3].isVisible = !!ps && (!!c || pick?.c === 2);
         const mv = this.actions[3].textBlock;
-        if (mv) mv.text = pick?.c === 1 ? "Take" : `Move to ${hud.contInfo?.title ?? "box"}`;
+        if (mv) mv.text = pick?.c === 2 ? "Take off" : pick?.c === 1 ? "Take" : `Move to ${hud.contInfo?.title ?? "box"}`;
     }
 
     private fill(s: ReturnType<typeof slotControl>, id: ItemId | undefined, count: number) {

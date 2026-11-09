@@ -296,7 +296,8 @@ function fillKit(kit: Kit, kind: PieceKind, depth = 0.6, pile?: (lx: number, lz:
             box(1.3, WALL_H - 2.0, THICK, 0, (WALL_H + 2.0) / 2, 0, WALL);
             post(-CELL / 2 + 0.11); post(CELL / 2 - 0.11);
             box(1.5, 0.12, THICK + 0.12, 0, 1.0, 0, "beam"); box(1.5, 0.12, THICK + 0.12, 0, 2.0, 0, "beam");
-            box(0.1, 0.88, THICK + 0.08, -0.7, 1.5, 0, "beam"); box(0.1, 0.88, THICK + 0.08, 0.7, 1.5, 0, "beam");
+            // (the jambs stand 5 mm proud of the planks' cut ends: flush, the two faces shared a plane and flickered)
+            box(0.11, 0.88, THICK + 0.08, -0.7, 1.5, 0, "beam"); box(0.11, 0.88, THICK + 0.08, 0.7, 1.5, 0, "beam");
             box(CELL - 0.004, 0.2, THICK + 0.18, 0, WALL_H - 0.1, 0, "beam");
             if (stone) box(CELL - 0.004, 0.14, THICK + 0.1, 0, 0.07, 0, "beam");
             // the two glazed casements, each hinged on its outer side

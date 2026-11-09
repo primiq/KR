@@ -34,7 +34,9 @@ export class Hud {
   onRespawn: (() => void) | null = null;
   onClose: (() => void) | null = null;
   onCraft: ((r: Recipe) => void) | null = null;
-  onFuel: ((n: number) => void) | null = null;
+  onFuel: ((n: number, kind?: 'wood' | 'coal') => void) | null = null;
+  /** the open furnace / campfire's fuel (for the menu board): seconds left, full, burning, working */
+  fuel = { sec: 0, max: 1, lit: false, working: false };
   onChip: (() => void) | null = null;
   onXfer: ((fromContainer: boolean, slot: number) => void) | null = null;
   tab: 'bag' | 'craft' = 'bag';
@@ -332,6 +334,7 @@ export class Hud {
   /** Fuel row of the open furnace/campfire. */
   setFuel(seconds: number, max: number, wood: number, lit: boolean, working: boolean) {
     if (!this.cont || !this.contStation) return;
+    this.fuel.sec = seconds; this.fuel.max = max; this.fuel.lit = lit; this.fuel.working = working;
     $('fuel-fill').style.width = `${Math.min(100, (seconds / max) * 100)}%`;
     const m = Math.floor(seconds / 60), sec = Math.floor(seconds % 60);
     $('fuel-text').textContent = seconds > 0 ? `${lit ? '🔥 ' : ''}${m}:${String(sec).padStart(2, '0')}${working ? ' · working' : ''}` : 'Out of fuel';

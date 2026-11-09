@@ -37,6 +37,8 @@ import { POOL_GLSL, POOL_RECTS, poolRectsTexture } from "../game/building";
 
 /** the trodden-sand window (m), its texture size, the fine grid's size (m) and spacing (m) */
 const WIN = 32, DEF_N = 512, FINE = 20, FINE_STEP = 0.125;
+/** the dug tiles: 16 m square, a vertex every half metre (and overlapping their neighbours a little, so no seam shows) */
+const TILE = 16, TILE_N = (EDIT_HALF * 2) / TILE, TILE_STEP = 0.5, TILE_PAD = 0.25;
 /** the grass map's size (cells across the oasis square) */
 const MASK_N = 512;
 const GN1 = new Noise2D(5151), GN2 = new Noise2D(6262), GN4 = new Noise2D(7373);
@@ -152,6 +154,15 @@ export class Desert {
     private wetTex!: RawTexture;
     private greenTex!: RawTexture;
     private maskTex!: RawTexture;
+    /**
+     * The dug and heaped sand, kept in shape however far off you go: the coarse grid's rows are metres apart out there and a
+     * mound fell between them. The oasis square is cut into 16 m tiles; each one that has been dug or heaped gets its own
+     * half-metre grid (all of them in one mesh), and the coarse grid leaves those tiles to it.
+     */
+    private tiles = new Uint8Array(TILE_N * TILE_N);
+    private tilesTex!: RawTexture;
+    private tileMesh: Mesh | null = null;
+    private tileMat: PBRCustomMaterial | null = null;
     /** where grass grows (0..255, 50 cm cells over the oasis square): the ground's green and the grass blades both read it */
     private mask = new Uint8Array(MASK_N * MASK_N);
     private grassTex!: Texture;
@@ -188,7 +199,8 @@ export class Desert {
         this.wetTex = new RawTexture(wet.map((v) => v * 255), EDIT_N, EDIT_N, Constants.TEXTUREFORMAT_R, scene, false, false, Texture.BILINEAR_SAMPLINGMODE, Constants.TEXTURETYPE_UNSIGNED_BYTE);
         this.greenTex = new RawTexture(green.slice(), GREEN_N, GREEN_N, Constants.TEXTUREFORMAT_R, scene, false, false, Texture.BILINEAR_SAMPLINGMODE, Constants.TEXTURETYPE_UNSIGNED_BYTE);
         this.maskTex = new RawTexture(this.mask, MASK_N, MASK_N, Constants.TEXTUREFORMAT_R, scene, false, false, Texture.BILINEAR_SAMPLINGMODE, Constants.TEXTURETYPE_UNSIGNED_BYTE);
-        for (const t of [this.digTex, this.wetTex, this.greenTex, this.maskTex]) t.wrapU = t.wrapV = Texture.CLAMP_ADDRESSMODE;
+        this.tilesTex = new RawTexture(this.tiles, TILE_N, TILE_N, Constants.TEXTUREFORMAT_R, scene, false, false, Texture.NEAREST_SAMPLINGMODE, Constants.TEXTURETYPE_UNSIGNED_BYTE);
+        for (const t of [this.digTex, this.wetTex, this.greenTex, this.maskTex, this.tilesTex]) t.wrapU = t.wrapV = Texture.CLAMP_ADDRESSMODE;
         this.remask(EDIT_X0, EDIT_Z0, EDIT_X0 + EDIT_HALF * 2, EDIT_Z0 + EDIT_HALF * 2);
         this.works.digDirty = this.works.wetDirty = null; this.works.greenDirty = false;
 
@@ -223,6 +235,7 @@ export class Desert {
         m.AddUniform("dWet", "sampler2D", null as never);
         m.AddUniform("dGreen", "sampler2D", null as never);
         m.AddUniform("dMask", "sampler2D", null as never);
+        m.AddUniform("dTiles", "sampler2D", null as never);   // which 16 m tiles of the oasis square have been dug or heaped
         m.AddUniform("dGrassTex", "sampler2D", null as never);
         m.AddUniform("poolTex", "sampler2D", null as never);
         m.AddUniform("poolN", "float", 0);
@@ -258,7 +271,7 @@ float dOffset(vec2 w) { vec4 s = dDefAt(w); return s.g - s.r; }
         m.Vertex_Definitions(FIELD_GLSL);
         m.Vertex_Before_PositionUpdated(`
             vec2 dW = positionUpdated.xz + dOff;
-            positionUpdated.y = dFieldAt(dW) + dDigAt(dW) + (dWin.w > 0.5 ? dOffset(dW) : 0.0);
+            positionUpdated.y = dFieldAt(dW) + dDigAt(dW) + (abs(dWin.w - 1.0) < 0.5 ? dOffset(dW) : 0.0);
         `);
         m.Vertex_Before_NormalUpdated(`
             {
@@ -274,8 +287,9 @@ float dOffset(vec2 w) { vec4 s = dDefAt(w); return s.g - s.r; }
             vec3 wp = vPositionW;
             // (no sand inside a pool's basin)
             if (poolN > 0.5 && inPool(wp.xyz)) discard;
-            // the coarse grid leaves a hole where the fine one is
-            if (dWin.w < 0.5 && all(lessThan(abs(wp.xz - dFine.xy), vec2(dFine.z - 0.15)))) discard;
+            // the coarse grid (and the dug tiles' grid) leave a hole where the fine one is; the coarse one where the dug tiles are
+            if (abs(dWin.w - 1.0) > 0.5 && all(lessThan(abs(wp.xz - dFine.xy), vec2(dFine.z - 0.15)))) discard;
+            if (dWin.w < 0.5) { vec2 tu = dEditUV(wp.xz); if (dInEdit(tu) && texture2D(dTiles, tu).r > 0.5) discard; }
             // the dug and heaped sand and the footprints, shaped per pixel (sharper than either grid can show)
             vec2 eu = dEditUV(wp.xz);
             if (dInEdit(eu)) {
@@ -361,8 +375,9 @@ ${this.lite ? "" : `            wetN = max(wetN, 0.6 * max(max(dWetAt(wp.xz + ve
         `);
         m.onBindObservable.add((mesh) => {
             const e = m.getEffect(); if (!e) return;
-            const fine = mesh === this.fine;
+            const fine = mesh === this.fine, tiled = mesh === this.tileMesh;
             this.bindField(e);
+            e.setTexture("dTiles", this.tilesTex);
             e.setTexture("dDef", this.def[this.cur]);
             e.setTexture("dWet", this.wetTex);
             e.setTexture("dGreen", this.greenTex);
@@ -370,11 +385,12 @@ ${this.lite ? "" : `            wetN = max(wetN, 0.6 * max(max(dWetAt(wp.xz + ve
             e.setTexture("dGrassTex", this.grassTex);
             e.setTexture("poolTex", poolRectsTexture(this.scene));
             e.setFloat("poolN", POOL_RECTS.n);
-            e.setFloat4("dWin", this.origin.x, this.origin.z, WIN, fine ? 1 : 0);
+            e.setFloat4("dWin", this.origin.x, this.origin.z, WIN, fine ? 1 : tiled ? 2 : 0);
             e.setFloat4("dFine", this.fine.position.x, this.fine.position.z, FINE / 2, this.time);
             e.setFloat4("dEdit", EDIT_X0, EDIT_Z0, EDIT_HALF * 2, this.night);
             const s = this.sunDir(); e.setFloat3("dSun", s.x, s.y, s.z);
-            const g = fine ? this.fine : this.coarse; e.setFloat2("dOff", g.position.x, g.position.z);
+            const g = fine ? this.fine : this.coarse;
+            if (tiled) e.setFloat2("dOff", 0, 0); else e.setFloat2("dOff", g.position.x, g.position.z);
         });
 
         // the coarse grid: rows spaced wider and wider out to ~1.5 km (positions are offsets from where you are)
@@ -385,6 +401,8 @@ ${this.lite ? "" : `            wetN = max(wetN, 0.6 * max(max(dWetAt(wp.xz + ve
         const F = Math.round(FINE / FINE_STEP);
         this.fine = this.grid("desertFine", F, (i) => -FINE / 2 + i * FINE_STEP);
         for (const g of [this.coarse, this.fine]) { g.material = m; g.receiveShadows = true; g.isPickable = false; g.alwaysSelectAsActiveMesh = true; g.metadata = { keepUnderground: true, desert: true }; }
+        this.tileMat = m;
+        this.retile(0, 0, TILE_N - 1, TILE_N - 1);
         // ---- the lawn: a dense field of tiny grass blades, all placed on the GPU
         this.lawn(FIELD_GLSL);
 
@@ -539,6 +557,41 @@ varying float vGV;
     }
 
     /** a grid of (n+1)^2 points at offsets `at(i)` in x and z (y comes from the shader) */
+    /** which tiles (in this range) have been dug or heaped: when that changes, their grid is rebuilt */
+    private retile(ti0: number, tj0: number, ti1: number, tj1: number) {
+        const per = EDIT_N / TILE_N;
+        let changed = false;
+        for (let tj = Math.max(0, tj0); tj <= Math.min(TILE_N - 1, tj1); tj++) for (let ti = Math.max(0, ti0); ti <= Math.min(TILE_N - 1, ti1); ti++) {
+            let on = 0;
+            for (let j = tj * per; j < (tj + 1) * per && !on; j++) for (let i = ti * per; i < (ti + 1) * per; i++) if (Math.abs(this.offsetAt(j * EDIT_N + i)) > 0.02) { on = 255; break; }
+            if (this.tiles[tj * TILE_N + ti] !== on) { this.tiles[tj * TILE_N + ti] = on; changed = true; }
+        }
+        if (!changed && this.tileMesh) return;
+        this.tilesTex.update(this.tiles);
+        // the grid: every dug tile, in world coordinates (the material's offset is zero for it)
+        const n = Math.round(TILE / TILE_STEP) + 2, list: number[] = [];
+        for (let k = 0; k < this.tiles.length; k++) if (this.tiles[k]) list.push(k);
+        this.tileMesh?.dispose();
+        this.tileMesh = null;
+        if (!list.length) return;
+        const vpt = (n + 1) * (n + 1), pos = new Float32Array(list.length * vpt * 3), nrm = new Float32Array(list.length * vpt * 3), idx = new Uint32Array(list.length * n * n * 6);
+        let o = 0;
+        list.forEach((k, t) => {
+            const x0 = EDIT_X0 + (k % TILE_N) * TILE - TILE_PAD, z0 = EDIT_Z0 + Math.floor(k / TILE_N) * TILE - TILE_PAD, sp = (TILE + 2 * TILE_PAD) / n, base = t * vpt;
+            for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) { const v = (base + j * (n + 1) + i) * 3; pos[v] = x0 + i * sp; pos[v + 2] = z0 + j * sp; nrm[v + 1] = 1; }
+            for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+                const a = base + j * (n + 1) + i, b = a + 1, c = a + n + 1, d = c + 1;
+                idx[o++] = a; idx[o++] = b; idx[o++] = c; idx[o++] = b; idx[o++] = d; idx[o++] = c;
+            }
+        });
+        const mesh = new Mesh("desertDug", this.scene), vd = new VertexData();
+        vd.positions = pos; vd.indices = idx; vd.normals = nrm; vd.applyToMesh(mesh);
+        mesh.material = this.tileMat; mesh.receiveShadows = true; mesh.isPickable = false; mesh.alwaysSelectAsActiveMesh = true;
+        mesh.metadata = { keepUnderground: true, desert: true };
+        mesh.setEnabled(this.shown);
+        this.tileMesh = mesh;
+    }
+
     private grid(name: string, n: number, at: (i: number) => number) {
         const pos = new Float32Array((n + 1) * (n + 1) * 3), idx = new Uint32Array(n * n * 6), nrm = new Float32Array((n + 1) * (n + 1) * 3);
         for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) { const k = (j * (n + 1) + i) * 3; pos[k] = at(i); pos[k + 2] = at(j); nrm[k + 1] = 1; }
@@ -647,7 +700,8 @@ varying float vGV;
         for (const x of [-1.1, 1.1]) this.colliders.add({ x: ARCH.x + x, z: ARCH.z, r: 0.42 });
     }
 
-    private setVisible(v: boolean) { for (const t of this.things) t.setEnabled(v); if (this.puffs) this.puffs.emitRate = 0; }
+    private setVisible(v: boolean) { this.shown = v; for (const t of this.things) t.setEnabled(v); this.tileMesh?.setEnabled(v); if (this.puffs) this.puffs.emitRate = 0; }
+    private shown = false;
 
     /** looking at the arch (to go back to the secret room)? */
     pickArch(eye: { x: number; y: number; z: number }, dir: { x: number; y: number; z: number }, reach: number): number | null {
@@ -779,6 +833,7 @@ varying float vGV;
         if (w.digDirty) {
             const r = w.digDirty, c = EDIT_HALF * 2 / EDIT_N;
             sub(this.digTex, r, (k) => ToHalfFloat(this.offsetAt(k)), true); w.digDirty = null;
+            { const per = EDIT_N / TILE_N; this.retile(Math.floor(r.i0 / per), Math.floor(r.j0 / per), Math.floor(r.i1 / per), Math.floor(r.j1 / per)); }
             this.remask(EDIT_X0 + r.i0 * c - 0.5, EDIT_Z0 + r.j0 * c - 0.5, EDIT_X0 + (r.i1 + 1) * c + 0.5, EDIT_Z0 + (r.j1 + 1) * c + 0.5);
         }
         if (w.wetDirty) {

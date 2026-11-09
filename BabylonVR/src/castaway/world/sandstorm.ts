@@ -1,5 +1,5 @@
 // The desert's sandstorms. Every couple of days or so (never sooner than a day and a half after the last, then more likely
-// every hour) a storm blows up over the whole desert for three to five hours. Out in it you can see five or six metres:
+// every hour) a storm blows up over the whole desert for about half a minute. Out in it you can see five or six metres:
 // the air is thick with sand, the wind roars, streaks of sand blow past, and you wade against it at half speed. The only
 // shelter is a building: stand where walls (and a roof) are round you and the dust stops at them, the wind drops to a
 // moan outside, and you can see and move freely again.
@@ -9,11 +9,13 @@ import { Color4, DynamicTexture, Mesh, MeshBuilder, ParticleSystem, type Scene, 
 /** the wind the dunes were shaped by: the storm blows the same way */
 const WIND = 0.35;
 const SINCE_MIN = 36, CHANCE = 0.12;
+/** how long a storm blows at full strength (s): with its few seconds of building up and dying down, about half a minute */
+const STORM_SECONDS = 22;
 
 export class Sandstorm {
     /** is a storm blowing (as the host says) */
     on = false;
-    /** hours of it left (host) */
+    /** seconds of it left (host) */
     left = 0;
     /** 0..1: how hard it blows now (eases in and out) */
     k = 0;
@@ -79,19 +81,21 @@ export class Sandstorm {
             if (dh > 0 && dh < 6 && host) {
                 const before = Math.floor(this.since);
                 this.since += dh;
-                if (this.on) {
-                    this.left -= dh;
-                    if (this.left <= 0) { this.on = false; this.since = 0; this.onChange?.(false, 0); this.onTurn?.(false); }
-                } else if (this.since >= SINCE_MIN && Math.floor(this.since) !== before && Math.random() < CHANCE) {
-                    this.on = true; this.left = 3 + Math.random() * 2; this.onChange?.(true, this.left); this.onTurn?.(true);
+                if (!this.on && this.since >= SINCE_MIN && Math.floor(this.since) !== before && Math.random() < CHANCE) {
+                    this.on = true; this.left = STORM_SECONDS; this.onChange?.(true, this.left); this.onTurn?.(true);
                 }
             }
         }
         this.lastHour = hour;
+        // (it blows for real seconds, not game hours: about half a minute with its rise and fall)
+        if (host && this.on) {
+            this.left -= dt;
+            if (this.left <= 0) { this.on = false; this.since = 0; this.left = 0; this.onChange?.(false, 0); this.onTurn?.(false); }
+        }
         // (the host says so again now and then, for anybody who joined meanwhile)
         this.beat -= dt;
         if (host && this.on && this.beat <= 0) { this.beat = 10; this.onChange?.(true, this.left); }
-        this.k += ((this.on ? 1 : 0) - this.k) * Math.min(1, dt / (this.on ? 12 : 8));
+        this.k += ((this.on ? 1 : 0) - this.k) * Math.min(1, dt / (this.on ? 3 : 2.5));
         if (!this.on && this.k < 0.002) this.k = 0;
         this.shelter += ((sheltered ? 1 : 0) - this.shelter) * Math.min(1, dt * 2.5);
         const k = inDesert ? this.k : 0;

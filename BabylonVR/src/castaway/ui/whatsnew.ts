@@ -6,6 +6,17 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-11-12", title: "Fuel, gear and fixes",
+        items: [
+            "Furnaces and campfires show their fuel in the menu, with +1 Wood and +1 Coal buttons to feed them from your bag.",
+            "Gear slots in the bag: see your helmet, chest and legs armour and how much they protect you; wear or take off from there.",
+            "Torches, lanterns and fires stay lit and glowing from far away: you can see your house at night across the island.",
+            "Desert: sand you heap or dig keeps its shape however far you walk away. Sandstorms now last about half a minute.",
+            "The parachute and its readout go away when you land. The menu is a sensible size on big screens, and the Graphics page no longer shows over the Map.",
+            "Windows: no more flicker where the frame meets the wall.",
+        ],
+    },
+    {
         date: "2026-11-11", title: "Smoother, and a clearer menu",
         items: [
             "Runs much faster on high settings: the sea's reflection and the shadows no longer draw what they can't see, and far less work is redone every frame.",
