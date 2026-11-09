@@ -10,11 +10,11 @@ export type ItemId =
   | 'building_plan' | 'torch' | 'sapling' | 'picture_frame' | 'flower_pot' | 'rug' | 'lantern' | 'door'
   | 'leather' | 'leather_cap' | 'leather_vest' | 'leather_pants' | 'metal_helmet' | 'metal_chestplate' | 'metal_greaves'
   | 'diamond_helmet' | 'diamond_chestplate' | 'diamond_greaves' | 'boat' | 'raft' | 'submarine' | 'table' | 'cat_bed' | 'lounger' | 'drum' | 'drumsticks'
-  | 'meat_stick' | 'roast_stick' | 'guitar' | 'sand' | 'compass';
+  | 'meat_stick' | 'roast_stick' | 'guitar' | 'sand' | 'compass' | 'flag';
 export type ArmorSlot = 'head' | 'chest' | 'legs';
 export const ARMOR_SLOTS: ArmorSlot[] = ['head', 'chest', 'legs'];
 export const ARMOR_SLOT_LABEL: Record<ArmorSlot, string> = { head: 'Head', chest: 'Chest', legs: 'Legs' };
-export type PlaceKind = 'campfire' | 'furnace' | 'workbench' | 'bed' | 'sleeping_bag' | 'box' | 'torch' | 'flower_pot' | 'rug' | 'lantern' | 'table' | 'cat_bed' | 'lounger' | 'drum' | 'compass';
+export type PlaceKind = 'campfire' | 'furnace' | 'workbench' | 'bed' | 'sleeping_bag' | 'box' | 'torch' | 'flower_pot' | 'rug' | 'lantern' | 'table' | 'cat_bed' | 'lounger' | 'drum' | 'compass' | 'flag';
 export type GatherKind = 'wood' | 'stone' | 'ore';
 export type ItemKind = 'resource' | 'tool' | 'food' | 'placeable' | 'plan' | 'armor' | 'seed';
 
@@ -295,6 +295,11 @@ export const ITEMS = {
     id: 'lantern', name: 'Lantern', stack: 5, kind: 'placeable', place: 'lantern',
     desc: 'A warm light that never goes out. Placed under a roof or an upper floor it hangs from the ceiling on a chain; anywhere else it hangs from its own hook post.',
     icon: svg('<path d="M16 3v4" stroke="#3d4348" stroke-width="2"/><path d="M10 11l6-4 6 4z" fill="#3d4348"/><rect x="11" y="11" width="10" height="13" fill="#ffc46a"/><path d="M11 11v13M21 11v13M16 11v13" stroke="#3d4348" stroke-width="1.6"/><rect x="10" y="24" width="12" height="3" fill="#3d4348"/>'),
+  },
+  flag: {
+    id: 'flag', name: 'Flag', stack: 3, kind: 'placeable', place: 'flag',
+    desc: 'A tall pole flying a white flag. Set it up anywhere, on a raft or a boat too, and press E on it to paint your own flag: everybody sees it. Sail away under your own colours!',
+    icon: svg('<path d="M8 3v27" stroke="#8a5a30" stroke-width="2.4"/><circle cx="8" cy="3" r="2" fill="#d9a63a"/><path d="M9 5c5-2 9 2 15 0v11c-6 2-10-2-15 0z" fill="#f4f1e6" stroke="#b9b4a6"/>'),
   },
   compass: {
     id: 'compass', name: 'Compass', stack: 1, kind: 'placeable', place: 'compass',

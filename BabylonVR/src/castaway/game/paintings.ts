@@ -26,6 +26,8 @@ export interface Painting {
     group: TransformNode;
     canvas: HTMLCanvasElement;
     tex: DynamicTexture;
+    /** the paintable area's size (m), when not a framed picture's (a flag's cloth) */
+    w?: number; h?: number;
     /** on a raft's wall ("raft:<raft>:<wall>" in `wall`): where on the raft (raft space), it sails with it */
     raft?: { n: string; key: string; l: [number, number, number, number] };
 }
@@ -259,7 +261,7 @@ export class Paintings {
         if (t < 0) return null;
         const point = new Vector3(o.x + d.x * t, o.y + d.y * t, o.z + d.z * t);
         const hx = point.x - p.x, hy = point.y - p.y, hz = point.z - p.z;
-        const along = hx * Math.cos(p.yaw) - hz * Math.sin(p.yaw), W = FW - BORDER * 2, H = FH - BORDER * 2;
+        const along = hx * Math.cos(p.yaw) - hz * Math.sin(p.yaw), W = p.w ?? FW - BORDER * 2, H = p.h ?? FH - BORDER * 2;
         const px = (along / W + 0.5) * CANVAS_W, py = (0.5 - hy / H) * CANVAS_H;
         return { px, py, t, point, inside: px >= 0 && py >= 0 && px < CANVAS_W && py < CANVAS_H };
     }

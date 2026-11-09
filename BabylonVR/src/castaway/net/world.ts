@@ -34,6 +34,7 @@ export function captureWorld(g: Game) {
         plants: g.saplings.capture(),
         doors: g.doors.capture(),
         paintings: g.paintings.capture(),
+        flags: g.structures.captureFlags(),
         boats: g.boats.capture(),
         subs: g.subs.capture(),
         subSeats: g.subs.seatRows(),
@@ -77,6 +78,7 @@ export function applyWorld(g: Game, snap: any) {
     if (snap.plants) g.saplings.restore(snap.plants);
     if (snap.doors) g.doors.restore(snap.doors);
     if (snap.paintings) g.paintings.restore(snap.paintings);
+    if (snap.flags) g.structures.restoreFlags(snap.flags);
     if (snap.camp) g.under.camp?.importProgress(snap.camp);
 }
 

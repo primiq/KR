@@ -6,6 +6,13 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-11-17", title: "Fly your own flag",
+        items: [
+            "Craft a Flag at the workbench: a tall pole flying a white flag. Set it up anywhere, on your raft or boat too, and sail away under it.",
+            "Press E on it to paint your own flag, just like a picture (in VR, paint straight onto the cloth). Everybody sees it, and it is saved with your world.",
+        ],
+    },
+    {
         date: "2026-11-16", title: "Into the frozen north",
         items: [
             "Sail north past the islets (follow the N on your compass) and the air turns cold. First little floes of drift ice, then icebergs: sharp peaks with huge white bulks hidden under the water, and flat-topped bergs taller than a house. Steer between them, they are solid!",

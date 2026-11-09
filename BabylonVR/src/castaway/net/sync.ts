@@ -59,6 +59,7 @@ export class WorldSync {
         building.onWindow = (p, o, s) => session.sendEvent({ k: "bw", i: p.i, j: p.j, a: p.axis, L: p.L, o: o ? 1 : 0, s });
         structures.onPlace = (s) => session.sendEvent({ k: "sp", n: s.nid, t: s.kind, x: +s.x.toFixed(2), y: +s.y.toFixed(3), z: +s.z.toFixed(2), r: +s.yaw.toFixed(3) });
         structures.onRemove = (s) => session.sendEvent({ k: "sr", n: s.nid });
+        structures.onFlag = (s) => session.sendEvent({ k: "sf", n: s.nid, d: s.cloth?.data ?? "" });
 
         game.netId = id;
         game.under.onEvent = (e) => session.sendEvent(e);
@@ -221,7 +222,7 @@ export class WorldSync {
         resources.pickups.onSpawn = resources.pickups.onRemove = resources.pickups.onCount = null;
         building.onPlace = building.onRemove = building.onUpgrade = null;
         building.onWindow = null;
-        structures.onPlace = structures.onRemove = null;
+        structures.onPlace = structures.onRemove = structures.onFlag = null;
         this.game.under.onEvent = null;
         this.game.saplings.onPlant = null;
         this.game.paintings.onPlace = this.game.paintings.onRemove = this.game.paintings.onPaint = null;
@@ -361,6 +362,7 @@ export class WorldSync {
             case "dx": { const d = g.doors.at(e.key); if (d) g.doors.remove(d, true); break; }
             case "ga": g.paintings.place({ x: e.x, y: e.y, z: e.z, yaw: e.r, wall: e.w }, { nid: e.n, data: e.d, remote: true }); break;
             case "gd": { const p = g.paintings.list.find((q) => q.nid === e.n); if (p) g.paintings.remove(p, true); break; }
+            case "sf": { const s = g.structures.list.find((q) => q.nid === e.n); if (s && typeof e.d === "string") g.structures.setFlag(s, e.d, true); break; }
             case "gp": { const p = g.paintings.list.find((q) => q.nid === e.n); if (p && typeof e.d === "string") g.paintings.setData(p, e.d, true); break; }
             case "tw": if (!this.session.isHost) g.twins.importState(e.r); break;
             case "sk": if (!this.session.isHost) g.stalkers.importState(e.r); break;

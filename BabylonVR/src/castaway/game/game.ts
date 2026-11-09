@@ -4,6 +4,7 @@ import { clamp } from "../core/noise";
 import { Hud } from "../ui/hud";
 import { heightAt, SEA_R } from "../world/island";
 import { OpenSea } from "../world/opensea";
+import { clothPlane, CLOTH_H, CLOTH_W } from "./flag";
 import { ICE_Z0, inSeaWorld } from "../world/arctic";
 import { Gulls } from "../world/gulls";
 import { Penguins } from "../world/penguins";
@@ -672,6 +673,7 @@ export class Game {
     }
     private openStructure(s: Structure) {
         if (s.kind === "workbench") { this.setInventory(true, "craft"); return; }
+        if (s.kind === "flag") { this.openFlag(s); return; }
         if (s.kind === "bed" || s.kind === "sleeping_bag") { this.useBed(s); return; }
         if (s.kind === "lounger") { if (this.lounger === s) this.getUp(); else this.lieOn(s); return; }
         if (s.kind === "drum") {
@@ -724,6 +726,38 @@ export class Game {
             this.paintingNid = null;
             if (data !== null && this.paintings.list.includes(p)) { this.paintings.setData(p, data); this.sfx.place(); this.hud.message("Saved. Everybody can see your picture."); }
             else if (data !== null) this.hud.message("That picture is gone (its wall came down).");
+            this.input.uiOpen = this.hud.inventoryOpen || this.stats.dead || this.sleeping;
+            if (!this.input.uiOpen && !this.input.touch && !this.vr.active) this.input.requestLock();
+        });
+    }
+
+    /** paint a flag: the same editor as a picture's (in VR straight onto its cloth, held still and flat meanwhile) */
+    private openFlag(s: Structure) {
+        const c = s.cloth; if (!c) return;
+        const user = this.net.inUse?.(s);
+        if (user) { this.hud.message(`${user} is painting this flag`); this.sfx.denied(); return; }
+        this.paintingNid = s.nid;
+        const done = (data: string | null) => {
+            this.paintingNid = null; this.structures.stillFlag = null;
+            if (data !== null && this.structures.list.includes(s)) { this.structures.setFlag(s, data); this.sfx.place(); this.hud.message("Your flag is flying. Everybody can see it."); }
+            else if (data === null) this.structures.setFlag(s, before, true);
+        };
+        const before = c.data;
+        if (this.vr.active && this.vr.paint) {
+            // (the cloth held flat: painted like a picture on a wall, from whichever side you stand)
+            this.structures.stillFlag = s;
+            const pl = clothPlane(c), e = this.vr.eye;
+            const side = (e.x - pl.x) * pl.normal.x + (e.z - pl.z) * pl.normal.z >= 0 ? 1 : -1;
+            const yaw = Math.atan2(pl.normal.x * side, pl.normal.z * side);
+            const fake = { nid: s.nid, wall: "flag", x: pl.x, y: pl.y, z: pl.z, yaw, data: c.data, group: c.mesh as never, canvas: c.canvas, tex: c.tex, w: CLOTH_W, h: CLOTH_H } as Painting;
+            this.hud.message("Paint your flag with the right trigger (squeeze harder for a thicker line). Palette above your right hand. Right stick: size · B: undo · A: eraser.");
+            this.vr.paint(fake, done);
+            return;
+        }
+        this.input.uiOpen = true;
+        if (document.pointerLockElement) document.exitPointerLock();
+        this.painter.show("Paint your flag", c.data, (data) => {
+            done(data === null ? c.data : data);
             this.input.uiOpen = this.hud.inventoryOpen || this.stats.dead || this.sleeping;
             if (!this.input.uiOpen && !this.input.touch && !this.vr.active) this.input.requestLock();
         });
@@ -1465,6 +1499,8 @@ export class Game {
         let name = STRUCT_NAME[s.kind];
         if (s.kind === "campfire" || s.kind === "furnace") name += s.lit ? " (burning)" : "";
         if (s.kind === "drum") return this.hud.setPrompt(name, `${this.keyLabel("E")} ${this.drum.active === s ? "put the sticks down" : "take up the sticks"} &nbsp;·&nbsp; hold ${this.keyLabel("E")} pick up`, true);
+        if (s.kind === "flag") return this.hud.setPrompt(name, `${this.keyLabel("E")} paint your flag &nbsp;·&nbsp; hold ${this.keyLabel("E")} take it down`, true);
+        if (s.kind === "compass") return this.hud.setPrompt(name, `hold ${this.keyLabel("E")} pick up`, true);
         if (s.kind === "lounger") return this.hud.setPrompt(name, `${this.keyLabel("E")} ${this.lounger === s ? "get up" : "lie down"} &nbsp;·&nbsp; hold ${this.keyLabel("E")} pick up`, true);
         const tap = s.kind === "bed" || s.kind === "sleeping_bag" ? "sleep / set respawn" : s.kind === "workbench" ? "craft" : s.kind === "flower_pot" ? (s.inv?.slots[0] ? "change the flower" : "plant a flower") : "open";
         if (s.kind === "torch" || s.kind === "rug" || s.kind === "lantern" || s.kind === "table" || s.kind === "cat_bed") return this.hud.setPrompt(name, `hold ${this.keyLabel("E")} pick up`, true);
@@ -2033,6 +2069,7 @@ export class Game {
             wx.sea = this.boats.storm;
             const local = onIsland && !p.cave;
             wx.update(dt, this.vr.active ? this.vr.eye : p.eye, local, this.roofed, p.underwater);
+            this.structures.wind = wx.wind;
             this.druids.update(dt, me, onIsland && !p.cave);
             this.updateWarp(dt);
             // the water slide: walk into its ladder or its chute to get on

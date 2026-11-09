@@ -6,6 +6,7 @@ import { ghostMaterial, glow as glowMat, rockMaterial, setGhostOk, solid, woodMa
 import { heightAt } from "../world/island";
 import type { Collider, ColliderGrid } from "../world/vegetation";
 import { rayGround } from "./building";
+import { type Cloth, flagModel, makeCloth, setClothData, waveCloth } from "./flag";
 import { compassModel, type CompassParts, type Dial, makeDial, roseMaterial, updateDial } from "./compass";
 import { Inventory } from "./inventory";
 import { ITEMS, type ItemId, type PlaceKind } from "./items";
@@ -153,6 +154,7 @@ const FOOT: Record<PlaceKind, Foot> = {
   drum: { cols: [[0, 0, 0.36]], hits: [[0, 0.5, 0, 0.45]] },
   lounger: { cols: [[0, -0.5, 0.36], [0, 0.45, 0.36]], hits: [[0, 0.45, -0.5, 0.5], [0, 0.4, 0.45, 0.5]] },
   compass: { cols: [[0, 0, 0.22]], hits: [[0, 0.5, 0, 0.3], [0, 1.0, 0, 0.3]] },
+  flag: { cols: [[0, 0, 0.2]], hits: [[0, 0.9, 0, 0.3], [0, 1.8, 0, 0.3]] },
 };
 /** height of a small table's top */
 export const TABLE_TOP = 0.74;
@@ -167,7 +169,7 @@ export const F_LOUNGE = 1 << 24;
 export const DRUM_TOP = 0.86, DRUM_R = 0.33;
 const ON_TABLE: PlaceKind[] = ['flower_pot', 'cat_bed', 'lantern'];
 
-export const STRUCT_NAME: Record<PlaceKind, string> = { campfire: 'Campfire', furnace: 'Furnace', workbench: 'Workbench', bed: 'Bed', sleeping_bag: 'Sleeping Bag', box: 'Storage Box', torch: 'Torch', flower_pot: 'Clay Pot', rug: 'Rug', lantern: 'Lantern', table: 'Small Table', cat_bed: 'Cat Bed', lounger: 'Sun Lounger', drum: 'Drum', compass: 'Compass' };
+export const STRUCT_NAME: Record<PlaceKind, string> = { campfire: 'Campfire', furnace: 'Furnace', workbench: 'Workbench', bed: 'Bed', sleeping_bag: 'Sleeping Bag', box: 'Storage Box', torch: 'Torch', flower_pot: 'Clay Pot', rug: 'Rug', lantern: 'Lantern', table: 'Small Table', cat_bed: 'Cat Bed', lounger: 'Sun Lounger', drum: 'Drum', compass: 'Compass', flag: 'Flag' };
 
 
 export interface PlaceAim { ok: boolean; reason: string; x: number; y: number; z: number; yaw: number }
@@ -189,13 +191,14 @@ function mesh(g: THREE.BufferGeometry, m: THREE.Material, x = 0, y = 0, z = 0, s
 const cyl = (r0: number, r1: number, h: number, seg = 8) => new THREE.CylinderGeometry(r0, r1, h, seg);
 
 /** `hook`: lanterns only, how high above the floor they hang from (a ceiling); 0 = on their own hook post */
-function buildModel(kind: PlaceKind, shadows: boolean, hook = 0): { group: THREE.Group; flames: THREE.Mesh[]; glow: THREE.Mesh | null; dial?: CompassParts } {
+function buildModel(kind: PlaceKind, shadows: boolean, hook = 0): { group: THREE.Group; flames: THREE.Mesh[]; glow: THREE.Mesh | null; dial?: CompassParts; cloth?: THREE.Object3D } {
   const S = shared(), W = woodMaterials(), g = new THREE.Group();
   const flames: THREE.Mesh[] = [];
   let glow: THREE.Mesh | null = null;
   const add = (...o: THREE.Object3D[]) => o.forEach((x) => g.add(x));
 
   if (kind === 'compass') return { group: g, flames, glow, dial: compassModel(g, shadows) };
+  if (kind === 'flag') return { group: g, flames, glow, cloth: flagModel(g, shadows) };
   switch (kind) {
     case 'campfire': {
       for (let k = 0; k < 9; k++) {
@@ -438,6 +441,8 @@ export interface Structure {
   emberT: number;
   /** a compass's card, home bezel and screen */
   dial?: Dial;
+  /** a flag's cloth and its picture */
+  cloth?: Cloth;
   /** set down on a boat's deck: which boat, and where on it (boat-space x, y, z, turn): it sails with it */
   deck?: { n: string; l: [number, number, number, number] } | null;
 }
@@ -694,11 +699,12 @@ export class StructureManager {
       inv.accepts = (slot, id) => slot < 4 && rec.some((r) => r.from === id);
     }
     const lamp = (m.group.userData.lamp as THREE.Vector3 | undefined) ?? null;
+    const cloth = m.cloth ? makeCloth(this.scene, baked.kept.get(m.cloth)!) ?? undefined : undefined;
     const dial = m.dial ? makeDial(this.scene, baked.kept.get(m.dial.card)!, baked.kept.get(m.dial.home)!, baked.kept.get(m.dial.screen)!) : undefined;
     const s: Structure = {
       id: this.nextId++, nid: nid ?? this.freshNid(), kind, x: a.x, y: a.y, z: a.z, yaw: a.yaw, node, cols, hits, inv,
       // a new campfire is built with a few logs already burning
-      deck, dial,
+      deck, dial, cloth,
       fuel: kind === "campfire" ? 3 * WOOD_BURN.campfire : 0, lit: kind === "torch" || kind === "lantern" || kind === "campfire", prog: 0, flames, glow, lamp, phase: Math.random() * 10, emberT: 0,
     };
     if (kind === "lantern" && lamp) {
@@ -710,6 +716,22 @@ export class StructureManager {
     return s;
   }
 
+  /** (set by the game) how hard the wind blows (flags fly by it), and a flag held still while somebody paints it */
+  wind = 1;
+  stillFlag: Structure | null = null;
+  /** a flag's picture was changed here (tell the others) */
+  onFlag: ((s: Structure) => void) | null = null;
+  /** a new picture on a flag ('' = plain white) */
+  setFlag(s: Structure, data: string, remote = false) {
+    if (!s.cloth || !setClothData(s.cloth, data)) return;
+    if (!remote) this.onFlag?.(s);
+  }
+  /** every flag's picture (for the save and for players joining) */
+  captureFlags(): [string, string][] { return this.list.filter((s) => s.cloth?.data).map((s) => [s.nid, s.cloth!.data]); }
+  restoreFlags(rows: unknown) {
+    if (!Array.isArray(rows)) return;
+    for (const r of rows) if (Array.isArray(r) && typeof r[0] === "string" && typeof r[1] === "string") { const s = this.list.find((q) => q.nid === r[0]); if (s) this.setFlag(s, r[1], true); }
+  }
   /** (set by the game) the boat deck under a spot, and where a deck spot is now */
   deckSpot: ((x: number, y: number, z: number, yaw: number) => { n: string; l: [number, number, number, number] } | null) | null = null;
   deckWorld: ((n: string, l: [number, number, number, number], out: { x: number; y: number; z: number; yaw: number; q: THREE.Quaternion }) => boolean) | null = null;
@@ -725,6 +747,7 @@ export class StructureManager {
     if (above.length) this.reseat(s.x - 1, s.z - 1, s.x + 1, s.z + 1, this.ground);
     for (let k = 0; k < this.lightFor.length; k++) if (this.lightFor[k] === s) this.lightFor[k] = null;
     s.dial?.tex.dispose();
+    if (s.cloth) { s.cloth.mesh.material?.dispose(); s.cloth.tex.dispose(); }
     disposeBaked(s.node);
   }
 
@@ -799,6 +822,7 @@ export class StructureManager {
     this.fireNear = 0;
     for (const s of this.list) {
       if (s.kind === "flower_pot") { this.potFlower(s); continue; }
+      if (s.cloth) { if (Math.hypot(s.x - px, s.z - pz) < 90) waveCloth(s.cloth, t, this.wind, this.stillFlag === s); continue; }
       if (s.dial) { if (Math.hypot(s.x - px, s.z - pz) < 80) updateDial(s.dial, s.x, s.z, s.yaw, dt); continue; }
       if (s.kind === "lantern") {
         const d = Math.hypot(s.x - px, s.z - pz);
