@@ -6,6 +6,15 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-11-11", title: "Smoother, and a clearer menu",
+        items: [
+            "Runs much faster on high settings: the sea's reflection and the shadows no longer draw what they can't see, and far less work is redone every frame.",
+            "On a computer or phone the menu is a flat, bright panel on the screen, the same however you are looking.",
+            "Windows no longer flicker round their frames.",
+            "VR: other players now see your tool exactly as you hold it, pointing and tilting with your hand.",
+        ],
+    },
+    {
         date: "2026-11-10", title: "The deep",
         items: [
             "Past the reef the sea floor now drops down a wall into the abyss, about 100 m deep, where the daylight dies away to black.",

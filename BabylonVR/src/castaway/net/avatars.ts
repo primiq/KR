@@ -140,6 +140,8 @@ class Avatar {
   private arms: THREE.Object3D[];
   private head: THREE.Object3D;
   private held = new THREE.Group();
+  /** VR: the right controller's grip, as its player holds it (the tool hangs from it exactly as they see it in their hand) */
+  private vrGrip = new THREE.Group();
   private heldId = '';
   private phase = Math.random() * 6;
   private t = Math.random() * 50;
@@ -594,6 +596,7 @@ class Avatar {
   }
 
   private static readonly UP = new THREE.Vector3(0, 1, 0);
+  private static readonly XAXIS = new THREE.Vector3(1, 0, 0);
   /** the wrist's frame in the controller's: X as the controller's, the fingers (-Y) forward and a little down */
   private static readonly WRIST = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(
     new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0.35, 1).normalize(), new THREE.Vector3().crossVectors(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0.35, 1).normalize())));
@@ -706,7 +709,16 @@ class Avatar {
       if (this.fpHands) { this.R.open[i].visible = false; this.R.fist[i].visible = false; }
       else if (i === 0) { this.R.open[0].visible = true; this.R.fist[0].visible = false; }
       else { this.R.fist[1].visible = !!this.held.children[0]; this.R.open[1].visible = !this.held.children[0]; }
-      if (i === 1 && this.held.parent !== this.R.grips[1]) { this.R.grips[1].add(this.held); this.held.position.set(0, 0, 0); this.held.rotation.set(-Math.PI / 2 - 0.25, 0, 0); this.held.scale.setScalar(1); }
+      // the tool: on the controller's grip, held the very way the player sees it in their headset (vr.ts setHeld: the handle
+      // in the fist, tipped forward), so whatever they point, tilt or swing is what everybody else sees
+      if (i === 1) {
+        const par = this.head.parent;
+        if (par && this.vrGrip.parent !== par) par.add(this.vrGrip);
+        this.vrGrip.position.copy(this.vp[1]); this.vrGrip.quaternion.copy(this.vq[1]);
+        if (this.held.parent !== this.vrGrip) { this.vrGrip.add(this.held); this.held.scale.setScalar(1); }
+        this.held.position.set(0, -0.02, 0.06);
+        this.held.quaternion.setFromAxisAngle(Avatar.XAXIS, -Math.PI / 2 + 0.35);
+      }
     }
     // left-handed or missing right controller: put the tool back on the default arm
     if (!hands[1] && this.held.parent !== this.R.grips[1]) { this.R.grips[1].add(this.held); this.held.position.set(0, 0, 0); this.held.rotation.set(-Math.PI / 2 - 0.25, 0, 0); }
