@@ -27,6 +27,8 @@ import {
     VertexData,
     type AbstractMesh,
 } from "@babylonjs/core";
+/** the game is leaving the page on purpose (a reload for new graphics, joining a friend): no "Leave site?" question */
+let leaving = false;
 // (loaded up front, not lazily with the sky material, so its sun disc can be taken out below before it is first used)
 import "@babylonjs/materials/sky/sky.fragment";
 import { createSun } from "../environment";
@@ -163,7 +165,7 @@ async function main() {
         if (liveGfx?.(pickQuality(pref, custom))) return "Applied.";
         if (liveGfx) { try { sessionStorage.setItem("castaway.resume", hostingNow() ? "host" : "continue"); } catch { /* private mode */ } }
         saveBeforeReload();
-        location.reload();
+        (leaving = true, location.reload());
         return "Restarting…";
     };
 
@@ -452,6 +454,10 @@ async function main() {
     scene.activeCamera = camera;
 
     let started = false;
+
+    /** warming up before Play (the world runs, the controls do not: see prewarm); warmed: done */
+
+    let warming = false, warmed = false;
     /** the board with the tabs (Bag, Craft, Map, Chat, Multiplayer, Graphics): the menu in a headset and on every screen */
     let boardRef: VRPanel | null = null;
     const input = new Input(canvas, (locked) => {
@@ -917,7 +923,9 @@ async function main() {
         const now = performance.now();
         const dt = Math.min(0.05, (now - last) / 1000);
         last = now;
-        if (started) {
+        // (also while warming up, before Play: the world runs round you, controls off, so that everything is built and
+        //  compiled before you can move: see prewarm)
+        if (started || warming) {
             input.poll();
             if (input.timeDelta) { clock.addHours(input.timeDelta); input.timeDelta = 0; }
             clock.update(dt);
@@ -1194,7 +1202,7 @@ async function main() {
             console.error("Could not load the saved island", e);
             try { localStorage.setItem("castaway.bjs.broken", JSON.stringify(saved)); } catch { /* full */ }
             eraseSaves();
-            location.reload();
+            (leaving = true, location.reload());
             return false;
         }
     };
@@ -1210,6 +1218,8 @@ async function main() {
      */
     let settled = false;
     const settle = () => {
+        // (warmed up before Play was offered: nothing left to wait for)
+        if (warmed) settled = true;
         if (settled) { input.enabled = true; return; }
         settled = true;
         input.enabled = false;
@@ -1231,6 +1241,8 @@ async function main() {
             }
         });
     };
+    // (a tab closed by mistake, Ctrl+W while crouching forward, say, where the keys could not be kept: ask first)
+    window.addEventListener("beforeunload", (e) => { if (started && !leaving) { e.preventDefault(); e.returnValue = ""; } });
     const begin = () => {
         started = true;
         setNameLocked(true);
@@ -1276,13 +1288,45 @@ async function main() {
             }
             noSave = true;
             eraseSaves();
-            if (started) { location.reload(); return; }
+            if (started) { (leaving = true, location.reload()); return; }
             noSave = false;
         }
         begin();
     });
+    /**
+     * Before Play is offered: the game runs for real round you (your own spot, the sea's reflection, the shadows, the
+     * plants and animals near you, the open sea's islets...) behind the loading screen, with the controls off, until it
+     * draws smoothly: everything that builds or compiles on first sight does it now, not in your first seconds of play.
+     */
+    const prewarm = (then: () => void) => {
+        if (warmed) { then(); return; }
+        warming = true;
+        input.enabled = false;
+        game.sfx.init();   // (the sound is set up too; it starts on the click)
+        $("loading").classList.remove("hidden");
+        progress(1, "Getting everything ready…");
+        const t0 = performance.now();
+        let smooth = 0;
+        const recent: number[] = [];
+        const obs = scene.onAfterRenderObservable.add(() => {
+            const dt = engine.getDeltaTime(), el = performance.now() - t0;
+            // (smooth for this device: no frame much slower than its usual one, for a good while, and at least a few
+            //  seconds in so the slower things (the sky's lighting, the far plants, the sea's reflection) have come in)
+            recent.push(dt); if (recent.length > 60) recent.shift();
+            const usual = [...recent].sort((a, b) => a - b)[Math.floor(recent.length / 2)];
+            smooth = dt < Math.max(22, usual * 1.35) && dt < 120 ? smooth + 1 : 0;
+            progress(1, `Getting everything ready… ${Math.min(99, Math.round(Math.max(el / 3000, smooth / 60) * 100))}%`);
+            if ((smooth >= 60 && el > 3000) || el > 25000) {
+                scene.onAfterRenderObservable.remove(obs);
+                warmed = true;
+                $("loading").classList.add("hidden");
+                then();
+            }
+        });
+    };
     // the island is built: one more click starts it (pointer lock, fullscreen, audio and VR all need a click)
-    const ready = (wantVR: boolean, text = "Your island is ready.") => {
+    const ready = (wantVR: boolean, text = "Your island is ready.") => prewarm(() => readyNow(wantVR, text));
+    const readyNow = (wantVR: boolean, text: string) => {
         if (params.has("go")) { begin(); return; }
         $("ready-text").textContent = text;
         $("ready-vr").classList.toggle("hidden", !(wantVR && vrMode));
@@ -1315,7 +1359,7 @@ async function main() {
         try { sync?.session.close(); } catch { /* already gone */ }
         const u = new URL(location.href);
         for (const k of ["join", "go"]) u.searchParams.delete(k);
-        location.assign(u.toString());
+        leaving = true; location.assign(u.toString());
     });
 
     // ---- multiplayer
@@ -1387,7 +1431,7 @@ async function main() {
         mpIdle();
         // off a friend's island: back to the main menu, where Continue brings your own island back (your character on
         // theirs is kept for next time)
-        if (guestWorld) { noSave = true; location.reload(); return; }
+        if (guestWorld) { noSave = true; (leaving = true, location.reload()); return; }
         game.hud.message("You left the room. Your island is yours alone again.");
     };
     const attach = (session: Session, snap?: unknown) => {

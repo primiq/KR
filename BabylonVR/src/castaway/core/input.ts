@@ -105,6 +105,16 @@ export class Input {
 
   requestLock() {
     if (this.touch) { this.onLockChange(true); return; }
+    // Ctrl+W, Ctrl+T, Ctrl+N... a browser never lets a page stop those in an ordinary window (Ctrl+W, crouching
+    // forward, would close the tab). In fullscreen, Edge and Chrome let a game take the keys for itself (keyboard lock):
+    // so the game goes fullscreen and keeps the letters, the digits and Tab. (Escape stays the browser's: it still
+    // lets go of the mouse and leaves fullscreen.) Where that is not to be had, main asks before the tab closes.
+    try {
+      const nav = navigator as Navigator & { keyboard?: { lock?: (codes?: string[]) => Promise<void> } };
+      const lockKeys = () => { const codes = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'].map((c) => `Key${c}`).concat([...'0123456789'].map((d) => `Digit${d}`), ['Tab', 'Space']); nav.keyboard?.lock?.(codes).catch(() => {}); };
+      if (!document.fullscreenElement && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen({ navigationUI: 'hide' }).then(lockKeys).catch(() => {});
+      else if (document.fullscreenElement) lockKeys();
+    } catch { /* optional */ }
     // raw mouse movement where the browser has it (no pointer acceleration, no jumps), else the ordinary lock
     try {
       const c = this.canvas as HTMLCanvasElement & { requestPointerLock(o?: { unadjustedMovement?: boolean }): Promise<void> | void };

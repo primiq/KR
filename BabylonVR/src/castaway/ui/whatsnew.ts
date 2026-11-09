@@ -6,6 +6,13 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-11-22", title: "Smoother start, safer keys",
+        items: [
+            "The loading screen now waits until everything round you is built and running smoothly before it offers Play: no more stutter in your first seconds.",
+            "On a PC the game goes fullscreen when you play and keeps the keys for itself, so Ctrl+W (crouching forward) no longer closes the tab. If the tab is about to close anyway, the browser asks first.",
+        ],
+    },
+    {
         date: "2026-11-21", title: "Raft fixes",
         items: [
             "The compass on your raft is always recognised, for every player and after loading a save, so the storm past the reef can't sweep you away when you have one aboard.",
