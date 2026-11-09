@@ -406,7 +406,8 @@ export class WorldSync {
         const fx = n.kind === "stone" ? "stone" : n.kind === "ore" ? "ore" : "wood";
         const dx = hx - n.x, dz = hz - n.z, l = Math.hypot(dx, dz) || 1;
         g.resources.burst(new Vector3(n.x + (dx / l) * 0.5, n.y + (n.offs[0] ?? 1) + 0.6, n.z + (dz / l) * 0.5), fx, 8);
-        g.sfx.hit(fx);
+        // (from the rock or the tree, not in your own ears)
+        g.sfx.at(n.x, n.y + 1, n.z, () => g.sfx.hit(fx));
     }
 
     private applyStation(e: any) {

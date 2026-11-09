@@ -45,6 +45,9 @@ export class Input {
 
     window.addEventListener('keydown', (e) => {
       if (!this.enabled) return;
+      // (playing: Ctrl / Shift with the game's keys is the game's, not the browser's: no saving the page, bookmarking,
+      //  selecting all, finding... Ctrl + W closing the tab is the one a page cannot stop, so nothing in the game uses Ctrl + W)
+      if ((e.ctrlKey || e.metaKey || e.shiftKey) && document.pointerLockElement && /^(Key[A-Z]|Digit\d|Space)$/.test(e.code)) e.preventDefault();
       if (e.code === 'Tab' || e.code === 'KeyI') { e.preventDefault(); if (!e.repeat) this.onInventory?.(); return; }
       if (e.code === 'KeyN' && !e.repeat) { this.onMute?.(); return; }
       if (e.code === 'KeyM' && !e.repeat) { this.onMap?.(); return; }
@@ -230,6 +233,8 @@ export class Input {
   get wantsSprint() { return this.sprint || this.sprintToggle; }
   /** swim down (Ctrl or X; the left trigger in VR) */
   diveVR = false;
+  /** a submarine's dive: X or Q (not Ctrl, whose combinations are the browser's), the left trigger in VR */
+  get wantsSubDive() { return this.diveVR || (!this.uiOpen && (this.keys.has('KeyX') || this.keys.has('KeyQ'))); }
   get wantsDive() { return this.diveVR || (!this.uiOpen && (this.keys.has('ControlLeft') || this.keys.has('ControlRight') || this.keys.has('KeyX'))); }
 
   consumeLook() {

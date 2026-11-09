@@ -5,7 +5,7 @@
 // While the player is under water there are also a few slanting shafts of sunlight and specks drifting in the water.
 // Babylon port: the shapes are Castaway's three.js geometry, drawn as Babylon thin instances with PBR custom materials
 // (the current's sway, the depth tint and the caustics are Castaway's node-material code as GLSL).
-import { Color3, Constants, Effect, type Material, MaterialPluginBase, type MaterialDefines, Mesh, PBRMaterial, type Scene, ShaderLanguage, ShaderMaterial, type UniformBuffer, VertexBuffer, VertexData } from "@babylonjs/core";
+import { Color3, Constants, Vector4, Effect, type Material, MaterialPluginBase, type MaterialDefines, Mesh, PBRMaterial, type Scene, ShaderLanguage, ShaderMaterial, type UniformBuffer, VertexBuffer, VertexData } from "@babylonjs/core";
 import * as THREE from "three";
 import { meshFromThree } from "../render/geometry";
 import { NOISE_GLSL } from "../render/materials";
@@ -220,10 +220,33 @@ attribute vec3 position;
 uniform mat4 world;
 uniform mat4 viewProjection;
 uniform float px;
-void main() { gl_Position = viewProjection * (world * vec4(position, 1.0)); gl_PointSize = max(1.0, 0.035 * px / gl_Position.w); }`;
+uniform float dim;
+uniform vec4 lampP;   // a submarine's floodlight: where (xyz), on (w)
+uniform vec4 lampD;   // ... which way it shines
+uniform vec4 hA[4];   // the submarines' hulls: centre, yaw ...
+uniform vec4 hB[4];   // ... half sizes, on
+varying float vLit;
+void main() {
+    vec3 wp = (world * vec4(position, 1.0)).xyz;
+    // (none up in the air: a submarine's eyes can be under the waterline while it floats at the surface)
+    if (wp.y > -0.15) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; vLit = 0.0; return; }
+    // (none inside a submarine's hull)
+    for (int i = 0; i < 4; i++) {
+        if (hB[i].w < 0.5) continue;
+        vec3 d = wp - hA[i].xyz; float c = cos(hA[i].w), s = sin(hA[i].w);
+        vec3 q = vec3(d.x * c - d.z * s, d.y, d.x * s + d.z * c) / (hB[i].xyz * 1.06);
+        if (dot(q, q) < 1.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; vLit = 0.0; return; }
+    }
+    gl_Position = viewProjection * vec4(wp, 1.0); gl_PointSize = max(1.0, 0.035 * px / gl_Position.w);
+    // daylight down here (dim in the deep), and the floodlight's beam lighting up what drifts through it
+    vec3 to = wp - lampP.xyz; float dl = length(to);
+    float beam = lampP.w * smoothstep(0.78, 0.95, dot(to / max(dl, 0.001), lampD.xyz)) * (1.0 - smoothstep(4.0, 16.0, dl));
+    vLit = dim + beam;
+}`;
 Effect.ShadersStore["castawaySnowFragmentShader"] = `
 precision highp float;
-void main() { gl_FragColor = vec4(vec3(0.81, 0.94, 1.0) * 0.55, 1.0); }`;
+varying float vLit;
+void main() { gl_FragColor = vec4(vec3(0.81, 0.94, 1.0) * 0.55 * min(vLit, 1.2), 1.0); }`;
 
 // ---------------------------------------------------------------- the field
 export class Seabed {
@@ -244,6 +267,12 @@ export class Seabed {
     private snow: Mesh;
     private snowMat: ShaderMaterial;
     private snowPos: Float32Array;
+    /** (set by main) how bright the drifting specks are (daylight, dim in the deep), a submarine floodlight that lights
+     *  them up (x, y, z, dx, dy, dz, on), and the submarines' hulls (none drawn inside them; the sea's own cut-outs) */
+    snowDim = 1;
+  private lampP = new Vector4(); private lampD = new Vector4(); private hA = new Array(16).fill(0); private hB = new Array(16).fill(0);
+    lamp = new Float32Array(7);
+    hulls: number[] = new Array(32).fill(0);
 
     constructor(private readonly scene: Scene, private readonly atmo: Atmosphere, sun: () => Color3, q: { name: string; lean?: boolean }) {
         const low = q.name === "low" || !!q.lean;
@@ -290,7 +319,7 @@ export class Seabed {
         for (let i = 0; i < N * 3; i++) this.snowPos[i] = (Math.random() - 0.5) * 16;
         this.snow = new Mesh("seaSnow", scene);
         const vd = new VertexData(); vd.positions = this.snowPos; vd.indices = Uint32Array.from({ length: N }, (_, i) => i); vd.applyToMesh(this.snow, true);
-        this.snowMat = new ShaderMaterial("snowMat", scene, "castawaySnow", { attributes: [VertexBuffer.PositionKind], uniforms: ["world", "viewProjection", "px"] });
+        this.snowMat = new ShaderMaterial("snowMat", scene, "castawaySnow", { attributes: [VertexBuffer.PositionKind], uniforms: ["world", "viewProjection", "px", "dim", "lampP", "lampD", "hA", "hB"] });
         this.snowMat.pointsCloud = true;
         this.snowMat.alphaMode = Constants.ALPHA_ADD;
         this.snowMat.needAlphaBlending = () => true;
@@ -379,6 +408,12 @@ export class Seabed {
       this.shafts.position.set(eye.x, Math.min(0, eye.y + 12), eye.z);
       this.shaftMat.setFloat("shaft", this.atmo.day * Math.max(0.15, 1 - Math.max(0, -eye.y) / 25));
       this.shaftMat.setFloat("time", this.time);
+      this.snowMat.setFloat("dim", this.snowDim);
+      this.snowMat.setVector4("lampP", this.lampP.set(this.lamp[0], this.lamp[1], this.lamp[2], this.lamp[6]));
+      this.snowMat.setVector4("lampD", this.lampD.set(this.lamp[3], this.lamp[4], this.lamp[5], 0));
+      for (let i = 0; i < 16; i++) { this.hA[i] = this.hulls[i] ?? 0; this.hB[i] = this.hulls[16 + i] ?? 0; }
+      this.snowMat.setArray4("hA", this.hA);
+      this.snowMat.setArray4("hB", this.hB);
       this.snowMat.setFloat("px", this.scene.getEngine().getRenderHeight() * 0.5 * (this.scene.activeCamera?.getProjectionMatrix().m[5] ?? 1.7));
       // specks drift and wrap round the camera
       const P = this.snowPos, t = performance.now() / 1000;

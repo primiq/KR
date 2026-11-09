@@ -6,6 +6,19 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-11-14", title: "The deep, smoother edges and the sub",
+        items: [
+            "Smooth edges: a new anti-aliasing setting in Graphics (off, FXAA, MSAA 4x or max). High uses max.",
+            "Deep sea creatures fade in and out instead of popping up, and their lights really glow in the dark.",
+            "The drifting specks in the water stay dim in the dark and only light up in a floodlight's beam, and never float inside a submarine.",
+            "Explore the deep as far as you like. The driver's screen shows your depth in metres.",
+            "A surfaced submarine rides a little higher: through the top of the window you see the sky and the sea, below the waterline the water.",
+            "Placing a submarine finds the nearest water deep enough along where you aim, so the preview goes green.",
+            "Other players' hammering and mining sounds come from where they are. Menus no longer leave your body behind in a submarine.",
+            "VR: hands join up with the arms. Ctrl and Shift no longer trigger browser shortcuts while you drive.",
+        ],
+    },
+    {
         date: "2026-11-13", title: "Butterflies and better flowers",
         items: [
             "Butterflies in many colours flutter about the island by day, and settle on the grass now and then.",

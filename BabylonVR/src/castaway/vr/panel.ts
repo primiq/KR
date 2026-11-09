@@ -1,5 +1,5 @@
 import { ImageProcessingConfiguration, Matrix, Mesh, MeshBuilder, Quaternion, type Scene, type StandardMaterial, Vector3, type WebXRInputSource } from "@babylonjs/core";
-import type { GfxCustom, Quality } from "../core/quality";
+import { AA_NAMES, type Antialias, type GfxCustom, type Quality } from "../core/quality";
 import { AdvancedDynamicTexture, Button, Control, Grid, Image, Rectangle, ScrollViewer, StackPanel, TextBlock } from "@babylonjs/gui";
 import type { Game } from "../game/game";
 import { ARMOR_SLOT_LABEL, ARMOR_SLOTS, ITEMS, type ItemId } from "../game/items";
@@ -639,6 +639,9 @@ export class VRPanel {
         const RES = [1, 0.85, 0.7], GRASS = ["low", "medium", "high"] as const, GN = { low: "short range", medium: "medium", high: "far and thick" };
         btn(r3, 690, () => `Resolution: ${Math.round((1 / eff().scale) * 100)}%`, () => { const cur = Math.round((1 / eff().scale) * 100) / 100; g().custom.res = RES[(RES.findIndex((v) => Math.abs(v - cur) < 0.02) + 1) % RES.length]; });
         btn(r3, 690, () => `Grass: ${GN[eff().grassTier]}`, () => { g().custom.grass = GRASS[(GRASS.indexOf(eff().grassTier) + 1) % 3]; });
+        const r35 = row();
+        const AAS: Antialias[] = ["off", "fxaa", "msaa", "max"];
+        btn(r35, 1380, () => `Smooth edges (anti-aliasing): ${AA_NAMES[eff().aa]}`, () => { g().custom.aa = AAS[(AAS.indexOf(eff().aa) + 1) % AAS.length]; });
         const r4 = row();
         btn(r4, 500, () => "Back to the preset", () => { g().custom = {}; });
         const ap = btn(r4, 600, () => "Apply", () => this.menuActions?.applyGfx(g().pref, g().custom));

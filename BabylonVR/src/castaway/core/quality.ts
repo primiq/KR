@@ -20,12 +20,18 @@ export interface Quality {
     reflect: boolean;
     bloom: boolean;
     ao: boolean;
+    /** smoothing the jagged edges: off; FXAA (a cheap blur along the edges); 4x multisampling; max (8x multisampling plus
+     *  FXAA over it, which also smooths what multisampling cannot: the cut-out edges of grass and leaves) */
+    aa: Antialias;
     /** how far and how thick the grass is (its own tier) */
     grassTier: "high" | "medium" | "low";
 }
 
+export type Antialias = "off" | "fxaa" | "msaa" | "max";
+export const AA_NAMES: Record<Antialias, string> = { off: "off", fxaa: "FXAA", msaa: "MSAA 4x", max: "max (8x + FXAA)" };
+
 /** the graphics menu's own choices, over the preset (each one left out follows the preset) */
-export interface GfxCustom { shadows?: boolean; reflect?: boolean; bloom?: boolean; ao?: boolean; res?: number; grass?: "high" | "medium" | "low" }
+export interface GfxCustom { shadows?: boolean; reflect?: boolean; bloom?: boolean; ao?: boolean; res?: number; grass?: "high" | "medium" | "low"; aa?: Antialias }
 
 export function isTouchDevice(): boolean {
     return "ontouchstart" in window && navigator.maxTouchPoints > 0 && !isProbablyHeadset();
@@ -38,15 +44,16 @@ export function pickQuality(pref = "auto", custom: GfxCustom = {}): Quality {
     const q = new URLSearchParams(location.search).get("quality");
     if (q === "low" || q === "medium" || q === "high") name = q;
     const base: Quality = name === "high"
-        ? { name, tier: "high", shadows: true, terrainSegments: 384, bushes: 1400, grass: 9000, treeCull: 260, palmDetail: 1, scale: 1, reflect: true, bloom: true, ao: true, grassTier: "high" }
+        ? { name, tier: "high", shadows: true, terrainSegments: 384, bushes: 1400, grass: 9000, treeCull: 260, palmDetail: 1, scale: 1, reflect: true, bloom: true, ao: true, grassTier: "high", aa: "max" }
         : name === "medium"
-            ? { name, tier: "medium", shadows: true, terrainSegments: 256, bushes: 900, grass: 4500, treeCull: 170, palmDetail: 0.7, scale: 1, reflect: true, bloom: true, ao: false, grassTier: "medium" }
-            : { name, tier: "mobile", shadows: false, terrainSegments: 192, bushes: 500, grass: 1800, treeCull: 120, palmDetail: 0.5, scale: 1, reflect: false, bloom: false, ao: false, grassTier: "low" };
+            ? { name, tier: "medium", shadows: true, terrainSegments: 256, bushes: 900, grass: 4500, treeCull: 170, palmDetail: 0.7, scale: 1, reflect: true, bloom: true, ao: false, grassTier: "medium", aa: "fxaa" }
+            : { name, tier: "mobile", shadows: false, terrainSegments: 192, bushes: 500, grass: 1800, treeCull: 120, palmDetail: 0.5, scale: 1, reflect: false, bloom: false, ao: false, grassTier: "low", aa: "fxaa" };
     if (custom.shadows !== undefined) base.shadows = custom.shadows;
     if (custom.reflect !== undefined) base.reflect = custom.reflect;
     if (custom.bloom !== undefined) base.bloom = custom.bloom;
     if (custom.ao !== undefined) base.ao = custom.ao;
     if (custom.grass) base.grassTier = custom.grass;
+    if (custom.aa) base.aa = custom.aa;
     if (custom.res) base.scale = 1 / Math.max(0.5, Math.min(1, custom.res));
     return base;
 }

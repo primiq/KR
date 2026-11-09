@@ -166,7 +166,35 @@ export class Sfx {
     if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq * slide), c.currentTime + dur);
     g.gain.setValueAtTime(vol, c.currentTime);
     g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + dur);
-    o.connect(g); g.connect(this.master); o.start(); o.stop(c.currentTime + dur + 0.02);
+    o.connect(g); g.connect(this.out ?? this.master); o.start(); o.stop(c.currentTime + dur + 0.02);
+  }
+
+  /** where the short sounds go: the speakers, or (inside `at`) a panner placed where the sound happens */
+  private out: AudioNode | null = null;
+  /**
+   * Play a sound where it happens in the world (somebody else chopping, mining): it comes from that spot, fainter with
+   * distance, not straight into your ears as if you were doing it. The listener follows your eyes (setListener).
+   */
+  at(x: number, y: number, z: number, play: () => void) {
+    const c = this.ctx; if (!c || !this.master) return;
+    const p = c.createPanner();
+    p.panningModel = 'HRTF'; p.distanceModel = 'inverse'; p.refDistance = 2.5; p.maxDistance = 60; p.rolloffFactor = 1.3;
+    p.positionX.value = x; p.positionY.value = y; p.positionZ.value = z;
+    p.connect(this.master);
+    this.out = p;
+    try { play(); } finally { this.out = null; }
+    setTimeout(() => p.disconnect(), 2500);
+  }
+  /** a part of a sound a moment later, still from the same place */
+  private later(ms: number, fn: () => void) {
+    const o = this.out;
+    setTimeout(() => { const prev = this.out; this.out = o; try { fn(); } finally { this.out = prev; } }, ms);
+  }
+  /** your ears: where you are and which way you face (every frame) */
+  setListener(x: number, y: number, z: number, fx: number, fy: number, fz: number) {
+    const L = this.ctx?.listener; if (!L) return;
+    if (L.positionX) { L.positionX.value = x; L.positionY.value = y; L.positionZ.value = z; L.forwardX.value = fx; L.forwardY.value = fy; L.forwardZ.value = fz; L.upX.value = 0; L.upY.value = 1; L.upZ.value = 0; }
+    else { (L as unknown as { setPosition(a: number, b: number, c: number): void }).setPosition(x, y, z); (L as unknown as { setOrientation(...a: number[]): void }).setOrientation(fx, fy, fz, 0, 1, 0); }
   }
 
   private burst(dur: number, freq: number, q: number, vol: number, type: BiquadFilterType = 'bandpass') {
@@ -176,7 +204,7 @@ export class Sfx {
     const g = c.createGain();
     g.gain.setValueAtTime(vol, c.currentTime);
     g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + dur);
-    s.connect(f); f.connect(g); g.connect(this.master);
+    s.connect(f); f.connect(g); g.connect(this.out ?? this.master);
     s.start(c.currentTime, Math.random()); s.stop(c.currentTime + dur + 0.02);
   }
 
@@ -336,8 +364,8 @@ export class Sfx {
   }
   tool_break() { this.burst(0.12, 1200, 1, 0.45); this.tone(240, 0.3, 'square', 0.25, 0.4); }
   creak() { this.tone(150, 0.9, 'sawtooth', 0.12, 0.55); this.burst(0.7, 380, 1.5, 0.12, 'lowpass'); }
-  thump(strength = 1) { this.tone(58, 0.55, 'sine', 0.55 * strength, 0.6); this.burst(0.5, 220, 0.6, 0.5 * strength, 'lowpass'); setTimeout(() => this.burst(0.35, 1400, 0.8, 0.12 * strength), 40); }
-  crumble(ore = false) { this.burst(0.5, 700, 0.9, 0.4, 'lowpass'); this.burst(0.2, 2200, 2, 0.35); if (ore) this.tone(1100, 0.5, 'sine', 0.14, 0.9); setTimeout(() => this.burst(0.25, 1800, 2, 0.2), 120); }
+  thump(strength = 1) { this.tone(58, 0.55, 'sine', 0.55 * strength, 0.6); this.burst(0.5, 220, 0.6, 0.5 * strength, 'lowpass'); this.later(40, () => this.burst(0.35, 1400, 0.8, 0.12 * strength)); }
+  crumble(ore = false) { this.burst(0.5, 700, 0.9, 0.4, 'lowpass'); this.burst(0.2, 2200, 2, 0.35); if (ore) this.tone(1100, 0.5, 'sine', 0.14, 0.9); this.later(120, () => this.burst(0.25, 1800, 2, 0.2)); }
   treeFall() { this.burst(0.9, 260, 0.6, 0.55, 'lowpass'); this.tone(80, 0.7, 'triangle', 0.4, 0.5); }
   craft() { this.burst(0.06, 1400, 2, 0.35); setTimeout(() => this.tone(520, 0.09, 'triangle', 0.22, 1.5), 70); setTimeout(() => this.tone(780, 0.12, 'triangle', 0.2, 1.3), 150); }
   place() { this.tone(110, 0.14, 'triangle', 0.5, 0.5); this.burst(0.1, 500, 1, 0.45, 'lowpass'); }

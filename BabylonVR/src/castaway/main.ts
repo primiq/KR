@@ -1,3 +1,4 @@
+import { SAX as SUB_SAX, SAZ as SUB_SAZ } from "./world/sub";
 import {
     Color3,
     CascadedShadowGenerator,
@@ -20,6 +21,9 @@ import {
     UniversalCamera,
     Vector3,
     type WebXRDefaultExperience,
+    GlowLayer,
+    VertexData,
+    type AbstractMesh,
 } from "@babylonjs/core";
 // (loaded up front, not lazily with the sky material, so its sun disc can be taken out below before it is first used)
 import "@babylonjs/materials/sky/sky.fragment";
@@ -76,7 +80,7 @@ import { WorldSync } from "./net/sync";
 import { cleanCode, setTurn, type TransportKind } from "./net/transport";
 import { applyChar, applyWorld, captureChar, captureWorld } from "./net/world";
 import { getPref, setPref } from "./core/prefs";
-import { type GfxCustom, pickQuality } from "./core/quality";
+import { type Antialias, type GfxCustom, pickQuality } from "./core/quality";
 import { Game } from "./game/game";
 import { planSprings } from "./game/resources";
 import { driveWind, Wind } from "./render/foliage";
@@ -172,6 +176,7 @@ async function main() {
             box("g-shadows").checked = eff.shadows; box("g-reflect").checked = eff.reflect; box("g-bloom").checked = eff.bloom; box("g-ao").checked = eff.ao;
             sel("g-res").value = String(Math.round((1 / eff.scale) * 100) / 100 >= 1 ? 1 : Math.round((1 / eff.scale) * 100) / 100);
             sel("g-grass").value = eff.grassTier;
+            sel("g-aa").value = eff.aa;
             $("gfx-note").textContent = Object.keys(custom).length ? "Your own mix over the preset." : "The preset sets everything above; change any of it for your own mix.";
         };
         for (const b of document.querySelectorAll<HTMLButtonElement>("#q-seg button")) b.addEventListener("click", () => { pending = b.dataset.q!; custom = {}; show(); });
@@ -181,6 +186,7 @@ async function main() {
         box("g-ao").addEventListener("change", () => { custom.ao = box("g-ao").checked; show(); });
         sel("g-res").addEventListener("change", () => { custom.res = Number(sel("g-res").value); show(); });
         sel("g-grass").addEventListener("change", () => { custom.grass = sel("g-grass").value as GfxCustom["grass"]; show(); });
+        sel("g-aa").addEventListener("change", () => { custom.aa = sel("g-aa").value as Antialias; show(); });
         $("gfx-reset").addEventListener("click", () => { custom = {}; show(); });
         $("gfx-apply").addEventListener("click", () => { $("gfx-note").textContent = applyGfx(pending, custom); });
         show();
@@ -325,6 +331,42 @@ async function main() {
     uwMat.disableLighting = true; uwMat.fogEnabled = false; uwMat.backFaceCulling = false;
     uwShell.material = uwMat; uwShell.isPickable = false; uwShell.infiniteDistance = false; uwShell.alwaysSelectAsActiveMesh = true;
     uwShell.metadata = { keepUnderground: true };
+    // a surfaced submarine: your eyes are under the waterline but the top of the window is above it. The view stays the
+    // air's, and this bowl (open at the waterline, round your eyes) tints just what is seen below the water, murky
+    // blue-green; through the top of the window you see the world above as it is
+    const subBowl = MeshBuilder.CreateSphere("subBowl", { diameter: 18, segments: 16, slice: 0.5, sideOrientation: Mesh.DOUBLESIDE }, scene);
+    subBowl.rotation.x = Math.PI;
+    const subBowlMat = new StandardMaterial("subBowlMat", scene);
+    subBowlMat.disableLighting = true; subBowlMat.fogEnabled = false; subBowlMat.backFaceCulling = false; subBowlMat.alpha = 0.78;
+    subBowl.material = subBowlMat; subBowl.isPickable = false; subBowl.alwaysSelectAsActiveMesh = true; subBowl.alphaIndex = 1000;
+    subBowl.metadata = { keepUnderground: true };
+    subBowl.setEnabled(false);
+    // (and the waterline round the hull, its own waterline shape left open: looking up from under the water outside the
+    //  hull you see the sea's surface from below, tinted, while inside the hull it is all air)
+    const subRing = new Mesh("subRing", scene);
+    {
+        const N = 40, R = 9, wx = SUB_SAX * 0.866, wz = SUB_SAZ * 0.866, pos: number[] = [], idx: number[] = [];
+        for (let i = 0; i <= N; i++) { const a = (i / N) * Math.PI * 2, c = Math.cos(a), s = Math.sin(a); pos.push(c * wx, 0, s * wz, c * R, 0, s * R); }
+        for (let i = 0; i < N; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+        const vd = new VertexData(); vd.positions = pos; vd.indices = idx; vd.applyToMesh(subRing);
+    }
+    subRing.material = subBowlMat; subRing.isPickable = false; subRing.alwaysSelectAsActiveMesh = true; subRing.alphaIndex = 1000;
+    subRing.metadata = { keepUnderground: true };
+    subRing.setEnabled(false);
+    const subWaterline = (on: boolean) => {
+        const sb = game.subs.mine;
+        if (!sb) on = false;
+        if (subBowl.isEnabled() !== on) subBowl.setEnabled(on);
+        const e = scene.activeCamera!.globalPosition, sea = sb ? player.surfaceAt(sb.x, sb.z) : 0;
+        // (the ring only with your eyes under the waterline: from above, the sea's own surface is there to see)
+        const ring = on && e.y < sea;
+        if (subRing.isEnabled() !== ring) subRing.setEnabled(ring);
+        if (!on || !sb) return;
+        const lit = (0.12 + 0.88 * clock.day) * (1 - 0.97 * clock.deep);
+        subBowl.position.set(sb.x, sea, sb.z);
+        subRing.position.set(sb.x, sea, sb.z); subRing.rotation.y = sb.yaw;
+        subBowlMat.emissiveColor.set(0.02 + 0.03 * lit, 0.13 + 0.17 * lit, 0.17 + 0.2 * lit);
+    };
     uwShell.setEnabled(false);
     /**
      * Under water: a blue grade and a haze close round you. Under the volcano's lava (`lava` 0..1: 1 with your head under, a
@@ -707,20 +749,58 @@ async function main() {
         return !md?.viewModel && !md?.fpBody;
     });
     let seaReflOn = !!seaRefl;
+    // ---- a soft glow round the deep sea life's lights (flat screens only, and only down in the dark: off, it costs nothing)
+    let glow: GlowLayer | null = null, glowScan = 0;
+    const glowMeshes = new Set<AbstractMesh>();
+    const deepGlow = (deep: number) => {
+        const want = !headset && !params.has("noglow") && deep > 0.12;
+        if (want && !glow) {
+            glow = new GlowLayer("deepGlow", scene, { mainTextureRatio: 0.5, blurKernelSize: 48, camera });
+            // (each light's glow fades with it: its colour times how faded in it is)
+            glow.customEmissiveColorSelector = (m, _s, mat, out) => {
+                // (a submarine's hull: drawn black, so no glow shows through it)
+                if (!(m.metadata as { deepGlow?: boolean } | null)?.deepGlow || !(mat instanceof StandardMaterial)) { out.set(0, 0, 0, 1); return; }
+                const sm = mat, a = sm.alpha;
+                out.set(sm.emissiveColor.r * a, sm.emissiveColor.g * a, sm.emissiveColor.b * a, 1);
+            };
+        }
+        if (!glow) return;
+        // (only the sea life's own glowing parts, the unlit ones the mirror draws for it, and the subs' solid hulls to hide them)
+        if (want && --glowScan <= 0) {
+            glowScan = 60;
+            for (const m of scene.meshes) {
+                const md = m.metadata as { deepGlow?: boolean; glowBlock?: boolean } | null;
+                if (glowMeshes.has(m) || !m.material) continue;
+                const lightPart = md?.deepGlow && m.material instanceof StandardMaterial, blocker = md?.glowBlock && !m.material.needAlphaBlending() && m.material.alpha >= 1;
+                if (!lightPart && !blocker) continue;
+                glowMeshes.add(m); glow.addIncludedOnlyMesh(m as Mesh);
+            }
+        }
+        glow.intensity = 1.2 * Math.min(1, (deep - 0.12) / 0.3);
+        glow.isEnabled = want && glowMeshes.size > 0;
+    };
+
     // ---- post processing (flat screens; the headset gets a lighter chain)
     // (none in a headset: each eye would be drawn to a texture and copied again. The tone mapping, colour grading and the
     //  comfort vignette are worked out in the materials themselves instead)
     const pipeline = headset ? null : new DefaultRenderingPipeline("castawayPipeline", true, scene, [camera]);
+    // smoothing the edges (Graphics tab): multisampling for the geometry's edges, FXAA for what it cannot reach (the
+    // cut-out edges of grass and leaves), or both. (8 samples where the GPU has them, else as many as it has)
+    function setAA(aa: Antialias) {
+        if (!pipeline) return;
+        const most = engine.getCaps().maxMSAASamples || 4;
+        pipeline.samples = aa === "max" ? Math.min(8, most) : aa === "msaa" ? Math.min(4, most) : 1;
+        pipeline.fxaaEnabled = aa === "fxaa" || aa === "max";
+    }
     if (pipeline) {
-        // (multisampling on high only: medium and low smooth the edges with FXAA, much cheaper)
-        pipeline.samples = q.name === "high" ? 4 : 1;
-        pipeline.fxaaEnabled = q.name !== "high";
+        setAA(q.aa);
         pipeline.bloomEnabled = q.bloom;
         pipeline.bloomThreshold = 0.9;
         pipeline.bloomWeight = 0.25;
         pipeline.bloomKernel = 64;
+        // (a touch of sharpening on high, gentler with the edges smoothed: sharpening brings the jaggies back)
         pipeline.sharpenEnabled = q.name === "high";
-        if (pipeline.sharpenEnabled) pipeline.sharpen.edgeAmount = 0.2;
+        if (pipeline.sharpenEnabled) pipeline.sharpen.edgeAmount = q.aa === "max" ? 0.1 : 0.2;
         pipeline.imageProcessing.vignetteEnabled = true;
         pipeline.imageProcessing.vignetteWeight = 1.4;
     } else {
@@ -752,6 +832,7 @@ async function main() {
             if (rebuild) return false;
             if (nq.scale !== cur.scale) { engine.setHardwareScalingLevel(nq.scale / Math.min(window.devicePixelRatio || 1, nq.name === "high" ? 2 : nq.name === "medium" ? 1.25 : 1)); engine.resize(); }
             if (pipeline) pipeline.bloomEnabled = nq.bloom;
+            if (nq.aa !== cur.aa) { setAA(nq.aa); if (pipeline?.sharpenEnabled) pipeline.sharpen.edgeAmount = nq.aa === "max" ? 0.1 : 0.2; }
             if (nq.ao !== cur.ao) setAO(nq.ao);
             gfxNow.reflect = nq.reflect;
             if (nq.shadows !== cur.shadows) sun.shadowEnabled = nq.shadows;
@@ -862,7 +943,8 @@ async function main() {
             if (air.driving && game.stats.dead) air.exitCar(player);
             if (air.active) air.pre(dt, { gas: Math.max(-1, Math.min(1, input.move.y)), steer: Math.max(-1, Math.min(1, input.move.x)), hand: input.jumpHeld, boost: input.wantsSprint }, player, vrActive());
             game.subsPre(dt);
-            if (!game.uiBlocking) player.update(dt, input);
+            // (a menu open stops the controls (they read nothing then), not the body: it keeps falling, riding, being carried)
+            if (!game.bodyFrozen) player.update(dt, input);
             else input.consumeLook();
             vrMode?.afterPlayer(dt);
             if (air.driving && !vrActive()) {
@@ -979,14 +1061,22 @@ async function main() {
             waterfall?.update(dt, player.pos.x, player.pos.z, game.under.active);
             {
                 const onIsland = !game.under.active && Math.abs(player.pos.x) < 600 && Math.abs(player.pos.z) < 600 && player.pos.y < 120;
-                underwaterLook(dt, player.underwater && !lava.active, lava.active ? (lava.submerged ? 1 : lava.heat * 0.45) : 0);
+                // (in a surfaced sub the top of the window is above the water: see subWaterline)
+                const subSplit = !!game.subs.mine && game.subs.mine.depth < 1.2;
+                subWaterline(subSplit);
+                underwaterLook(dt, player.underwater && !lava.active && !subSplit, lava.active ? (lava.submerged ? 1 : lava.heat * 0.45) : 0);
                 // the deep: the further down the eyes, the less daylight (black past ~45 m); its life comes out round you
                 {
                     const e = player.eye, down = onIsland && player.underwater ? player.surfaceAt(e.x, e.z) - e.y : 0;
                     const want = Math.max(0, Math.min(1, (down - 10) / 35));
                     clock.deep += (want - clock.deep) * Math.min(1, dt * 1.5);
                     game.deepSea.update(dt, e, clock.deep);
+                    deepGlow(clock.deep);
                 }
+                // (the specks: lit by the day, dim in the deep, bright in a floodlight's beam; none inside a sub)
+                seabed.snowDim = Math.max(0.03, (0.3 + 0.7 * clock.day) * (1 - 0.97 * clock.deep));
+                seabed.lamp.set(game.subLamp);
+                seabed.hulls = game.subs.holes;
                 seabed.update(dt, player.pos.x, player.pos.z, camera.position, player.underwater, onIsland && (player.underwater || heightAt(player.pos.x, player.pos.z) < 8));
             }
             dolphins.update(dt, player.pos.x, player.pos.z, player.yaw, game.under.active);

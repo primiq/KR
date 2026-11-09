@@ -7,13 +7,17 @@
 // and empty, and fills up again after a while. Multiplayer: looting is an event ('dp'); the looted chests are saved.
 import * as THREE from 'three';
 import { mulberry32 } from '../core/noise';
-import { heightAt } from './island';
+import { heightAt, TERRAIN_SIZE } from './island';
 
 /** where the abyss is: sea floor at least this deep (m) */
 const DEEP = -55;
 /** a chest fills up again this long after it was looted (ms) */
 const REFILL = 40 * 60 * 1000;
-const CHESTS = 18;
+const CHESTS = 30;
+/** sea life further off than this is moved on; it fades in and out over FADE_S seconds */
+const LOSE = 46, FADE_S = 1.6;
+/** how far out the deep sea floor is drawn (the island's own ground ends at TERRAIN_SIZE / 2) */
+const FLOOR_R = 700, FLOOR_STEP = 20;
 
 export interface DeepChest { id: number; x: number; y: number; z: number; yaw: number; lid: THREE.Group; glow: THREE.Object3D[]; looted: number }
 
@@ -38,7 +42,7 @@ function mats(): Mats {
 }
 
 // ------------------------------------------------------------------ the creatures
-interface Critter { kind: 'fish' | 'jelly' | 'squid' | 'angler'; g: THREE.Group; x: number; y: number; z: number; yaw: number; v: number; t: number; seed: number; parts?: THREE.Object3D[] }
+interface Critter { kind: 'fish' | 'jelly' | 'squid' | 'angler'; g: THREE.Group; x: number; y: number; z: number; yaw: number; v: number; t: number; seed: number; parts?: THREE.Object3D[]; fade: number; glows: { m: THREE.MeshBasicMaterial; base: number }[] }
 
 function fishSchool(M: Mats): THREE.Group {
   const g = new THREE.Group(), body = new THREE.SphereGeometry(1, 8, 6).scale(0.05, 0.045, 0.16), dot = new THREE.SphereGeometry(0.018, 5, 4);
@@ -123,6 +127,8 @@ export class DeepSea {
   private time = 0;
   /** how deep the eyes are into the dark (0..1, set each frame) */
   private on = false;
+  /** all of the sea life together: 1 in the deep, fading to 0 as you leave it */
+  private lifeK = 0;
   onEvent: ((e: Record<string, unknown>) => void) | null = null;
 
   constructor(scene: THREE.Scene) {
@@ -130,15 +136,18 @@ export class DeepSea {
     scene.add(this.group);
     this.group.add(this.life);
     this.life.visible = false;
+    // (their glowing parts get Babylon's glow layer round them: see main)
+    this.life.userData.babylonTag = { deepGlow: true };
     // ---- the chests: spread round the abyss, each at its own bearing (fixed seed: the same for everybody)
     const r = mulberry32(48151);
     for (let i = 0; i < CHESTS; i++) {
       const a = (i / CHESTS) * Math.PI * 2 + (r() - 0.5) * 0.25;
       let at: [number, number] | null = null;
-      for (let d = 240; d < 368; d += 2) {
+      for (let d = 240; d < 600; d += 2) {
         const x = Math.cos(a) * d, z = Math.sin(a) * d;
         if (heightAt(x, z) > DEEP - 10) continue;
-        const d2 = Math.min(366, d + 6 + r() * 18), x2 = Math.cos(a) * d2, z2 = Math.sin(a) * d2;
+        // (anywhere from the foot of the wall out to the far deep)
+        const d2 = Math.min(600, d + 6 + r() * (600 - d)), x2 = Math.cos(a) * d2, z2 = Math.sin(a) * d2;
         // (somewhere fairly level on the floor)
         if (heightAt(x2, z2) < DEEP - 10 && Math.abs(heightAt(x2 + 1, z2) - heightAt(x2 - 1, z2)) < 1.6) at = [x2, z2];
         break;
@@ -151,8 +160,39 @@ export class DeepSea {
       this.group.add(c.g);
       this.chests.push({ id: i, x, y, z, yaw, lid: c.lid, glow: c.glow, looted: 0 });
     }
+    // ---- the floor of the deep beyond the island's own ground (which ends 380 m out): on to the edge of the world
+    {
+      const n = (FLOOR_R * 2) / FLOOR_STEP, pos: number[] = [], idx: number[] = [], v = (i: number, j: number) => j * (n + 1) + i;
+      for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) { const x = -FLOOR_R + i * FLOOR_STEP, z = -FLOOR_R + j * FLOOR_STEP; pos.push(x, heightAt(x, z), z); }
+      for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+        const x0 = -FLOOR_R + i * FLOOR_STEP, z0 = -FLOOR_R + j * FLOOR_STEP;
+        // (not where the island's own ground is)
+        if (x0 >= -TERRAIN_SIZE / 2 && x0 + FLOOR_STEP <= TERRAIN_SIZE / 2 && z0 >= -TERRAIN_SIZE / 2 && z0 + FLOOR_STEP <= TERRAIN_SIZE / 2) continue;
+        idx.push(v(i, j), v(i, j + 1), v(i + 1, j), v(i + 1, j), v(i, j + 1), v(i + 1, j + 1));
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+      const floor = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: '#6b604c', roughness: 1, metalness: 0 }));
+      floor.frustumCulled = false;
+      this.group.add(floor);
+    }
     // ---- the creatures (placed round you when you come down)
-    const add = (kind: Critter['kind'], g: THREE.Group, n: number) => { for (let k = 0; k < n; k++) { const gg = k === 0 ? g : g.clone(); this.life.add(gg); this.critters.push({ kind, g: gg, x: 0, y: -1e4, z: 0, yaw: 0, v: 0, t: Math.random() * 10, seed: Math.random() * 100 }); } };
+    const add = (kind: Critter['kind'], g: THREE.Group, n: number) => {
+      for (let k = 0; k < n; k++) {
+        const gg = k === 0 ? g : g.clone();
+        // (each creature's glowing parts get their own copy of the glow material, so each one fades on its own, glow and all)
+        const own = new Map<THREE.Material, THREE.MeshBasicMaterial>(), glows: Critter['glows'] = [];
+        gg.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (!m.isMesh || !(m.material instanceof THREE.MeshBasicMaterial)) return;
+          let c = own.get(m.material);
+          if (!c) { c = m.material.clone(); c.transparent = true; c.depthWrite = false; own.set(m.material, c); glows.push({ m: c, base: m.material.opacity }); }
+          m.material = c;
+        });
+        this.life.add(gg);
+        this.critters.push({ kind, g: gg, x: 0, y: -1e4, z: 0, yaw: 0, v: 0, t: Math.random() * 10, seed: Math.random() * 100, fade: 0, glows });
+      }
+    };
     add('fish', fishSchool(M), 5);
     for (let k = 0; k < 7; k++) add('jelly', jelly(M, k % 2 === 1), 1);
     add('squid', squid(M), 3);
@@ -176,15 +216,18 @@ export class DeepSea {
       for (const o of c.glow) o.visible = !open;
     }
     const on = deep > 0.15 && heightAt(eye.x, eye.z) < DEEP + 15;
-    if (on !== this.on) { this.on = on; this.life.visible = on; if (on) for (const c of this.critters) c.y = -1e4; }
-    if (!on) return;
+    if (on !== this.on) { this.on = on; if (on) { this.life.visible = true; for (const c of this.critters) { c.y = -1e4; c.fade = 0; } } }
+    // (leaving the deep: they fade away rather than vanish)
+    this.lifeK = Math.max(0, Math.min(1, this.lifeK + (on ? dt : -dt) / FADE_S));
+    if (!on && this.lifeK <= 0) { this.life.visible = false; return; }
     for (const c of this.critters) {
       // too far from you (or never placed): somewhere new round you, in the open water over the abyss
-      const far = Math.hypot(c.x - eye.x, c.y - eye.y, c.z - eye.z) > 46;
+      const dist = Math.hypot(c.x - eye.x, c.y - eye.y, c.z - eye.z);
+      const far = on && dist > LOSE;
       if (far) {
         let ok = false;
         for (let k = 0; k < 8 && !ok; k++) {
-          const a = Math.random() * Math.PI * 2, d = 14 + Math.random() * 26, x = eye.x + Math.cos(a) * d, z = eye.z + Math.sin(a) * d, fl = heightAt(x, z);
+          const a = Math.random() * Math.PI * 2, d = 12 + Math.random() * 22, x = eye.x + Math.cos(a) * d, z = eye.z + Math.sin(a) * d, fl = heightAt(x, z);
           if (fl > DEEP) continue;
           const lo = fl + (c.kind === 'angler' ? 1.2 : 4), hi = Math.min(-30, eye.y + 14);
           if (hi <= lo) continue;
@@ -194,7 +237,13 @@ export class DeepSea {
         }
         if (!ok) { c.g.visible = false; continue; }
         c.g.visible = true;
+        c.fade = 0;
       }
+      // fading in when it turns up, and out again as it drifts off into the dark (before it is moved on)
+      c.fade = Math.min(1, c.fade + dt / FADE_S);
+      const k = c.fade * this.lifeK * Math.max(0, Math.min(1, (LOSE - Math.hypot(c.x - eye.x, c.y - eye.y, c.z - eye.z)) / 8));
+      c.g.userData.fade = k;
+      for (const gm of c.glows) gm.m.opacity = gm.base * k;
       c.t += dt;
       // wander: a slow turn, and (squid) a pulse of the jet now and then
       c.yaw += Math.sin(c.t * 0.3 + c.seed) * 0.25 * dt;

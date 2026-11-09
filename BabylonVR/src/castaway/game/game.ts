@@ -136,6 +136,8 @@ export class Game {
     /** the floodlights of the nearest submarine that has them on (ahead, astern): they borrow the fire light pool */
     private subLights = [{ x: 0, y: 0, z: 0, power: 0, range: 42 }, { x: 0, y: 0, z: 0, power: 0, range: 30 }];
     private subLightK = 0;
+    /** the nearest lit submarine's front floodlight (x, y, z, dx, dy, dz, how bright): it lights up the drifting specks */
+    readonly subLamp = new Float32Array(7);
     private pokeWas = false;
     /** (VR) the left stick up / down while driving a submarine */
     subRise = 0;
@@ -254,6 +256,8 @@ export class Game {
     /** true while I sit at a submarine's controls (VR: the sticks drive it) */
     get subHelm() { return !!this.subs.mine && this.subs.seat === 0; }
     get uiBlocking() { return this.hud.inventoryOpen || this.map.open || this.stats.dead || this.sleeping || this.painter.open; }
+    /** the body stops only when you are dead or asleep: with a menu or the map open it carries on (falling, riding a boat or a sub) */
+    get bodyFrozen() { return this.stats.dead || this.sleeping; }
     get isSleeping() { return this.sleeping; }
     get openStruct() { return this.openS; }
     get bedNid() { return this.hasBed ? this.bed!.nid : null; }
@@ -482,17 +486,18 @@ export class Game {
             this.vr.haptic?.(0.9);
             this.hud.message(d > 30 ? "A brutal landing!" : "Ouch, that hurt!");
         };
+        // (a tree landing, a rock crumbling: heard from where it happens, whoever chopped or mined it)
         this.resources.onImpact = (x, _y, z, k) => {
             const d = Math.hypot(x - this.player.pos.x, z - this.player.pos.z);
             const near = Math.max(0, 1 - d / 40);
             this.player.shake(k * 1.6 * near);
             this.vr.haptic?.(Math.min(1, near * k));
-            this.sfx.thump(Math.max(0.15, near * k));
+            this.sfx.at(x, _y, z, () => this.sfx.thump(Math.max(0.3, k)));
         };
         this.resources.onCrumble = (x, _y, z, kind) => {
             const d = Math.hypot(x - this.player.pos.x, z - this.player.pos.z);
             this.player.shake(Math.max(0, 0.55 - d / 14));
-            this.sfx.crumble(kind === "ore");
+            this.sfx.at(x, _y + 0.5, z, () => this.sfx.crumble(kind === "ore"));
         };
         this.hud.onClose = () => this.setInventory(false);
         this.hud.onUse = (slot) => { const it = this.inv.slots[slot]; if (it && ITEMS[it.id].armor) this.wearFromBag(slot); else this.eatSlot(slot); };
@@ -804,6 +809,12 @@ export class Game {
 
     update(dt: number, active: boolean) {
         const { player, stats, input, hud, view } = this;
+        // (your ears, for sounds that happen somewhere: where your eyes are, facing where you look)
+        {
+            const e = this.vr.active ? this.vr.eye : player.eye, cp = Math.cos(player.pitch);
+            const d = this.vr.active ? (this.vr.headDir ?? this.vr.dir) : { x: -Math.sin(player.yaw) * cp, y: Math.sin(player.pitch), z: -Math.cos(player.yaw) * cp };
+            this.sfx.setListener(e.x, e.y, e.z, d.x, d.y, d.z);
+        }
         this.handsInSand(dt);
         if (this.vrSwingT > 0) {
             this.vrSwingT -= dt;
@@ -1788,7 +1799,7 @@ export class Game {
     }
     private subHint() {
         const vr = this.vr.active, touch = this.input.touch;
-        if (this.subs.seat === 0) this.hud.message(vr ? "At the controls: left stick up and down and slides sideways, right stick steers and drives (or the triggers) · A climb out at the surface" : touch ? "At the controls: the stick drives, JUMP rises, hold HIT to dive · USE climb out at the surface" : "At the controls: W / S ahead and astern, A / D steer, Space up, Ctrl or X down, Shift full speed · E climb out at the surface");
+        if (this.subs.seat === 0) this.hud.message(vr ? "At the controls: left stick up and down and slides sideways, right stick steers and drives (or the triggers) · A climb out at the surface" : touch ? "At the controls: the stick drives, JUMP rises, hold HIT to dive · USE climb out at the surface" : "At the controls: W / S ahead and astern, A / D steer, Space up, X or Q down, Shift full speed · E climb out at the surface");
         else this.hud.message(`You sit down in the submarine. ${vr ? "X" : touch ? "⟳" : "R"} takes the controls if nobody has them.`);
     }
     private leaveSub(force = false) {
@@ -1820,7 +1831,8 @@ export class Game {
         const i = this.input, p = this.player;
         if (this.subs.mine && this.stats.dead) this.leaveSub(true);
         const drv = this.subHelm && !this.hud.inventoryOpen;
-        const rise = this.vr.active ? this.subRise : (i.jumpHeld ? 1 : 0) - (i.wantsDive || i.attackHeld ? 1 : 0);
+        // (diving: X or Q, or holding the mouse button / HIT; not Ctrl: Ctrl + W, Ctrl + S... are the browser's shortcuts)
+        const rise = this.vr.active ? this.subRise : (i.jumpHeld ? 1 : 0) - (i.wantsSubDive || i.attackHeld ? 1 : 0);
         this.subs.update(dt, performance.now() / 1000, drv ? { x: i.move.x, y: i.move.y, rise, boost: i.wantsSprint, strafe: this.vr.active ? this.subStrafe : 0 } : { x: 0, y: 0, rise: 0, boost: false, strafe: 0 });
         if (this.subs.mine) i.jumpQueued = false;
         // the floodlights: the nearest sub with them on gets the two spot lights (bow, stern)
@@ -1834,9 +1846,11 @@ export class Game {
             for (const [L, back, out] of [[F, false, 7], [B, true, 5]] as [typeof F, boolean, number][]) {
                 this.subs.lightPose(best, back, pos, d); d.normalize();
                 L.x = pos.x + d.x * out; L.y = pos.y + d.y * out; L.z = pos.z + d.z * out;
+                if (!back) { this.subLamp[0] = pos.x; this.subLamp[1] = pos.y; this.subLamp[2] = pos.z; this.subLamp[3] = d.x; this.subLamp[4] = d.y; this.subLamp[5] = d.z; }
             }
         }
         F.power = 420 * this.subLightK; B.power = 220 * this.subLightK;
+        this.subLamp[6] = this.subLightK;
         this.structures.extraLights = this.subLightK > 0.02 ? this.subLights : [];
     }
 

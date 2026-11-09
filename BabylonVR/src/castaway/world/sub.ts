@@ -19,7 +19,9 @@ export const SAX = 1.75, SAY = 1.5, SAZ = 3.0;
 /** where the glass meets the yellow steel bottom, the cabin floor, the seats' cushions */
 const BELT = -0.72, FLOOR = -0.95, CUSH = -0.5;
 /** how far under the water the middle of the hull sits when it floats (a quarter of it shows) */
-const FLOAT = SAY * 0.5;
+/** how far the hull's centre floats under the water at the surface: more than half the hull under, the driver's eyes just
+ *  above the waterline (the window's top looks out over the sea, its bottom into it) */
+const FLOAT = 0.15;
 /** the seats (x, z): the driver's at the console, two side by side, one at the back */
 const SEATS: [number, number][] = [[0, -1.15], [-0.72, 0.25], [0.72, 0.25], [0, 1.45]];
 const MAX = 2, MAX_DEPTH = 110;
@@ -27,7 +29,7 @@ const MAX = 2, MAX_DEPTH = 110;
 const LAMPS: [number, number, boolean][] = [[-0.55, -0.85, false], [0.55, -0.85, false], [0, 0.35, true]];
 const BUTTON: [number, number, number] = [-0.24, -0.4, -2.1];
 /** how far from the middle of the island a submarine may go under water (the sea floor's edge) */
-const DEEP_R = 372;
+const DEEP_R = 1e9;   // (the deep sea floor now runs on to the edge of the world: no limit under water)
 
 export interface SubRow { n: string; x: number; z: number; r: number }
 
@@ -45,6 +47,8 @@ export class Sub {
   /** the moving parts */
   lid: THREE.Group | null = null; prop: THREE.Group | null = null; yoke: THREE.Group | null = null; screen: THREE.Mesh | null = null;
   lidAng = 0;
+  /** the driver's screen (a canvas), and what it showed last */
+  screenCv: HTMLCanvasElement | null = null; screenTex: THREE.CanvasTexture | null = null; screenKey = '';
   /** the floodlights at bow and stern, and what shows them: the lamps lit, the beams in the water, the console button */
   lights = false;
   lit: THREE.Object3D[] = [];
@@ -143,7 +147,14 @@ function makeModel(ghost: THREE.Material | null, shadows: boolean, s: Sub | null
   const prop = new THREE.Group(); prop.position.set(0, -0.3, SAZ + 0.38); g.add(prop);
   for (let k = 0; k < 3; k++) add(new THREE.BoxGeometry(0.06, 0.42, 0.02).translate(0, 0.21, 0).rotateY(0.4).rotateZ(k * Math.PI * 2 / 3), M.steel, prop);
   for (const sd of [-1, 1]) add(new THREE.BoxGeometry(0.5, 0.04, 0.3).translate(sd * 0.3, -0.3, SAZ + 0.05), M.hull);
-  if (s) { s.lid = hinge; s.prop = prop; s.yoke = yoke; s.screen = screen; s.lit = lit; s.unlit = unlit; }
+  if (s) {
+    s.lid = hinge; s.prop = prop; s.yoke = yoke; s.screen = screen; s.lit = lit; s.unlit = unlit;
+    // the driver's screen: its own canvas, showing how deep it is (and how fast it goes)
+    const cv = document.createElement('canvas'); cv.width = 256; cv.height = 136;
+    const tex = new THREE.CanvasTexture(cv);
+    screen.material = new THREE.MeshBasicMaterial({ map: tex });
+    s.screenCv = cv; s.screenTex = tex;
+  }
   return g;
 }
 
@@ -207,9 +218,10 @@ export class Subs {
     const bx = eye.x + hx * t, bz = eye.z + hz * t;
     out.x = bx; out.z = bz;
     if (t > 30) { out.why = 'Too far away'; return out; }
-    const fits = (x: number, z: number, r: number) => this.clear(x, z, r, 0.6) && !this.list.some((b) => Math.hypot(b.x - x, b.z - z) < 9) && Math.hypot(x - eye.x, z - eye.z) > 4;
-    for (let step = 0; step <= 14; step++) {
-      for (const side of step === 0 ? [0] : [0, -1, 1]) {
+    const fits = (x: number, z: number, r: number) => this.clear(x, z, r, 0.3) && !this.list.some((b) => Math.hypot(b.x - x, b.z - z) < 9) && Math.hypot(x - eye.x, z - eye.z) > 4;
+    // (from where you aim, on out along the same line to the first water deep enough: the sea by the beach is shallow)
+    for (let step = 0; step <= 30; step++) {
+      for (const side of step === 0 ? [0] : step > 14 ? [0] : [0, -1, 1]) {
         const x = bx + hx * step * 2 - hz * side * step * 1.2, z = bz + hz * step * 2 + hx * side * step * 1.2;
         for (const r of [yaw, yaw + Math.PI / 2]) if (fits(x, z, r)) { out.x = x; out.z = z; out.yaw = r; out.ok = true; return out; }
       }
@@ -229,6 +241,8 @@ export class Subs {
     if (this.list.some((b) => b.nid === nid)) return null;
     const s = new Sub(nid, x, z, yaw);
     s.group = makeModel(null, this.shadows, s);
+    // (the hull hides the sea life's glow behind it: see main)
+    s.group.userData.babylonTag = { glowBlock: true };
     s.y = this.surface(x, z) - FLOAT;
     this.place(s);
     this.scene.add(s.group);
@@ -472,14 +486,33 @@ export class Subs {
     s.group.position.set(s.x, s.y, s.z);
     s.group.rotation.set(s.pitch, s.yaw, s.roll, 'YXZ');
   }
-  private animate(s: Sub, dt: number, time: number) {
+  private animate(s: Sub, dt: number, _time: number) {
     if (s.prop) s.prop.rotation.z += s.v * dt * 4;
     if (s.yoke) s.yoke.rotation.z += (-s.yawV * 1.2 - s.yoke.rotation.z) * Math.min(1, dt * 5);
     // the hatch stands open at the surface while it is still; it shuts to sail or dive
     const open = this.surfaced(s) && Math.abs(s.v) < 0.6 ? 1.45 : 0;
     s.lidAng += (open - s.lidAng) * Math.min(1, dt * 2.5);
     if (s.lid) s.lid.rotation.x = s.lidAng;
-    if (s.screen) (s.screen.material as THREE.MeshBasicMaterial).color.setHSL(0.45, 0.85, 0.55 + 0.05 * Math.sin(time * 3));
+    this.drawScreen(s);
+  }
+
+  /** the driver's screen: the depth in metres (0 at the surface) and the speed, redrawn only when they change */
+  private drawScreen(s: Sub) {
+    const cv = s.screenCv, tex = s.screenTex; if (!cv || !tex) return;
+    const depth = Math.max(0, Math.round(s.depth)), kn = Math.round(Math.abs(s.v) * 1.94);
+    const key = `${depth}|${kn}|${s.lights ? 1 : 0}`;
+    if (key === s.screenKey) return;
+    s.screenKey = key;
+    const g = cv.getContext('2d')!;
+    g.fillStyle = '#062a24'; g.fillRect(0, 0, cv.width, cv.height);
+    g.strokeStyle = '#2fd6a6'; g.lineWidth = 4; g.strokeRect(4, 4, cv.width - 8, cv.height - 8);
+    g.fillStyle = '#7dffd6'; g.font = 'bold 22px system-ui, sans-serif'; g.textAlign = 'left'; g.textBaseline = 'top';
+    g.fillText('DEPTH', 16, 12);
+    g.textAlign = 'right'; g.fillText(`${kn} kn`, cv.width - 16, 12);
+    g.textAlign = 'center'; g.font = 'bold 64px system-ui, sans-serif';
+    g.fillText(`${depth} m`, cv.width / 2, 44);
+    if (s.lights) { g.fillStyle = '#ffe9a0'; g.font = 'bold 18px system-ui, sans-serif'; g.fillText('LIGHTS ON', cv.width / 2, 112); }
+    tex.needsUpdate = true;
   }
 
   // -------------------------------------------------------------- after the giant wave

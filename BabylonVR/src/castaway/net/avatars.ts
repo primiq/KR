@@ -891,7 +891,11 @@ export class ThreeAvatars {
     const a = this.fpAv, back = (st.flags & F_LOUNGE) ? 0 : vr ? 0.15 : 0.2;
     a.group.visible = true;
     // (the body does not lean with your view: the head it would lean with is not drawn)
-    const want = { ...st, x: st.x + Math.sin(st.yaw) * back, z: st.z + Math.cos(st.yaw) * back, pitch: vr ? st.pitch : 0 };
+    const bx = Math.sin(st.yaw) * back, bz = Math.cos(st.yaw) * back;
+    // (in a headset the body moves back but the hands stay where your real hands are: the arms reach them, no gap at the wrist)
+    const keep = (h: number[] | 0): number[] | 0 => (h ? [h[0] - bx, h[1], h[2] - bz, ...h.slice(3)] : 0);
+    const v = vr && st.v ? { ...st.v, r: keep(st.v.r), l: keep(st.v.l) } : st.v;
+    const want = { ...st, x: st.x + bx, z: st.z + bz, pitch: vr ? st.pitch : 0, v };
     a.set(want);
     a.update(dt);
     // (glued to you: smoothed like another player's it trailed behind your eyes when you moved, a neck stump in view)

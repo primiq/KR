@@ -357,8 +357,10 @@ export class ThreeMirror {
         this.frame++;
         this.root.updateMatrixWorld(true);
         for (const b of this.buckets.values()) b.n = 0;
-        const walk = (o: THREE.Object3D) => {
+        // (userData.fade, 0..1, on a group: everything under it darkens towards nothing, sea life coming and going in the deep)
+        const walk = (o: THREE.Object3D, fade: number) => {
             if (!o.visible) return;
+            const f = o.userData.fade; if (f !== undefined) fade *= f;
             if ((o as THREE.Sprite).isSprite) this.sprite(o as THREE.Sprite);
             const m = o as THREE.Mesh;
             if ((m as THREE.SkinnedMesh).isSkinnedMesh) this.skin(m as THREE.SkinnedMesh);
@@ -391,13 +393,14 @@ export class ThreeMirror {
                 } else {
                     this.grow(b);
                     putMatrix(b, m.matrixWorld.elements);
-                    if (b.col) putColour(b, 1, 1, 1, 1);
+                    if (fade < 1 && !b.col) this.colours(b);
+                    if (b.col) putColour(b, fade, fade, fade, fade);
                     b.n++;
                 }
             }
-            for (const c of o.children) walk(c);
+            for (const c of o.children) walk(c, fade);
         };
-        walk(this.root);
+        walk(this.root, 1);
         // only what changed goes to the GPU, and gets its bounds worked out again (for culling)
         for (const b of this.buckets.values()) {
             if (b.n !== b.last) { b.dirty = true; b.last = b.n; b.mesh.thinInstanceCount = b.n; b.mesh.setEnabled(b.n > 0); }
