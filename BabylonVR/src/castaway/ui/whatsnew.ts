@@ -6,6 +6,13 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-11-24", title: "Mouse look fixed",
+        items: [
+            "Mouse look works again in Edge and Chrome. The game no longer switches to fullscreen by itself (that was taking the mouse away again).",
+            "Want Ctrl+W to stay in the game? Turn on \"Fullscreen while playing\" in Settings: in fullscreen the game keeps those keys. Otherwise the browser asks before the tab closes.",
+        ],
+    },
+    {
         date: "2026-11-23", title: "Faster rafts, solid reefs",
         items: [
             "Rafts row half as fast again: the open sea is a lot less of a slog.",

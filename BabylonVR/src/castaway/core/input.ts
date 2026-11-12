@@ -1,5 +1,6 @@
 import nipplejs from 'nipplejs';
 import { isTouchDevice } from './quality';
+import { getPref } from './prefs';
 // Ported from Castaway: unchanged apart from the VR hooks at the bottom.
 
 /** Unified input: keyboard+mouse on desktop, virtual joystick + touch buttons on phones/tablets. */
@@ -105,22 +106,29 @@ export class Input {
 
   requestLock() {
     if (this.touch) { this.onLockChange(true); return; }
-    // Ctrl+W, Ctrl+T, Ctrl+N... a browser never lets a page stop those in an ordinary window (Ctrl+W, crouching
-    // forward, would close the tab). In fullscreen, Edge and Chrome let a game take the keys for itself (keyboard lock):
-    // so the game goes fullscreen and keeps the letters, the digits and Tab. (Escape stays the browser's: it still
-    // lets go of the mouse and leaves fullscreen.) Where that is not to be had, main asks before the tab closes.
-    try {
+    // (the mouse: raw movement where the browser has it (no pointer acceleration, no jumps), else the ordinary lock)
+    const lockMouse = () => {
+      try {
+        const c = this.canvas as HTMLCanvasElement & { requestPointerLock(o?: { unadjustedMovement?: boolean }): Promise<void> | void };
+        const r = c.requestPointerLock({ unadjustedMovement: true });
+        if (r && (r as Promise<void>).catch) (r as Promise<void>).catch(() => { try { const r2: any = this.canvas.requestPointerLock(); if (r2 && r2.catch) r2.catch(() => {}); } catch { /* optional */ } });
+      } catch { /* optional */ }
+    };
+    // Fullscreen while playing (Settings, off unless chosen): Ctrl+W, Ctrl+T... a browser never lets a page keep those
+    // in an ordinary window, but in fullscreen Edge and Chrome let a game take the keys (keyboard lock), so crouching
+    // forward (Ctrl+W) cannot close the tab. The mouse is captured only once fullscreen has settled: asked for together,
+    // the switch to fullscreen drops the mouse again (no mouse look). Without it, main asks before the tab closes.
+    if (getPref('castaway.fullscreen') === '1' && !document.fullscreenElement && document.documentElement.requestFullscreen) {
       const nav = navigator as Navigator & { keyboard?: { lock?: (codes?: string[]) => Promise<void> } };
-      const lockKeys = () => { const codes = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'].map((c) => `Key${c}`).concat([...'0123456789'].map((d) => `Digit${d}`), ['Tab', 'Space']); nav.keyboard?.lock?.(codes).catch(() => {}); };
-      if (!document.fullscreenElement && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen({ navigationUI: 'hide' }).then(lockKeys).catch(() => {});
-      else if (document.fullscreenElement) lockKeys();
-    } catch { /* optional */ }
-    // raw mouse movement where the browser has it (no pointer acceleration, no jumps), else the ordinary lock
-    try {
-      const c = this.canvas as HTMLCanvasElement & { requestPointerLock(o?: { unadjustedMovement?: boolean }): Promise<void> | void };
-      const r = c.requestPointerLock({ unadjustedMovement: true });
-      if (r && (r as Promise<void>).catch) (r as Promise<void>).catch(() => { try { const r2: any = this.canvas.requestPointerLock(); if (r2 && r2.catch) r2.catch(() => {}); } catch { /* optional */ } });
-    } catch { /* optional */ }
+      document.documentElement.requestFullscreen({ navigationUI: 'hide' }).then(() => {
+        const codes = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'].map((c) => `Key${c}`).concat([...'0123456789'].map((d) => `Digit${d}`), ['Tab', 'Space']);
+        nav.keyboard?.lock?.(codes).catch(() => {});
+        // (a moment for the window to settle at its new size, then the mouse)
+        setTimeout(lockMouse, 120);
+      }).catch(lockMouse);
+      return;
+    }
+    lockMouse();
   }
 
   private hold(id: string, down: () => void, up: () => void) {

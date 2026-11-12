@@ -4,7 +4,7 @@ A living summary of where the game is, how it is built and what was decided, so 
 person) can pick the work up without reading the whole conversation history. **Keep it up to date**: every batch of work
 adds to "Recent work" and updates any section it changes. Newest first. No long dashes anywhere (see Rules).
 
-Last updated: 2026-11-12
+Last updated: 2026-11-12 (mouse look fix)
 
 ## The project in one paragraph
 
@@ -70,6 +70,11 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Mouse look fix**: auto-fullscreen on Play broke mouse look in Edge (the fullscreen switch dropped the pointer lock
+  requested at the same moment). Fullscreen is now an opt-in setting, "Fullscreen while playing" (pref
+  `castaway.fullscreen`, Settings page); when on, the pointer lock is requested only after fullscreen has settled.
+  Default protection against Ctrl+W is the "Leave site?" question. Verified headless: Play click locks the mouse, mouse
+  movement turns the view.
 - **Rafts, reefs, freezes** (2026-11-12): raft rowing +50% (5.1 / 6.9 m/s). Wrecks get a reef mesh; the bare deep floor
   is streamed in 400 m squares everywhere out at sea; the Arctic meshes cover the whole underwater shelf. WebGL context
   loss: save, explain on the loading screen, reload when restored; stalled loading (25 s) shows recovery advice. The
@@ -94,7 +99,7 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 ## Known issues and open ideas
 
 - Freezes on the owner's PC after alt-tab or screenshots (see above): handled now, root cause is outside the game.
-  Watch whether auto-fullscreen makes it worse.
+  Auto-fullscreen is off by default now (opt-in setting).
 - Not yet verified on a real device: the new sounds (guitar, drum, flute), the flute's VR lip distance (0.33 m), the
   second storm in play, Ctrl+W keyboard lock in Edge.
 - The far Arctic coast reads as a thin dark line on the horizon from the berg zone.

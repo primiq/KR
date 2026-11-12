@@ -214,6 +214,9 @@ async function main() {
         sel("g-res").addEventListener("change", () => { custom.res = Number(sel("g-res").value); show(); });
         sel("g-grass").addEventListener("change", () => { custom.grass = sel("g-grass").value as GfxCustom["grass"]; show(); });
         sel("g-aa").addEventListener("change", () => { custom.aa = sel("g-aa").value as Antialias; show(); });
+        // (not a graphics setting: it takes effect the next time the mouse is captured)
+        box("g-fullscreen").checked = getPref("castaway.fullscreen") === "1";
+        box("g-fullscreen").addEventListener("change", () => setPref("castaway.fullscreen", box("g-fullscreen").checked ? "1" : "0"));
         $("gfx-reset").addEventListener("click", () => { custom = {}; show(); });
         $("gfx-apply").addEventListener("click", () => { $("gfx-note").textContent = applyGfx(pending, custom); });
         show();
