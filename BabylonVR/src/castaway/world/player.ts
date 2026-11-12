@@ -1,9 +1,10 @@
 import { Vector3 } from "@babylonjs/core";
 import { clamp, smoothstep } from "../core/noise";
 import type { Input } from "../core/input";
-import { heightAt, WORLD_RADIUS } from "./island";
+import { heightAt } from "./island";
 import { DESERT_LIMIT, DESERT_X, DESERT_Z, inDesert } from "./desertField";
 import type { ColliderGrid } from "./vegetation";
+import { OUTER } from './arctic';
 
 export type Mode = "walk" | "swim" | "fly";
 
@@ -355,8 +356,9 @@ export class Player {
                 const dx = nx - DESERT_X, dz = nz - DESERT_Z, rd = Math.hypot(dx, dz);
                 if (!this.cave && rd > DESERT_LIMIT) { nx = DESERT_X + dx * DESERT_LIMIT / rd; nz = DESERT_Z + dz * DESERT_LIMIT / rd; }
             } else {
-                const r = Math.hypot(nx, nz), lim = Math.max(WORLD_RADIUS, Math.hypot(this.pos.x, this.pos.z));
-                // (not near a boat: you can always swim out to one, however far out it is)
+                // (the whole sea is yours to swim, out to its edge, where a current turns everybody back: from a wreck back to
+                //  your raft, from an islet to the next. Swimming out past the reef without a boat brings the storm's wave)
+                const r = Math.hypot(nx, nz), lim = Math.max(OUTER - 1, Math.hypot(this.pos.x, this.pos.z));
                 if (!this.cave && r > lim && !this.roam(nx, nz)) { nx *= lim / r; nz *= lim / r; }
             }
             this.pos.x = nx;

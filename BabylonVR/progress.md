@@ -70,6 +70,9 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Swim anywhere**: the old swimmer limit (never further out than you already are, past 340 m, unless within 30 m of
+  a boat) blocked swimming from a wreck back to a raft further out. `world/player.ts` now limits swimmers only at the
+  sea's edge (`OUTER`), like boats.
 - **Mouse look fix**: auto-fullscreen on Play broke mouse look in Edge (the fullscreen switch dropped the pointer lock
   requested at the same moment). Fullscreen is now an opt-in setting, "Fullscreen while playing" (pref
   `castaway.fullscreen`, Settings page); when on, the pointer lock is requested only after fullscreen has settled.

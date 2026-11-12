@@ -6,6 +6,12 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-11-25", title: "Swim anywhere",
+        items: [
+            "You can swim anywhere on the sea now: from a wreck back to your raft, out to an islet, wherever you like. (Swimming out past the reef without a boat still brings the storm.)",
+        ],
+    },
+    {
         date: "2026-11-24", title: "Mouse look fixed",
         items: [
             "Mouse look works again in Edge and Chrome. The game no longer switches to fullscreen by itself (that was taking the mouse away again).",
