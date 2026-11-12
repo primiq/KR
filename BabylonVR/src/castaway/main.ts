@@ -105,10 +105,33 @@ import { Vegetation } from "./world/vegetation";
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const params = new URLSearchParams(location.search);
 const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
+let lastProgress = performance.now();
 function progress(f: number, text: string) {
     $("loading-bar").style.width = `${Math.round(f * 100)}%`;
     $("loading-text").textContent = text;
+    lastProgress = performance.now();
 }
+/**
+ * Something the player should read on the loading screen, under the progress text (a hint when loading is stuck, what
+ * happened when the graphics were reset). '' takes it away.
+ */
+function loadingNote(text: string) {
+    let el = document.getElementById("loading-note");
+    if (!el) {
+        el = document.createElement("p");
+        el.id = "loading-note";
+        el.style.cssText = "max-width:34em;margin:14px auto 0;font-size:15px;line-height:1.45;opacity:.9";
+        $("loading-text").after(el);
+    }
+    el.textContent = text;
+}
+// a loading screen that stops moving: usually the browser's graphics have crashed (a driver reset, after switching away
+// from the game or taking a screenshot, can leave the whole browser unable to draw until it is closed and opened again).
+// Say so, rather than leaving the player looking at a bar that never moves
+setInterval(() => {
+    const shown = !$("loading").classList.contains("hidden");
+    if (shown && performance.now() - lastProgress > 25000) loadingNote("Still loading? If it seems stuck, your browser's graphics have probably crashed. Close every window of this browser and open it again (or try another browser); your island is saved.");
+}, 2000);
 
 /** The sun stands over the sea ahead of the spawn beach and a little to the side, mid-morning. */
 function sunDirection(): Vector3 {
@@ -208,8 +231,27 @@ async function main() {
     $("settings-open").addEventListener("click", () => page("settings"));
 
     const canvas = $<HTMLCanvasElement>("game");
-    const engine = new Engine(canvas, true, { xrCompatible: true, stencil: true, antialias: true, powerPreference: "high-performance" }, true);
+    let engine: Engine;
+    try {
+        engine = new Engine(canvas, true, { xrCompatible: true, stencil: true, antialias: true, powerPreference: "high-performance" }, true);
+    } catch (e) {
+        // (no 3D graphics at all: the browser has turned them off, most often after its graphics crashed)
+        $("loading").classList.remove("hidden");
+        progress(0, "This browser can't draw 3D graphics right now.");
+        loadingNote("Close every window of this browser and open it again (or try another browser). If it keeps happening, check that hardware acceleration is on in the browser's settings.");
+        throw e;
+    }
     engine.enableOfflineSupport = false;
+    // the graphics were reset under the game (by the graphics driver: switching away from fullscreen or a screenshot can
+    // do it): save, say so, and start afresh as soon as they are back (rebuilding everything in place is not reliable)
+    engine.onContextLostObservable.add(() => {
+        try { saveBeforeReload(); } catch { /* best effort */ }
+        $("loading").classList.remove("hidden");
+        progress(1, "The graphics were reset by your computer.");
+        loadingNote("Your island is saved. The game reloads by itself as soon as the graphics are back. If nothing happens, close every window of this browser and open it again.");
+        if (document.pointerLockElement) document.exitPointerLock();
+    });
+    engine.onContextRestoredObservable.add(() => { leaving = true; location.reload(); });
     // (how many pixels per CSS pixel on a high-density screen: high draws them all, up to 2; medium and low one per pixel, more or less)
     engine.setHardwareScalingLevel(q.scale / Math.min(window.devicePixelRatio || 1, q.name === "high" ? 2 : q.name === "medium" ? 1.25 : 1));
     window.addEventListener("resize", () => engine.resize());

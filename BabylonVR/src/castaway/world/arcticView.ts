@@ -255,7 +255,7 @@ export class ArcticView {
         for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) {
             const x = x0 + i * step, z = z0 + j * step, h = landHeight(x, z);
             pos.push(x, Number.isFinite(h) ? h : -70, z);
-            keep.push(inland(x, z) > -90);
+            keep.push(inland(x, z) > -430);
             const c = crev ? creviceAt(x, z) : 0;
             col.push(c, c, c, 1);
         }

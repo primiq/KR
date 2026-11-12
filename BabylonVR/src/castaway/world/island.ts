@@ -23,6 +23,10 @@ import { DESERT_FROM_Z, groundAt, inDesert } from "./desertField";
 import { SEA_END, SEA_START, seaFeatureHeight } from "./seafeatures";
 import { arcticHeight, ICE_R0 } from "./arctic";
 const ICE_R0_2 = (ICE_R0 - 60) ** 2;
+/** (set while deepFloorAt asks: the bare sea floor, without the islets, reefs, ice and Arctic, which draw their own) */
+let bareFloor = false;
+/** the bare floor of the open sea at (x, z): what is under everything out there (drawn by opensea.ts SeaFloor) */
+export function deepFloorAt(x: number, z: number): number { bareFloor = true; try { return heightAt(x, z); } finally { bareFloor = false; } }
 /** (squared) the ring where the open sea's islets and reefs can be */
 const SEA_START2 = (SEA_START - 150) ** 2, SEA_END2 = (SEA_END + 150) ** 2;
 const N = new Noise2D(1337);
@@ -221,6 +225,7 @@ export function baseHeightAt(x: number, z: number): number {
   h = Math.max(h, h2);
   // ---- the open sea's islets and reefs, past the reef ----------------------
   const r2 = x * x + z * z;
+  if (bareFloor) return h;
   if (r2 > SEA_START2 && r2 < SEA_END2) h = Math.max(h, seaFeatureHeight(x, z));
   // ---- the far north: drift ice, icebergs and the Arctic -------------------
   if (r2 > ICE_R0_2) h = Math.max(h, arcticHeight(x, z));

@@ -6,6 +6,14 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-11-23", title: "Faster rafts, solid reefs",
+        items: [
+            "Rafts row half as fast again: the open sea is a lot less of a slog.",
+            "Shipwrecks lie on real reefs now, a sandy shelf you can swim down to, and the sea floor goes on under you wherever you sail: nothing floats in the deep any more.",
+            "If your computer resets its graphics (it can happen when you switch away or take a screenshot), the game saves, tells you, and reloads by itself instead of freezing. If loading ever gets stuck, the loading screen tells you what to do.",
+        ],
+    },
+    {
         date: "2026-11-22", title: "Smoother start, safer keys",
         items: [
             "The loading screen now waits until everything round you is built and running smoothly before it offers Play: no more stutter in your first seconds.",

@@ -7,7 +7,7 @@
 // Drawn by render/mirror.ts (the nature mirror). The chests are the deep sea's (looted the same way, the same for everyone).
 import * as THREE from "three";
 import { chestModel, type DeepChest, type DeepSea } from "./deepsea";
-import { heightAt } from "./island";
+import { deepFloorAt, heightAt } from "./island";
 import { featuresNear, type SeaFeature, shoreR } from "./seafeatures";
 import type { Collider, ColliderGrid } from "./vegetation";
 
@@ -15,7 +15,7 @@ const BUILD = 900, DROP = 1150;
 
 interface Built { f: SeaFeature; g: THREE.Group; chest: DeepChest | null; cols: Collider[]; geos: THREE.BufferGeometry[] }
 
-let MATS: { trunk: THREE.Material; frond: THREE.Material; nut: THREE.Material; rock: THREE.Material; ground: THREE.Material; plank: THREE.Material; rib: THREE.Material; mast: THREE.Material } | null = null;
+let MATS: { trunk: THREE.Material; frond: THREE.Material; nut: THREE.Material; rock: THREE.Material; ground: THREE.Material; plank: THREE.Material; rib: THREE.Material; mast: THREE.Material; seabed: THREE.Material } | null = null;
 const mats = () => (MATS ??= {
   trunk: new THREE.MeshStandardMaterial({ color: "#7a5a3a", roughness: 0.95 }),
   frond: new THREE.MeshStandardMaterial({ color: "#4f8a2c", roughness: 0.8, side: THREE.DoubleSide }),
@@ -25,6 +25,7 @@ const mats = () => (MATS ??= {
   plank: new THREE.MeshStandardMaterial({ color: "#4a3a2a", roughness: 1 }),
   rib: new THREE.MeshStandardMaterial({ color: "#3b4a36", roughness: 1 }),
   mast: new THREE.MeshStandardMaterial({ color: "#3e3226", roughness: 1 }),
+  seabed: new THREE.MeshStandardMaterial({ color: "#6b604c", roughness: 1, metalness: 0 }),
 });
 
 /** a seeded random number source */
@@ -99,7 +100,8 @@ export class OpenSea {
     this.t -= dt;
     if (this.t > 0) return;
     this.t = 0.4;
-    if (away) { for (const b of [...this.built.values()]) this.drop(b); return; }
+    if (away) { for (const b of [...this.built.values()]) this.drop(b); for (const [k, m] of this.floor) { this.group.remove(m); m.geometry.dispose(); this.floor.delete(k); } return; }
+    this.stepFloor(me);
     // take down what is far behind; build the nearest one not built yet (one per step)
     for (const b of [...this.built.values()]) if (Math.hypot(b.f.x - me.x, b.f.z - me.z) > DROP) this.drop(b);
     // (from the island itself only the nearer ones: a few on the horizon, nothing more to draw over the island)
@@ -121,6 +123,39 @@ export class OpenSea {
     for (const f of featuresNear(x, z, 2600)) { if (f.kind !== kind) continue; const d = Math.hypot(f.x - x, f.z - z); if (d < bd) { bd = d; best = f; } }
     return best;
   }
+  // ------------------------------------------------------------------ the bare sea floor out here
+  /** squares of the deep floor round you (the deep sea's own floor covers the middle; this the rest, wherever you sail) */
+  private floor = new Map<string, THREE.Mesh>();
+  private stepFloor(me: { x: number; z: number }) {
+    const T = 400, R = 1100, STEP = 20, N = T / STEP;
+    for (const [k, m] of this.floor) {
+      const [i, j] = k.split(",").map(Number);
+      if (Math.hypot((i + 0.5) * T - me.x, (j + 0.5) * T - me.z) > R + T) { this.group.remove(m); m.geometry.dispose(); this.floor.delete(k); }
+    }
+    let best: [number, number] | null = null, bd = Infinity;
+    for (let i = Math.floor((me.x - R) / T); i <= Math.floor((me.x + R) / T); i++) for (let j = Math.floor((me.z - R) / T); j <= Math.floor((me.z + R) / T); j++) {
+      const cx = (i + 0.5) * T, cz = (j + 0.5) * T, d = Math.hypot(cx - me.x, cz - me.z);
+      // (not where the deep sea's own floor already is: the square within 700 m of the middle)
+      if (d > R || d >= bd || this.floor.has(`${i},${j}`) || (Math.abs(cx) + T / 2 <= 700 && Math.abs(cz) + T / 2 <= 700)) continue;
+      bd = d; best = [i, j];
+    }
+    if (!best) return;
+    const [i, j] = best, pos: number[] = [], idx: number[] = [];
+    for (let b = 0; b <= N; b++) for (let a = 0; a <= N; a++) { const x = i * T + a * STEP, z = j * T + b * STEP; pos.push(x, deepFloorAt(x, z), z); }
+    for (let b = 0; b < N; b++) for (let a = 0; a < N; a++) {
+      const x = i * T + a * STEP, z = j * T + b * STEP;
+      // (not inside the deep sea's floor, nor under the island's own ground)
+      if (Math.abs(x + STEP / 2) < 700 && Math.abs(z + STEP / 2) < 700) continue;
+      const v = (aa: number, bb: number) => bb * (N + 1) + aa;
+      idx.push(v(a, b), v(a, b + 1), v(a + 1, b), v(a + 1, b), v(a, b + 1), v(a + 1, b + 1));
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+    const m = new THREE.Mesh(g, mats().seabed); m.frustumCulled = false;
+    this.group.add(m);
+    this.floor.set(`${i},${j}`, m);
+  }
+
   /** how many are built just now (for tests) */
   get count() { return this.built.size; }
 
@@ -190,6 +225,21 @@ export class OpenSea {
   private wreck(f: SeaFeature, b: Built) {
     const M = mats(), r = rng(f.seed), g = b.g;
     const floor = heightAt(f.x, f.z);
+    // the reef she lies on: a shallow, sandy shelf, pale on top, darker down its sides into the deep
+    {
+      const RINGS = [0, 0.25, 0.5, 0.7, 0.85, 1.0, 1.15, 1.35, 1.6, 1.9, 2.3, 2.8, 3.4, 4.2], SEG = 40;
+      const pos: number[] = [], col: number[] = [], idx: number[] = [], top = new THREE.Color("#c9b58c"), side = new THREE.Color("#6e6656"), c = new THREE.Color();
+      for (let ri = 0; ri < RINGS.length; ri++) for (let s = 0; s < SEG; s++) {
+        const a = (s / SEG) * Math.PI * 2, R = RINGS[ri] * f.r, x = f.x + Math.cos(a) * R, z = f.z + Math.sin(a) * R, y = heightAt(x, z);
+        pos.push(x, y, z);
+        c.copy(top).lerp(side, Math.min(1, Math.max(0, (f.top - y) / 12))); col.push(c.r, c.g, c.b);
+        if (ri < RINGS.length - 1) { const o = ri * SEG + s, n = ri * SEG + ((s + 1) % SEG); idx.push(o, n, o + SEG, n, n + SEG, o + SEG); }
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3)); geo.setIndex(idx); geo.computeVertexNormals();
+      b.geos.push(geo);
+      const reef = new THREE.Mesh(geo, M.ground); reef.frustumCulled = false; g.add(reef);
+    }
     // the ship, in her own space (bow at -z), then laid over on the reef
     const ship = new THREE.Group();
     const L = 17, add = (geo: THREE.BufferGeometry, m: THREE.Material, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0) => {

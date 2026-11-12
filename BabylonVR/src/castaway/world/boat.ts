@@ -1130,8 +1130,9 @@ export class Boats {
   /** the helm: sails filling or spilled, the rudder, aground on the shallows, and the storm shoving you about */
   private drive(b: Boat, dt: number, time: number, ctl: { x: number; y: number; boost: boolean }) {
     const rf = b.raft;
-    const maxV = rf ? (ctl.boost ? 4.6 : 3.4) : ctl.boost ? 9.5 : 7;
-    const want = ctl.y >= 0 ? ctl.y * maxV : ctl.y * (rf ? 1.4 : 2);
+    // (a raft is rowed: slower than a sailing boat, but not so slow that the open sea takes all evening)
+    const maxV = rf ? (ctl.boost ? 6.9 : 5.1) : ctl.boost ? 9.5 : 7;
+    const want = ctl.y >= 0 ? ctl.y * maxV : ctl.y * (rf ? 2.1 : 2);
     b.v += (want - b.v) * Math.min(1, dt * (Math.abs(want) > Math.abs(b.v) ? 0.3 : 0.6));
     const turn = -ctl.x * (rf ? 0.42 : 0.5) * Math.min(1, 0.3 + Math.abs(b.v) / 4) * (b.v < -0.1 ? -1 : 1);
     b.yawV += (turn - b.yawV) * Math.min(1, dt * 2);
