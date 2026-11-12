@@ -25,7 +25,8 @@ const version = (() => {
 export default defineConfig(({ mode }) => ({
     base: "./",
     define: { __CASTAWAY_VERSION__: JSON.stringify(version) },
-    plugins: mode === "https" ? [basicSsl()] : [],
+    // (the version is written into the page itself, so the menu shows it at once, not after the game's code has loaded)
+    plugins: [{ name: "castaway-version", transformIndexHtml: (html: string) => html.replace('<span id="version" class="version"></span>', `<span id="version" class="version">${version}</span>`) }, ...(mode === "https" ? [basicSsl()] : [])],
     // ez-tree's bark/leaf textures, grass, flowers and rocks (MIT package; textures CC0).
     resolve: { alias: { "@eztree": fileURLToPath(new URL("./node_modules/@dgreenheck/ez-tree/src", import.meta.url)) } },
     server: { host: true },

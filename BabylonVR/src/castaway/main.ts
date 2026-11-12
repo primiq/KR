@@ -1351,10 +1351,24 @@ async function main() {
         $("loading").classList.remove("hidden");
         progress(1, "Getting everything ready…");
         const t0 = performance.now();
-        let smooth = 0;
+        let smooth = 0, phase = 0, phaseT = 0;
         const recent: number[] = [];
+        // (first a slow look all round, so everything in every direction has been drawn once; then the menu board opened
+        //  for a moment, so its first real opening is quick; then wait for the frames to run smoothly)
+        const yaw0 = player.yaw, pitch0 = player.pitch, SPIN = 2400;
         const obs = scene.onAfterRenderObservable.add(() => {
             const dt = engine.getDeltaTime(), el = performance.now() - t0;
+            if (phase === 0) {
+                if (el < SPIN) { player.yaw = yaw0 + (el / SPIN) * Math.PI * 2; player.pitch = -0.2 + 0.25 * Math.sin(el / 380); smooth = 0; return; }
+                player.yaw = yaw0; player.pitch = pitch0;
+                if (!vrActive()) game.hud.setInventory(true, "craft");
+                phase = 1; phaseT = el; smooth = 0; return;
+            }
+            if (phase === 1) {
+                if (el - phaseT < 900) { smooth = 0; return; }
+                game.hud.setInventory(false);
+                phase = 2; smooth = 0; return;
+            }
             // (smooth for this device: no frame much slower than its usual one, for a good while, and at least a few
             //  seconds in so the slower things (the sky's lighting, the far plants, the sea's reflection) have come in)
             recent.push(dt); if (recent.length > 60) recent.shift();

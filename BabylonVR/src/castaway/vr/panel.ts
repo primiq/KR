@@ -26,6 +26,21 @@ const B_BG = "#0c1a21f2", B_EDGE = "#ffd16638", CARD = "#ffffff0d", CARD_EDGE = 
     INK = "#0c1a21", MUTED = "#f4efe28c", GOOD = "#8be0b5", SHORT = "#ff9a86";
 
 /** a tab or toggle that lights up (teal, dark text) when it is the one showing */
+// A simple button's label does not take the button's font size or weight: it stayed at the 18 px default whatever was
+// asked for (tiny tab and key labels, on the board and worse on a screen). Pass them on to the label.
+for (const prop of ["fontSize", "fontWeight"] as const) {
+    let proto: object | null = Button.prototype, d: PropertyDescriptor | undefined;
+    while (proto && !(d = Object.getOwnPropertyDescriptor(proto, prop))) proto = Object.getPrototypeOf(proto);
+    if (d?.get && d.set) {
+        const { get, set } = d;
+        Object.defineProperty(Button.prototype, prop, {
+            configurable: true,
+            get() { return get.call(this); },
+            set(v: string | number) { set.call(this, v); const tb = (this as Button).textBlock; if (tb) (tb as unknown as Record<string, unknown>)[prop] = v; },
+        });
+    }
+}
+
 function lit(b: Button, on: boolean) {
     b.background = on ? ACC : ACC_DIM;
     b.color = on ? INK : TXT;
@@ -905,11 +920,11 @@ export class VRPanel {
         this.boardRoot.isVisible = !this.flat || open;
         if (this.flatUI) {
             this.flatUI.layer!.isEnabled = this.flat && open;
-            // the size: to fit a small screen (a little margin round it), but no bigger than about 1000 screen pixels across
+            // the size: to fit a small screen (a little margin round it), but no bigger than about 1400 screen pixels across
             // on a large one (filling a big monitor it was huge)
             if (this.flat && open) {
                 const eng = this.scene.getEngine(), W = eng.getRenderWidth(), H = eng.getRenderHeight(), dpr = window.devicePixelRatio || 1;
-                const sc = Math.min((0.94 * W) / 1650, (0.92 * H) / 1125, (1000 * dpr) / (1650 * eng.getHardwareScalingLevel()));
+                const sc = Math.min((0.94 * W) / 1650, (0.92 * H) / 1125, (1400 * dpr) / (1650 * eng.getHardwareScalingLevel()));
                 const iw = W / sc, ih = H / sc;
                 if (Math.abs(this.flatUI.idealWidth - iw) > 1 || Math.abs(this.flatUI.idealHeight - ih) > 1) { this.flatUI.idealWidth = iw; this.flatUI.idealHeight = ih; }
             }

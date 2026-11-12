@@ -6,6 +6,14 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-11-26", title: "A readable menu, a smoother start",
+        items: [
+            "The menu on a PC is bigger on large screens and its buttons finally have proper, readable labels (in VR too).",
+            "Before Play is offered the game now takes a look all round your spot and opens the menu once behind the loading screen, so the first seconds of play and the first time you open the menu run smoothly.",
+            "The version number shows on the main menu straight away.",
+        ],
+    },
+    {
         date: "2026-11-25", title: "Swim anywhere",
         items: [
             "You can swim anywhere on the sea now: from a wreck back to your raft, out to an islet, wherever you like. (Swimming out past the reef without a boat still brings the storm.)",

@@ -70,6 +70,11 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Menu readability, start smoothness, version**: Babylon simple buttons did not pass fontSize/fontWeight to their label
+  (all button labels drew at the 18 px default); `vr/panel.ts` now patches Button.prototype to pass them on (affects VR
+  too). Flat board cap raised from 1000 to 1400 CSS px. `prewarm` now spins the camera 360 degrees round the spawn, then
+  opens the board for 0.9 s, then waits for smooth frames. The version is injected into index.html at build time
+  (vite plugin `castaway-version`). Still to confirm on the owner's PC: whether any start stutter remains.
 - **Swim anywhere**: the old swimmer limit (never further out than you already are, past 340 m, unless within 30 m of
   a boat) blocked swimming from a wreck back to a raft further out. `world/player.ts` now limits swimmers only at the
   sea's edge (`OUTER`), like boats.
