@@ -1,3 +1,4 @@
+import { diagEngine, diagStage, SAFE } from "./ui/diag";
 import { SAX as SUB_SAX, SAZ as SUB_SAZ } from "./world/sub";
 import { coldAt, inSeaWorld } from "./world/arctic";
 import { ArcticView, Snowfall } from "./world/arcticView";
@@ -110,6 +111,7 @@ function progress(f: number, text: string) {
     $("loading-bar").style.width = `${Math.round(f * 100)}%`;
     $("loading-text").textContent = text;
     lastProgress = performance.now();
+    diagStage(text);
 }
 /**
  * Something the player should read on the loading screen, under the progress text (a hint when loading is stuck, what
@@ -260,6 +262,7 @@ async function main() {
     window.addEventListener("resize", () => engine.resize());
 
     const scene = new Scene(engine);
+    diagEngine(engine, scene);
     // every lit material has room for all the lights that can be on at once (sun, moon, lightning, cave fill, three fire
     // lights, the torch in your hand): the lights are never switched on or off, so no shader ever has to be rebuilt mid-game
     // (set after the material is made: this fires inside its constructor, before its own default of 4 is in place, and a
@@ -846,6 +849,7 @@ async function main() {
     // cut-out edges of grass and leaves), or both. (8 samples where the GPU has them, else as many as it has)
     function setAA(aa: Antialias) {
         if (!pipeline) return;
+        if (SAFE) aa = "off";
         const most = engine.getCaps().maxMSAASamples || 4;
         pipeline.samples = aa === "max" ? Math.min(8, most) : aa === "msaa" ? Math.min(4, most) : 1;
         pipeline.fxaaEnabled = aa === "fxaa" || aa === "max";
@@ -1292,6 +1296,7 @@ async function main() {
     // (a tab closed by mistake, Ctrl+W while crouching forward, say, where the keys could not be kept: ask first)
     window.addEventListener("beforeunload", (e) => { if (started && !leaving) { e.preventDefault(); e.returnValue = ""; } });
     const begin = () => {
+        diagStage("playing");
         started = true;
         setNameLocked(true);
         settle();
@@ -1354,7 +1359,8 @@ async function main() {
         $("loading").classList.remove("hidden");
         progress(1, "Getting everything ready…");
         const t0 = performance.now();
-        let smooth = 0, phase = 0, phaseT = 0;
+        // (safe mode: straight to waiting for smooth frames, no look round, no menu)
+        let smooth = 0, phase = SAFE ? 2 : 0, phaseT = 0;
         const recent: number[] = [];
         // (first a slow look all round, so everything in every direction has been drawn once; then the menu board opened
         //  for a moment, so its first real opening is quick; then wait for the frames to run smoothly)
@@ -1389,6 +1395,7 @@ async function main() {
     // the island is built: one more click starts it (pointer lock, fullscreen, audio and VR all need a click)
     const ready = (wantVR: boolean, text = "Your island is ready.") => prewarm(() => readyNow(wantVR, text));
     const readyNow = (wantVR: boolean, text: string) => {
+        diagStage("ready screen");
         if (params.has("go")) { begin(); return; }
         $("ready-text").textContent = text;
         $("ready-vr").classList.toggle("hidden", !(wantVR && vrMode));

@@ -70,6 +70,11 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Diagnostics for phones** (`ui/diag.ts`): `?diag` in the address shows a panel (version, loading stage, page and 3D
+  frame counts, canvas size, GPU name, graphics lost count, memory, meshes, last errors); it also appears by itself on an
+  uncaught error or a lost context. `?safe` skips the warm-up's spin and menu opening and turns edge smoothing off.
+  Used to chase the owner's phone freezing on a black screen (Edge and the built-in browser), still unexplained.
+
 - **Phones froze / went black after Play** (owner report, not reproducible headless): most likely GPU memory, after the
   islet vegetation added ~200 meshes and ~600k vertices at load (every islet is its own cull tile with its own geometry
   copies, near and far). Islet trees and rocks are still nodes from the start (same numbers and order), but their refs
