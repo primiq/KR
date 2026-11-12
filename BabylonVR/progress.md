@@ -19,7 +19,7 @@ through rings of open sea to an Arctic. Multiplayer is peer to peer (PeerJS), th
 - Never touch the `primiq/castaway` repo. Work only in `primiq/KR`, directly on `master`, push to `origin master`. No PRs.
 - **No long dashes ever** (em dash, en dash): not in code, comments, commit messages, game text, What's new, or replies.
 - Every player-facing change adds an entry at the TOP of `UPDATES` in `src/castaway/ui/whatsnew.ts` in the same commit
-  (its date drives the "new" dot on the menu). Dates so far run ahead of the calendar (latest 2026-11-28): keep going up.
+  (its date drives the "new" dot on the menu). Dates so far run ahead of the calendar (latest 2026-11-29): keep going up.
 - Commits end with the Co-Authored-By and Claude-Session lines; no model names or IDs in commits.
 - Performance changes must be measured (an earlier perf change was rolled back).
 - Keep this file (`progress.md`) current.
@@ -69,6 +69,13 @@ screen, deep sea abyss with glowing creatures (GlowLayer) and chests, open sea, 
 pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flute, butterflies, gulls, whales, dolphins.
 
 ## Recent work (newest first)
+
+- **Phones froze / went black after Play** (owner report, not reproducible headless): most likely GPU memory, after the
+  islet vegetation added ~200 meshes and ~600k vertices at load (every islet is its own cull tile with its own geometry
+  copies, near and far). Islet trees and rocks are still nodes from the start (same numbers and order), but their refs
+  point at a stand-in until you come within 1 km; `Vegetation.buildIslets` then makes that islet's meshes (one per
+  ~30 updates, nearest first) and they stay. One shape each (palm, boulder, ore). At load on mobile quality: 1.51M
+  vertices / 1405 meshes (was 2.10M / 1752). Still to confirm on the owner's phone.
 
 - **Deploy fix**: the Cloudflare worker is named `kr`, but both `wrangler.jsonc` files (repo root and `BabylonVR/`) said
   `babylon-vr-playground`, so builds deployed to another worker and the live game never changed. Both now say `kr`.

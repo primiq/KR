@@ -213,6 +213,7 @@ function planOasis() {
  *  after the oasis so no older node number shifts. */
 function planIslets() {
     const palms: Placement[] = [], stones: Placement[] = [], ores: Placement[] = [];
+    const groups: { x: number; z: number; palms: Placement[]; stones: Placement[]; ores: Placement[] }[] = [];
     const isles = featuresNear(0, 0, SEA_END + 300).filter((f) => f.kind === "islet").sort((a, b) => a.id - b.id);
     for (const f of isles) {
         const rnd = mulberry32(Math.floor(f.seed * 1000) + 7), mine: Placement[] = [];
@@ -226,12 +227,14 @@ function planIslets() {
                 mine.push(p); list.push(p); got++;
             }
         };
-        take(n, 0.05, 0.62, 2.6, 0.75, 1.3, palms);
-        take(big ? 2 + Math.floor(rnd() * 2) : f.rock ? 1 : 0, 0.3, 0.72, 3, 0.8, 1.6, stones);
-        take(rnd() < (big ? 0.75 : 0.3) ? 1 + (big && rnd() < 0.4 ? 1 : 0) : 0, 0.25, 0.7, 3, 0.8, 1.3, ores);
+        const g = { x: f.x, z: f.z, palms: [] as Placement[], stones: [] as Placement[], ores: [] as Placement[] };
+        take(n, 0.05, 0.62, 2.6, 0.75, 1.3, g.palms);
+        take(big ? 2 + Math.floor(rnd() * 2) : f.rock ? 1 : 0, 0.3, 0.72, 3, 0.8, 1.6, g.stones);
+        take(rnd() < (big ? 0.75 : 0.3) ? 1 + (big && rnd() < 0.4 ? 1 : 0) : 0, 0.25, 0.7, 3, 0.8, 1.3, g.ores);
+        palms.push(...g.palms); stones.push(...g.stones); ores.push(...g.ores); groups.push(g);
     }
     for (const p of [...stones, ...ores]) p.squash = [1.0 + hash3(p.x, 1, 2) * 0.3, 0.62 + 0.25 * Math.abs(hash3(p.x, 5, 7)), 1.0 + hash3(p.z, 9, 4) * 0.3];
-    return { palms, stones, ores };
+    return { palms, stones, ores, groups };
 }
 
 export class Vegetation {
@@ -760,14 +763,50 @@ export class Vegetation {
             pm.instanceMatrix.needsUpdate = true; pm.refreshBounds();
             this.cullable.push({ mesh: pm, c: new THREE.Vector3(DESERT_X, 0, DESERT_Z), r: 160, far: false, lod: 0 });
         }
-        // ---- the open sea's islets: real palms, boulders and ore (appended last: node numbers before them never shift)
+        // ---- the open sea's islets: real palms, boulders and ore (appended last: node numbers before them never shift).
+        //      Their trees and rocks are nodes from the start (the same numbers for everyone), but only drawn once you come
+        //      within ISLET_BUILD of the islet: every islet is its own tile with its own copies of the shapes, too much
+        //      memory for phones if all ~35 were made at once. Until then their refs point at a stand-in that draws nothing.
         {
-            const iPalm = instanced("isletPalm", palmGeos, palmMat, islets.palms, -0.15, [0, 0], true, 0.3, false, [11, 23, 37].map((s) => buildPalm(s, leaflets, true)), 120);
-            islets.palms.forEach((p, i) => addTree("palm", p, iPalm[i], 0.32 * p.scale, palmGeos[i % palmGeos.length]));
-            const sRefs = instanced("isletBoulder", rockGeos, rockMaterial(scene), islets.stones, -0.2, [0, 0], true, 0.75, false, [1, 2, 3].map((s) => buildRockGeometry(s, 1)), 80);
-            const oRefs = instanced("isletOre", oreGeos, rockMaterial(scene, true), islets.ores, -0.2, [0, 0], true, 0.75, false, [4, 5].map((s) => buildRockGeometry(s, 1)), 80);
-            islets.stones.forEach((p, i) => addRock("stone", p, sRefs[i]));
-            islets.ores.forEach((p, i) => addRock("ore", p, oRefs[i]));
+            const STUB = { mesh: { material: palmMat }, setMatrixAt() { /* not drawn yet */ }, getMatrixAt() { /* not drawn yet */ }, instanceMatrix: { needsUpdate: false } } as unknown as Inst;
+            const proxy = (p: Placement, yOff: number, footR: number): InstRef => {
+                const sq = p.squash;
+                p.y = groundLow(p.x, p.z, footR * p.scale * (sq ? (sq[0] + sq[2]) * 0.5 : 1));
+                dummy.position.set(p.x, p.y + yOff, p.z);
+                dummy.rotation.set(0, p.rot, 0);
+                dummy.scale.set(p.scale * (sq ? sq[0] : 1), p.scale * (sq ? sq[1] : 1), p.scale * (sq ? sq[2] : 1));
+                dummy.updateMatrix();
+                return { mesh: STUB, index: 0, base: dummy.matrix.clone() };
+            };
+            const lazy = islets.groups.map((g) => ({
+                g, built: false, pn: [] as ResNode[], sn: [] as ResNode[], on: [] as ResNode[],
+                pr: g.palms.map((p) => proxy(p, -0.15, 0.3)), sr: g.stones.map((p) => proxy(p, -0.2, 0.75)), or: g.ores.map((p) => proxy(p, -0.2, 0.75)),
+            }));
+            // (the nodes in the same order as ever: every islet's palms, then the boulders, then the ore)
+            for (const l of lazy) l.g.palms.forEach((p, i) => { addTree("palm", p, l.pr[i], 0.32 * p.scale, palmGeos[0]); l.pn.push(this.nodes[this.nodes.length - 1]); });
+            for (const l of lazy) l.g.stones.forEach((p, i) => { addRock("stone", p, l.sr[i]); l.sn.push(this.nodes[this.nodes.length - 1]); });
+            for (const l of lazy) l.g.ores.forEach((p, i) => { addRock("ore", p, l.or[i]); l.on.push(this.nodes[this.nodes.length - 1]); });
+            let farPalm: THREE.BufferGeometry | null = null, farStone: THREE.BufferGeometry | null = null, farOre: THREE.BufferGeometry | null = null;
+            const fill = (name: string, geo: THREE.BufferGeometry, mat: Material, far: THREE.BufferGeometry, list: Placement[], refs: InstRef[], nodes: ResNode[], yOff: number, footR: number, lod: number) => {
+                if (!list.length) return;
+                const real = instanced(name, [geo], mat, list, yOff, [0, 0], true, footR, false, [far], lod);
+                real.forEach((r, i) => { refs[i].mesh = r.mesh; refs[i].index = r.index; if (nodes[i].depleted) hide(refs[i]); });
+            };
+            const ISLET_BUILD = 1000;
+            this.buildIslets = (px: number, pz: number) => {
+                // (the nearest one not made yet, one per call: no stall)
+                let best: (typeof lazy)[number] | null = null, bd = ISLET_BUILD;
+                for (const l of lazy) { if (l.built) continue; const d = Math.hypot(l.g.x - px, l.g.z - pz); if (d < bd) { bd = d; best = l; } }
+                if (!best) return;
+                best.built = true;
+                farPalm ??= buildPalm(11, leaflets, true); farStone ??= buildRockGeometry(1, 1); farOre ??= buildRockGeometry(4, 1);
+                const { g } = best;
+                fill("isletPalm", palmGeos[0], palmMat, farPalm, g.palms, best.pr, best.pn, -0.15, 0.3, 120);
+                fill("isletBoulder", rockGeos[0], rockMaterial(scene), farStone, g.stones, best.sr, best.sn, -0.2, 0.75, 80);
+                fill("isletOre", oreGeos[0], rockMaterial(scene, true), farOre, g.ores, best.or, best.on, -0.2, 0.75, 80);
+                // (cull again straight away, so the new ones show at the right detail)
+                this.cullAt.x = 1e9;
+            };
         }
         for (const n of this.nodes) if (n.pool === undefined) this.nodeG0.set(n, heightAt(n.x, n.z));
     }
@@ -781,8 +820,13 @@ export class Vegetation {
         });
     }
 
+    /** make the trees and rocks of the nearest islet not drawn yet, if one is near enough (set up in the constructor) */
+    private buildIslets: (px: number, pz: number) => void = () => {};
+    private isletT = 0;
+
     update(px: number, pz: number, force = false) {
         if (force) for (const t of this.tiers) t.memo = undefined;
+        if (++this.isletT % 30 === 0) this.buildIslets(px, pz);
         this.cull(px, pz);
         for (const t of this.tiers) this.updateTier(t, px, pz, force);
     }

@@ -6,6 +6,12 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-11-29", title: "Lighter on phones",
+        items: [
+            "The islets' trees and rocks are only made once you sail near them, so the game needs much less memory at the start. This should stop the freeze or black screen some phones showed after pressing Play.",
+        ],
+    },
+    {
         date: "2026-11-28", title: "Supplies in the Arctic",
         items: [
             "Frozen logs lie about on the Arctic's snow: pick them up for wood, so you can keep a fire going up north.",
