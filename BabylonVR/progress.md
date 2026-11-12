@@ -19,7 +19,7 @@ through rings of open sea to an Arctic. Multiplayer is peer to peer (PeerJS), th
 - Never touch the `primiq/castaway` repo. Work only in `primiq/KR`, directly on `master`, push to `origin master`. No PRs.
 - **No long dashes ever** (em dash, en dash): not in code, comments, commit messages, game text, What's new, or replies.
 - Every player-facing change adds an entry at the TOP of `UPDATES` in `src/castaway/ui/whatsnew.ts` in the same commit
-  (its date drives the "new" dot on the menu). Dates so far run ahead of the calendar (latest 2026-11-27): keep going up.
+  (its date drives the "new" dot on the menu). Dates so far run ahead of the calendar (latest 2026-11-28): keep going up.
 - Commits end with the Co-Authored-By and Claude-Session lines; no model names or IDs in commits.
 - Performance changes must be measured (an earlier perf change was rolled back).
 - Keep this file (`progress.md`) current.
@@ -69,6 +69,13 @@ screen, deep sea abyss with glowing creatures (GlowLayer) and chests, open sea, 
 pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flute, butterflies, gulls, whales, dolphins.
 
 ## Recent work (newest first)
+
+- **Deploy fix**: the Cloudflare worker is named `kr`, but both `wrangler.jsonc` files (repo root and `BabylonVR/`) said
+  `babylon-vr-playground`, so builds deployed to another worker and the live game never changed. Both now say `kr`.
+- **Arctic supplies**: frozen logs (pick up: 4 wood) and a new item `frozen_meat` (poor raw; campfire turns it into
+  cooked meat). Streamed by `Resources.arcticLoot` in 48 m cells within 150 m of you on the Arctic land (ids
+  `ax<i>_<j>_<k>`, the same on every client, not saved: `net/world.ts` skips them); one taken comes back after 30 min.
+  Pickups can now have a look of their own (`spawn(..., look)`, `Pickup.key`): the log is a "frozen_log" look of wood.
 
 - **Islet resources, raft deck, sea storm, wave crests**: the islets' palms, boulders and ore are now real vegetation
   nodes (`planIslets` in `world/vegetation.ts`, from each islet's seed, appended after the oasis so older node numbers

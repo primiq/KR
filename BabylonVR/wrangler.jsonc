@@ -2,7 +2,7 @@
   // Cloudflare Workers static-assets deployment of the Vite build output.
   // In the Cloudflare dashboard set Root directory = BabylonVR,
   // Build command = npm run build:cf, Deploy command = npx wrangler deploy.
-  "name": "babylon-vr-playground",
+  "name": "kr",
   "compatibility_date": "2026-10-01",
   "assets": {
     "directory": "./dist",

@@ -5,7 +5,7 @@ export type ItemId =
   | 'wood' | 'stone' | 'metal_ore' | 'metal' | 'fiber' | 'coal' | 'diamond'
   | 'coconut' | 'berries' | 'roasted_coconut' | 'turtle_egg'
   | 'flower_daisy' | 'flower_poppy' | 'flower_bluebell' | 'flower_sunflower' | 'flower_hibiscus' | 'flower_lavender' | 'flower_orchid' | 'flower_paradise'
-  | 'spear' | 'fishing_rod' | 'raw_meat' | 'cooked_meat' | 'raw_fish' | 'cooked_fish'
+  | 'spear' | 'fishing_rod' | 'raw_meat' | 'frozen_meat' | 'cooked_meat' | 'raw_fish' | 'cooked_fish'
   | 'campfire' | 'furnace' | 'workbench' | 'bed' | 'sleeping_bag' | 'box'
   | 'building_plan' | 'torch' | 'sapling' | 'picture_frame' | 'flower_pot' | 'rug' | 'lantern' | 'door'
   | 'leather' | 'leather_cap' | 'leather_vest' | 'leather_pants' | 'metal_helmet' | 'metal_chestplate' | 'metal_greaves'
@@ -178,6 +178,12 @@ export const ITEMS = {
     desc: 'Edible, but eating it raw makes you queasy. Cook it on a campfire.',
     icon: svg('<path d="M6 17c0-7 6-11 13-10 6 1 9 6 7 12-2 6-9 8-14 6-4-2-6-4-6-8z" fill="#c9444f"/><path d="M10 14c3-4 8-4 11-1" stroke="#f1a0a8" stroke-width="2" fill="none"/><circle cx="21" cy="19" r="3" fill="#f4e3d6"/>'),
     food: { hunger: 14, thirst: -4, health: -5 },
+  },
+  frozen_meat: {
+    id: 'frozen_meat', name: 'Frozen Meat', stack: 20, kind: 'food',
+    desc: 'Found frozen in the Arctic snow. Hard as a rock: thaw and cook it on a campfire.',
+    icon: svg('<path d="M6 17c0-7 6-11 13-10 6 1 9 6 7 12-2 6-9 8-14 6-4-2-6-4-6-8z" fill="#b97d8c"/><path d="M6 17c0-7 6-11 13-10 6 1 9 6 7 12-2 6-9 8-14 6-4-2-6-4-6-8z" fill="#cfe8f5" opacity=".45"/><path d="M10 14c3-4 8-4 11-1" stroke="#f4fbff" stroke-width="2" fill="none"/><circle cx="21" cy="19" r="3" fill="#f4f7fa"/><path d="M8 9l2 2m0-2-2 2M24 8l2 2m0-2-2 2" stroke="#fff" stroke-width="1.2"/>'),
+    food: { hunger: 8, thirst: -3, health: -8 },
   },
   cooked_meat: {
     id: 'cooked_meat', name: 'Cooked Meat', stack: 20, kind: 'food',

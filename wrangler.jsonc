@@ -1,7 +1,7 @@
 {
   // Cloudflare Workers static-assets deployment of the BabylonVR web app, from the repo root.
   // Dashboard: Root directory = (empty), Build command = npm run build, Deploy command = npx wrangler deploy.
-  "name": "babylon-vr-playground",
+  "name": "kr",
   "compatibility_date": "2026-10-01",
   "assets": {
     "directory": "./BabylonVR/dist",

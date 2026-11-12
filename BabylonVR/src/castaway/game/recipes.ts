@@ -77,6 +77,7 @@ export const STATION_RECIPES: Record<'campfire' | 'furnace', Smelt[]> = {
   campfire: [
     { from: 'coconut', to: 'roasted_coconut', time: 8 },
     { from: 'raw_meat', to: 'cooked_meat', time: 10 },
+    { from: 'frozen_meat', to: 'cooked_meat', time: 16 },
     { from: 'raw_fish', to: 'cooked_fish', time: 7 },
   ],
   furnace: [{ from: 'metal_ore', to: 'metal', time: 5 }],

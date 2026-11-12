@@ -465,10 +465,10 @@ function build(id: ItemId, left = false): THREE.Group {
       const zone = new THREE.Object3D(); zone.position.set(0, -0.53, -0.05); g.add(zone); g.userData.strum = zone;
       return g;
     }
-    case 'raw_meat': case 'cooked_meat': {
-      const cooked = id === 'cooked_meat';
-      const g = grp(mesh(place(new THREE.IcosahedronGeometry(1, 2), 0, 0, 0, 0.05, 0.085, 0.036), mat(cooked ? '#7a4422' : '#b8434d', 0.75, { rim: 0.12 }), 11));
-      const top = mesh(place(new THREE.IcosahedronGeometry(1, 1), 0.012, 0.01, 0.026, 0.028, 0.05, 0.012), mat(cooked ? '#a8703c' : '#f0cfc4', 0.8), 12); g.add(top);
+    case 'raw_meat': case 'cooked_meat': case 'frozen_meat': {
+      const cooked = id === 'cooked_meat', frozen = id === 'frozen_meat';
+      const g = grp(mesh(place(new THREE.IcosahedronGeometry(1, 2), 0, 0, 0, 0.05, 0.085, 0.036), mat(cooked ? '#7a4422' : frozen ? '#c9a3b0' : '#b8434d', 0.75, { rim: 0.12 }), 11));
+      const top = mesh(place(new THREE.IcosahedronGeometry(1, 1), 0.012, 0.01, 0.026, 0.028, 0.05, 0.012), mat(cooked ? '#a8703c' : frozen ? '#eef6fb' : '#f0cfc4', 0.8), 12); g.add(top);
       const bone = mesh(new THREE.CylinderGeometry(0.0085, 0.0085, 0.06, 7), mat('#efe6d2', 0.8), 12); bone.position.y = 0.09; g.add(bone);
       const knob = mesh(new THREE.SphereGeometry(0.0125, 7, 5), mat('#efe6d2', 0.8), 12); knob.position.y = 0.122; g.add(knob);
       return g;
@@ -569,7 +569,7 @@ const G_BIG: Grip = { fit: F_BIG, cy: 0.07, cz: 0.075, th: [0.9, 0.5, 0.35], rol
 const GRIPS: Record<ItemId, Grip> = {
   rock: G_ROCK, hatchet: G_HANDLE, pickaxe: { ...G_HANDLE, gy: -0.04 }, metal_hatchet: G_HANDLE, metal_pickaxe: { ...G_HANDLE, gy: -0.04 }, diamond_pickaxe: { ...G_HANDLE, gy: -0.04 }, coal: G_STONE, diamond: G_STONE,
   wood: G_LOG, stone: G_STONE, metal_ore: G_STONE, metal: G_LOG, fiber: G_BUNDLE, coconut: G_CUP, berries: G_BERRY, roasted_coconut: G_CUP, turtle_egg: G_BERRY, picture_frame: G_BIG, flower_pot: G_BIG, rug: G_BUNDLE, lantern: G_HANDLE, compass: G_BIG, flag: G_HANDLE, flute: G_HANDLE, table: G_BIG, cat_bed: G_BIG, lounger: G_BIG, drum: G_BIG, drumsticks: { ...G_HANDLE, gy: -0.03 }, door: G_BIG, flower_daisy: G_HANDLE, flower_poppy: G_HANDLE, flower_bluebell: G_HANDLE, flower_sunflower: G_HANDLE, flower_hibiscus: G_HANDLE, flower_lavender: G_HANDLE, flower_orchid: G_HANDLE, flower_paradise: G_HANDLE,
-  spear: { ...G_HANDLE, gy: -0.08, cy: 0.07 }, fishing_rod: { ...G_HANDLE, gy: -0.06, fit: [1.3, 1.0, 0.95] }, raw_meat: G_STONE, cooked_meat: G_STONE, raw_fish: G_BUNDLE, cooked_fish: G_BUNDLE,
+  spear: { ...G_HANDLE, gy: -0.08, cy: 0.07 }, fishing_rod: { ...G_HANDLE, gy: -0.06, fit: [1.3, 1.0, 0.95] }, raw_meat: G_STONE, frozen_meat: G_STONE, cooked_meat: G_STONE, raw_fish: G_BUNDLE, cooked_fish: G_BUNDLE,
   sapling: G_BUNDLE, campfire: G_BUNDLE, torch: { ...G_HANDLE, gy: -0.03 }, furnace: G_BIG, workbench: { ...G_HANDLE, gy: -0.04 }, bed: G_BUNDLE, sleeping_bag: G_BUNDLE, box: G_BIG, building_plan: G_LOG,
   leather: G_BUNDLE, leather_cap: G_BIG, leather_vest: G_BIG, leather_pants: G_BIG, metal_helmet: G_BIG, metal_chestplate: G_BIG, metal_greaves: G_BIG,
   diamond_helmet: G_BIG, diamond_chestplate: G_BIG, diamond_greaves: G_BIG, boat: G_BIG, raft: G_BIG, submarine: G_BIG,

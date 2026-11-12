@@ -25,7 +25,8 @@ export function captureWorld(g: Game) {
     });
     return {
         nodes,
-        pickups: [...r.pickups.items].map((p) => [p.nid, p.id, p.count, p.dur ?? null, +p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2)]),
+        // (the Arctic's frozen logs and meat are not saved: they come from the map, see ArcticLoot)
+        pickups: [...r.pickups.items].filter((p) => !p.nid.startsWith("ax")).map((p) => [p.nid, p.id, p.count, p.dur ?? null, +p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2)]),
         pieces: [...g.building.pieces].map((p) => [p.kind, p.i, p.j, p.axis, +p.H.toFixed(3), p.L, p.dir]),
         build: g.building.captureExtras(),
         cave: g.under.capture(),

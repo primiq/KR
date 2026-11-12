@@ -6,6 +6,14 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-11-28", title: "Supplies in the Arctic",
+        items: [
+            "Frozen logs lie about on the Arctic's snow: pick them up for wood, so you can keep a fire going up north.",
+            "You will find frozen meat out there too. It is no good raw: thaw and cook it on a campfire.",
+            "What you take comes back after a while, so the Arctic never runs dry.",
+        ],
+    },
+    {
         date: "2026-11-27", title: "Stock up on the islets, a real storm at sea",
         items: [
             "The little islets out at sea now grow real palm trees, just like the island's: fell them for wood. The bigger islets have a good stand of them, with boulders to mine and now and then a seam of metal ore.",

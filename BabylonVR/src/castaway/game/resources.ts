@@ -10,7 +10,7 @@ import { heightAt, RIVER_SPRING, slopeAt } from "../world/island";
 import type { Vegetation, Zone } from "../world/vegetation";
 import { type ItemId } from "./items";
 import type { ResNode } from "./nodes";
-import { ICE_R0, poolsNear } from "../world/arctic";
+import { creviceAt, ICE_R0, inland, poolAt, poolsNear } from "../world/arctic";
 
 export type HitFx = "wood" | "stone" | "ore" | "leaf" | "ember" | "flesh" | "water" | "sand";
 
@@ -240,14 +240,17 @@ const DRY_LEAF = [0x6f9a2a, 0x8fb83a, 0xa8b84a, 0x7a6a2a, 0x5a8a24];
 // ---------------------------------------------------------------- ground pickups
 /** a tag for this run of the game, so ids made now never match ids saved earlier */
 const SESSION = `${Math.floor(Math.random() * 36 ** 3).toString(36)}.`;
-export interface Pickup { nid: string; id: ItemId; count: number; dur?: number; x: number; y: number; z: number; mesh: Inst; index: number }
+export interface Pickup { nid: string; id: ItemId; count: number; dur?: number; x: number; y: number; z: number; mesh: Inst; index: number; /** which look (mesh) it uses: its item's, or a style of its own such as "frozen_log" */ key: string }
 
 type GeoFn = () => THREE.BufferGeometry;
 const box = (w: number, h: number, d: number, y: number): GeoFn => () => new THREE.BoxGeometry(w, h, d).translate(0, y, 0);
 const ico = (r: number, det: number, sx: number, sy: number, sz: number, y: number): GeoFn => () => new THREE.IcosahedronGeometry(r, det).scale(sx, sy, sz).translate(0, y, 0);
 const rod = (r0: number, r1: number, len: number, seg: number, y: number, rz = Math.PI / 2): GeoFn => () => new THREE.CylinderGeometry(r0, r1, len, seg).rotateZ(rz).translate(0, y, 0);
 const dome = (y: number): GeoFn => () => new THREE.SphereGeometry(0.14, 8, 5, 0, 6.283, 0, 1.6).translate(0, y, 0);
-const PICKUP_STYLE: Partial<Record<ItemId, { color: string; geo: GeoFn }>> = {
+const PICKUP_STYLE: Partial<Record<ItemId | "frozen_log", { color: string; geo: GeoFn }>> = {
+    // a frosted log lying in the Arctic snow (picked up as wood) and a lump of frozen meat
+    frozen_log: { color: "#85705f", geo: () => new THREE.CylinderGeometry(0.16, 0.19, 1.5, 9).rotateZ(Math.PI / 2).translate(0, 0.16, 0) },
+    frozen_meat: { color: "#c9a3b0", geo: ico(0.15, 1, 1.2, 0.65, 0.9, 0.09) },
     fiber: { color: "#b4c46a", geo: () => new THREE.ConeGeometry(0.11, 0.3, 5).translate(0, 0.15, 0) },
     metal: { color: "#bcc4cb", geo: box(0.2, 0.07, 0.11, 0.04) },
     roasted_coconut: { color: "#9a6030", geo: ico(0.11, 2, 1, 1, 1, 0.11) },
@@ -313,9 +316,9 @@ const PICKUP_STYLE: Partial<Record<ItemId, { color: string; geo: GeoFn }>> = {
 /** Items lying on the ground: one thin-instanced mesh per item kind, created the first time one is dropped. */
 export class PickupField {
     readonly items = new Set<Pickup>();
-    private meshes = new Map<ItemId, Inst>();
-    private free = new Map<ItemId, number[]>();
-    private used = new Map<ItemId, Uint8Array>();
+    private meshes = new Map<string, Inst>();
+    private free = new Map<string, number[]>();
+    private used = new Map<string, Uint8Array>();
     private dummy = new THREE.Object3D();
     private readonly CAP = 140;
     readonly byId = new Map<string, Pickup>();
@@ -329,7 +332,7 @@ export class PickupField {
 
     constructor(private readonly scene: Scene) {}
 
-    private meshFor(id: ItemId): Inst {
+    private meshFor(id: ItemId | "frozen_log"): Inst {
         let m = this.meshes.get(id);
         if (m) return m;
         // (coconuts: the island's and the open sea islets' both, and the ones felled palms drop)
@@ -349,8 +352,8 @@ export class PickupField {
         return m;
     }
 
-    spawn(id: ItemId, count: number, x: number, y: number, z: number, dur?: number, nid?: string, silent = false): Pickup | null {
-        const m = this.meshFor(id), f = this.free.get(id)!;
+    spawn(id: ItemId, count: number, x: number, y: number, z: number, dur?: number, nid?: string, silent = false, look?: "frozen_log"): Pickup | null {
+        const key = look ?? id, m = this.meshFor(key), f = this.free.get(key)!;
         const index = f.pop();
         if (index === undefined) return null;
         const d = this.dummy;
@@ -363,13 +366,13 @@ export class PickupField {
         d.updateMatrix();
         m.setMatrixAt(index, d.matrix);
         m.instanceMatrix.needsUpdate = true;
-        this.used.get(id)![index] = 1;
+        this.used.get(key)![index] = 1;
         if (index + 1 > m.count) m.count = index + 1;
         // (a fresh id: never one an item already on the ground has; a saved world keeps its items' ids, and the counter starts
         //  over each time the game loads, so a reused id made another player think they already had the new item)
         let fresh = nid;
         if (!fresh) { do fresh = `${this.idPrefix}${SESSION}${this.idCount++}`; while (this.byId.has(fresh)); }
-        const p: Pickup = { nid: fresh, id, count, x, y, z, mesh: m, index, dur };
+        const p: Pickup = { nid: fresh, id, count, x, y, z, mesh: m, index, dur, key };
         this.items.add(p);
         this.byId.set(p.nid, p);
         if (!silent) this.onSpawn?.(p);
@@ -401,9 +404,9 @@ export class PickupField {
         if (!silent) this.onRemove?.(p);
         p.mesh.setMatrixAt(p.index, this.zero);
         p.mesh.instanceMatrix.needsUpdate = true;
-        const u = this.used.get(p.id)!;
+        const u = this.used.get(p.key)!;
         u[p.index] = 0;
-        const f = this.free.get(p.id)!;
+        const f = this.free.get(p.key)!;
         f.push(p.index);
         f.sort((a, b) => b - a);
         let c = p.mesh.count;
@@ -743,7 +746,46 @@ export class Resources {
     /** regrowth time only counts while you are on the main island */
     private grow = 0;
     regrowing: () => boolean = () => true;
+    // ---- the Arctic's frozen logs (wood) and frozen meat: laid out by the map in 48 m cells, put down near you and taken
+    //      away again behind you (ids "ax<i>_<j>_<k>", the same on every client; not saved). One taken comes back after a while.
+    private axT = 0;
+    private axOn = new Map<string, Pickup>();
+    private axTaken = new Map<string, number>();
+    private arcticLoot(dt: number, px: number, pz: number) {
+        this.axT -= dt;
+        if (this.axT > 0) return;
+        this.axT = 1;
+        const now = performance.now() / 1000, C = 48, R = 150, P = this.pickups;
+        // what has gone (picked up here or by someone else) stays gone for half an hour
+        for (const [nid, p] of this.axOn) if (!P.items.has(p)) { this.axOn.delete(nid); this.axTaken.set(nid, now); }
+        for (const [nid, t] of this.axTaken) if (now - t > 1800) this.axTaken.delete(nid);
+        const near = inland(px, pz) > -R;
+        const want = new Set<string>();
+        if (near) {
+            const i0 = Math.floor((px - R) / C), i1 = Math.floor((px + R) / C), j0 = Math.floor((pz - R) / C), j1 = Math.floor((pz + R) / C);
+            for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+                const cx = (i + 0.5) * C, cz = (j + 0.5) * C;
+                if (Math.hypot(cx - px, cz - pz) > R || inland(cx, cz) < 10) continue;
+                const rnd = mulberry32(((i * 73856093) ^ (j * 19349663)) >>> 0);
+                const logs = rnd() < 0.5 ? 1 + (rnd() < 0.35 ? 1 : 0) : 0, meat = rnd() < 0.3 ? 1 : 0;
+                for (let k = 0; k < logs + meat; k++) {
+                    const x = (i + 0.1 + 0.8 * rnd()) * C, z = (j + 0.1 + 0.8 * rnd()) * C, nid = `ax${i}_${j}_${k}`;
+                    if (inland(x, z) < 12 || poolAt(x, z) || creviceAt(x, z) > 0.02) continue;
+                    const y = heightAt(x, z);
+                    if (Math.abs(heightAt(x + 1, z) - heightAt(x - 1, z)) > 1 || Math.abs(heightAt(x, z + 1) - heightAt(x, z - 1)) > 1) continue;
+                    want.add(nid);
+                    if (this.axOn.has(nid) || this.axTaken.has(nid) || P.byId.has(nid)) continue;
+                    const log = k < logs;
+                    const p = log ? P.spawn("wood", 4, x, y, z, undefined, nid, true, "frozen_log") : P.spawn("frozen_meat", 1 + (rnd() < 0.3 ? 1 : 0), x, y, z, undefined, nid, true);
+                    if (p) this.axOn.set(nid, p);
+                }
+            }
+        }
+        for (const [nid, p] of this.axOn) if (!want.has(nid)) { this.axOn.delete(nid); P.remove(p, true); }
+    }
+
     update(dt: number, px: number, pz: number) {
+        this.arcticLoot(dt, px, pz);
         if (this.regrowing()) this.grow += dt;
         this.fx.update(dt);
 

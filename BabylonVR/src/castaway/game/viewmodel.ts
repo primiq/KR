@@ -100,7 +100,7 @@ export function heldModel(id: ItemId): THREE.Group {
         for (const [x, y, z] of [[0, 0.04, 0], [0.025, 0.06, 0.01], [-0.024, 0.055, 0.012], [0.008, 0.07, -0.022], [-0.01, 0.085, 0.005]]) g.add(m(new THREE.SphereGeometry(0.02, 8, 6), T.red, x, y, z));
     } else if (id === "coconut" || id === "roasted_coconut") {
         g.add(m(new THREE.SphereGeometry(0.07, 10, 8).scale(1, 1.1, 1), T.item, 0, 0.06, 0));
-    } else if (id === "raw_meat" || id === "cooked_meat") {
+    } else if (id === "raw_meat" || id === "cooked_meat" || id === "frozen_meat") {
         g.add(m(new THREE.SphereGeometry(0.06, 10, 8).scale(1.3, 0.55, 1), T.item, 0, 0.04, 0));
         g.add(m(new THREE.CylinderGeometry(0.01, 0.01, 0.1, 6).rotateZ(Math.PI / 2), T.white, 0.07, 0.04, 0));
     } else if (id === "raw_fish" || id === "cooked_fish") {
@@ -130,7 +130,7 @@ export function heldModel(id: ItemId): THREE.Group {
 
 export const ITEM_COLOR: Partial<Record<ItemId, string>> = {
     coconut: "#5b3c22", berries: "#c9253d", wood: "#8a5a30", stone: "#9b9a94", sand: "#d2a866", metal_ore: "#b5703c", fiber: "#b4c46a", metal: "#bcc4cb",
-    roasted_coconut: "#9a6030", raw_meat: "#b8434d", cooked_meat: "#7a4422", raw_fish: "#7fb0cc", cooked_fish: "#c58a4e", coal: "#1c1d21", diamond: "#7ff4ff",
+    roasted_coconut: "#9a6030", raw_meat: "#b8434d", frozen_meat: "#c9a3b0", cooked_meat: "#7a4422", raw_fish: "#7fb0cc", cooked_fish: "#c58a4e", coal: "#1c1d21", diamond: "#7ff4ff",
 };
 
 /**
