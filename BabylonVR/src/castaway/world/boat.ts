@@ -635,6 +635,26 @@ const reach = (b: Boat) => (b.raft ? b.raft.rad : LEN / 2 + 0.5);
 
 export class Boats {
   readonly list: Boat[] = [];
+  /** the sea kept off the rafts' decks: up to 4 boxes for the ocean shader (centre, yaw / half sizes, on), see raftHoles */
+  readonly holes: number[] = new Array(32).fill(0);
+  /** fill `holes`: a box over each raft from just under its deck up past head height, so a wave that rises over the logs
+   *  is not drawn across the deck and the people on it (the raft floats on, it is only the drawing) */
+  raftHoles(): number[] {
+    let n = 0;
+    for (const b of this.list) {
+      if (!b.raft || n >= 4) continue;
+      const r = b.raft, o = n * 4, s = Math.sin(b.yaw), c = Math.cos(b.yaw), mx = (r.x0 + r.x1) / 2, mz = (r.z0 + r.z1) / 2;
+      const hx = (r.x1 - r.x0) / 2, hz = (r.z1 - r.z0) / 2;
+      // (a tilted deck's edge dips a little: the box starts lower by that much)
+      const dip = Math.abs(Math.sin(b.pitch)) * hz + Math.abs(Math.sin(b.roll)) * hx;
+      const y0 = b.y + b.lift + RDECK - 0.08 - dip, y1 = b.y + b.lift + RDECK + 4.5;
+      this.holes[o] = b.x + mx * c + mz * s; this.holes[o + 1] = (y0 + y1) / 2; this.holes[o + 2] = b.z - mx * s + mz * c; this.holes[o + 3] = b.yaw;
+      this.holes[16 + o] = hx - 0.02; this.holes[16 + o + 1] = (y1 - y0) / 2; this.holes[16 + o + 2] = hz - 0.02; this.holes[16 + o + 3] = 1;
+      n++;
+    }
+    for (; n < 4; n++) this.holes[16 + n * 4 + 3] = 0;
+    return this.holes;
+  }
   myId = 0;
   /** the boat I'm standing on (or swimming beside: null), and whether I hold its wheel */
   on: Boat | null = null;

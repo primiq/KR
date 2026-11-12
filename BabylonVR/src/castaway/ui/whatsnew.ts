@@ -6,6 +6,16 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-11-27", title: "Stock up on the islets, a real storm at sea",
+        items: [
+            "The little islets out at sea now grow real palm trees, just like the island's: fell them for wood. The bigger islets have a good stand of them, with boulders to mine and now and then a seam of metal ore.",
+            "Coconuts lie under the islet palms (and a felled palm drops more), so a long voyage can top up on food and drink.",
+            "Waves no longer wash across your raft's deck: the sea stays below the logs, however rough it gets.",
+            "The storm past the reef is a proper storm now: the sky goes black as the waves build, the sea darkens with it, and lightning and thunder come thick and fast.",
+            "Fixed a strange see-through look on wave crests taller than your eyes.",
+        ],
+    },
+    {
         date: "2026-11-26", title: "A readable menu, a smoother start",
         items: [
             "The menu on a PC is bigger on large screens and its buttons finally have proper, readable labels (in VR too).",

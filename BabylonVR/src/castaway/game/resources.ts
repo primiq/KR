@@ -332,18 +332,20 @@ export class PickupField {
     private meshFor(id: ItemId): Inst {
         let m = this.meshes.get(id);
         if (m) return m;
+        // (coconuts: the island's and the open sea islets' both, and the ones felled palms drop)
+        const CAP = id === "coconut" ? 420 : this.CAP;
         const st = PICKUP_STYLE[id] ?? { color: "#cccccc", geo: box(0.2, 0.2, 0.2, 0.1) };
         const roughness = id.startsWith("metal") || id.startsWith("diamond") ? 0.35 : 0.85;
         const metallic = id === "metal" || id.startsWith("metal_") ? 0.8 : 0;
-        m = new Inst(`pickup_${id}`, st.geo(), solid(this.scene, st.color, roughness, metallic), this.CAP, this.scene);
-        for (let i = 0; i < this.CAP; i++) m.setMatrixAt(i, this.zero);
+        m = new Inst(`pickup_${id}`, st.geo(), solid(this.scene, st.color, roughness, metallic), CAP, this.scene);
+        for (let i = 0; i < CAP; i++) m.setMatrixAt(i, this.zero);
         m.instanceMatrix.needsUpdate = true;
         m.count = 0;
         m.mesh.alwaysSelectAsActiveMesh = true;
         m.mesh.metadata = { keepUnderground: true };
         this.meshes.set(id, m);
-        this.free.set(id, Array.from({ length: this.CAP }, (_, i) => this.CAP - 1 - i));
-        this.used.set(id, new Uint8Array(this.CAP));
+        this.free.set(id, Array.from({ length: CAP }, (_, i) => CAP - 1 - i));
+        this.used.set(id, new Uint8Array(CAP));
         return m;
     }
 
@@ -537,6 +539,15 @@ export class Resources {
             if (k < 0.3) { if (stones < 50 && this.pickups.spawn("stone", 2, x, h, z)) stones++; }
             else if (k < 0.6) { if (sticks < 50 && this.pickups.spawn("wood", 3, x, h, z)) sticks++; }
             else if (fibers < 60 && this.pickups.spawn("fiber", 3, x, h, z)) fibers++;
+        }
+        // coconuts under the open sea islets' palms (after everything else, so the island's pickups keep their numbers)
+        for (const p of this.veg.isletPalms) {
+            if (rnd() > 0.65) continue;
+            for (let k = 0; k < 1 + (rnd() < 0.5 ? 1 : 0); k++) {
+                const a = rnd() * Math.PI * 2, r = 0.8 + rnd() * 2.2;
+                const x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r, h = heightAt(x, z);
+                if (h > 0.5) this.pickups.spawn("coconut", 1, x, h, z);
+            }
         }
     }
 

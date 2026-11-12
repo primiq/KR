@@ -14,6 +14,7 @@ import { DESERT_X, DESERT_Z, OASIS_R } from "./desertField";
 import { heightAt, inCut, riverDist, rockiness, slopeAt } from "./island";
 import { buildBush, buildDryFrond, buildGrassTuft, buildJungleTree, buildPalm, buildStump } from "./plants";
 import { ICE_R0 } from "./arctic";
+import { featuresNear, SEA_END, shoreR } from "./seafeatures";
 /** (no island grass out on the ice) */
 const ICE_GRASS2 = (ICE_R0 - 50) ** 2;
 
@@ -207,6 +208,32 @@ function planOasis() {
     return { palms, berries, bushes, stones, ores };
 }
 
+/** The open sea's islets: palms to fell (a good stand on the bigger ones), boulders and now and then metal ore, so a raft
+ *  can stock up on wood, stone, food and water out there. All from each islet's own numbers (the same for everyone); made
+ *  after the oasis so no older node number shifts. */
+function planIslets() {
+    const palms: Placement[] = [], stones: Placement[] = [], ores: Placement[] = [];
+    const isles = featuresNear(0, 0, SEA_END + 300).filter((f) => f.kind === "islet").sort((a, b) => a.id - b.id);
+    for (const f of isles) {
+        const rnd = mulberry32(Math.floor(f.seed * 1000) + 7), mine: Placement[] = [];
+        const big = f.r > 17, n = big ? 5 + Math.floor(rnd() * 5) : 2 + Math.floor(rnd() * 2);
+        const take = (count: number, d0: number, d1: number, gap: number, s0: number, s1: number, list: Placement[]) => {
+            for (let t = 0, got = 0; t < count * 30 && got < count; t++) {
+                const a = rnd() * Math.PI * 2, d = shoreR(f, a) * (d0 + rnd() * (d1 - d0)), x = f.x + Math.cos(a) * d, z = f.z + Math.sin(a) * d;
+                const y = heightAt(x, z);
+                if (y < 0.7 || mine.some((p) => Math.hypot(p.x - x, p.z - z) < gap)) continue;
+                const p: Placement = { x, z, y, rot: rnd() * Math.PI * 2, scale: s0 + rnd() * (s1 - s0) };
+                mine.push(p); list.push(p); got++;
+            }
+        };
+        take(n, 0.05, 0.62, 2.6, 0.75, 1.3, palms);
+        take(big ? 2 + Math.floor(rnd() * 2) : f.rock ? 1 : 0, 0.3, 0.72, 3, 0.8, 1.6, stones);
+        take(rnd() < (big ? 0.75 : 0.3) ? 1 + (big && rnd() < 0.4 ? 1 : 0) : 0, 0.25, 0.7, 3, 0.8, 1.3, ores);
+    }
+    for (const p of [...stones, ...ores]) p.squash = [1.0 + hash3(p.x, 1, 2) * 0.3, 0.62 + 0.25 * Math.abs(hash3(p.x, 5, 7)), 1.0 + hash3(p.z, 9, 4) * 0.3];
+    return { palms, stones, ores };
+}
+
 export class Vegetation {
     readonly colliders = new ColliderGrid();
     private grassNoise = new Noise2D(77);
@@ -215,6 +242,8 @@ export class Vegetation {
     /** the ground under each tree and rock when it was last placed (so digging under it moves what you hit) */
     private nodeG0 = new Map<ResNode, number>();
     readonly palmPlacements: Placement[] = [];
+    /** the open sea islets' palms (coconuts are scattered under them, see resources.ts) */
+    isletPalms: Placement[] = [];
     readonly perches: { x: number; y: number; z: number; node: ResNode; palm: boolean }[] = [];
     /** planted trees (saplings): a pool of hidden instances and their nodes, added last so the canonical node indices never shift */
     static readonly PLANT_POOL = 12;
@@ -406,8 +435,10 @@ export class Vegetation {
 
         // (the desert oasis's own trees, bushes and rocks: planned here, made last so the island's node numbers never shift)
         const oasis = planOasis();
+        const islets = planIslets();
+        this.isletPalms = islets.palms;
         // ---- stumps (one slot per tree, shown when it is felled)
-        const stumpMesh = new Inst("stump", buildStump(), stumpMat, palms.length + trees.length + oasis.palms.length, scene, shadows);
+        const stumpMesh = new Inst("stump", buildStump(), stumpMat, palms.length + trees.length + oasis.palms.length + islets.palms.length, scene, shadows);
         for (let i = 0; i < stumpMesh.cap; i++) stumpMesh.setMatrixAt(i, ZERO);
         stumpMesh.instanceMatrix.needsUpdate = true;
         let stumpIdx = 0;
@@ -430,7 +461,7 @@ export class Vegetation {
         const blobMat = new StandardMaterial("trunkShadowMat", scene);
         blobMat.diffuseColor = new Color3(0, 0, 0); blobMat.specularColor = new Color3(0, 0, 0); blobMat.emissiveColor = new Color3(0.02, 0.015, 0.01);
         blobMat.disableLighting = true; blobMat.opacityTexture = blobTex; blobMat.alpha = 0.6; blobMat.zOffset = -4; blobMat.backFaceCulling = false;
-        const blobs = new Inst("trunkShadow", new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), blobMat, palms.length + trees.length + oasis.palms.length, scene);
+        const blobs = new Inst("trunkShadow", new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), blobMat, palms.length + trees.length + oasis.palms.length + islets.palms.length, scene);
         blobs.mesh.alwaysSelectAsActiveMesh = true;
         let blobIdx = 0;
         const blob = (p: Placement, size: number) => {
@@ -728,6 +759,15 @@ export class Vegetation {
             pebs.forEach((o, i) => { dummy.position.set(o.x, o.y - o.s * 0.2, o.z); dummy.rotation.set(orng() * 0.5, orng() * 6.28, orng() * 0.5); dummy.scale.set(o.s * 1.2, o.s * 0.8, o.s); dummy.updateMatrix(); pm.setMatrixAt(i, dummy.matrix); this.track(pm, i, dummy.matrix.clone(), o.x, o.z, true); });
             pm.instanceMatrix.needsUpdate = true; pm.refreshBounds();
             this.cullable.push({ mesh: pm, c: new THREE.Vector3(DESERT_X, 0, DESERT_Z), r: 160, far: false, lod: 0 });
+        }
+        // ---- the open sea's islets: real palms, boulders and ore (appended last: node numbers before them never shift)
+        {
+            const iPalm = instanced("isletPalm", palmGeos, palmMat, islets.palms, -0.15, [0, 0], true, 0.3, false, [11, 23, 37].map((s) => buildPalm(s, leaflets, true)), 120);
+            islets.palms.forEach((p, i) => addTree("palm", p, iPalm[i], 0.32 * p.scale, palmGeos[i % palmGeos.length]));
+            const sRefs = instanced("isletBoulder", rockGeos, rockMaterial(scene), islets.stones, -0.2, [0, 0], true, 0.75, false, [1, 2, 3].map((s) => buildRockGeometry(s, 1)), 80);
+            const oRefs = instanced("isletOre", oreGeos, rockMaterial(scene, true), islets.ores, -0.2, [0, 0], true, 0.75, false, [4, 5].map((s) => buildRockGeometry(s, 1)), 80);
+            islets.stones.forEach((p, i) => addRock("stone", p, sRefs[i]));
+            islets.ores.forEach((p, i) => addRock("ore", p, oRefs[i]));
         }
         for (const n of this.nodes) if (n.pool === undefined) this.nodeG0.set(n, heightAt(n.x, n.z));
     }

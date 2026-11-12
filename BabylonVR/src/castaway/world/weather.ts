@@ -85,6 +85,8 @@ export class Weather {
     remote = false;
     /** the current (smoothed) look: these ease towards LOOK[kind] */
     rain = 0; overcast = 0; wind = 1; rough = 0; wet = 0;
+    /** 0..1: how black the sea storm has made the sky (eased from `sea`) */
+    gloom = 0;
     /** 0..1: the storm far out at sea round this player (the boat's business, not the host's): it overrides the look */
     sea = 0;
     /** 0..1: it is cold enough that rain falls as snow (no rain drawn) */
@@ -196,7 +198,7 @@ export class Weather {
     }
     /** washed up after the wreck: the sky clears at once (and the host is asked to make it so for everybody) */
     calm() {
-        this.sea = 0;
+        this.sea = 0; this.gloom = 0; this.atmo.gloom = 0;
         this.rain = 0; this.overcast = 0; this.wind = 1; this.rough = 0;
         this.apply();
         if (!this.remote && this.kind !== 0) this.set(0);
@@ -226,13 +228,16 @@ export class Weather {
         const B = LOOK[local ? this.kind : 0], sea = this.sea;
         // out at sea the storm is worse than anything the island gets: black sky, a gale, and waves several metres high
         const L = sea > 0 ? { rain: B.rain + (1 - B.rain) * sea, overcast: B.overcast + (1 - B.overcast) * sea, wind: B.wind + (6 - B.wind) * sea, rough: B.rough + (1.6 - B.rough) * sea } : B;
-        const quick = 1 + sea * 2; // ... and it blows up in a minute or so, not ten
+        const quick = 1 + sea * 5; // ... and it blows up in half a minute, not ten
         const ease = (v: number, to: number, up: number, down: number) => v + (to - v) * Math.min(1, (dt * quick) / (to > v ? up : down));
+        // (darker than the island's storms: the sky goes black as the waves build, see Atmosphere.gloom)
+        this.gloom = ease(this.gloom, local ? sea : 0, 8, 10);
         this.overcast = ease(this.overcast, L.overcast, 30, 45);
         this.rain = ease(this.rain, this.overcast > L.overcast * 0.6 ? L.rain : 0, 20, 14);
         this.wind = ease(this.wind, L.wind, 35, 40);
         this.rough = ease(this.rough, L.rough, 60, 80);
         this.wet = ease(this.wet, this.rain > 0.15 ? 1 : 0, 70, 260);
+        this.atmo.gloom = this.gloom;
         this.apply();
 
         // ---- rain round the camera
@@ -261,9 +266,9 @@ export class Weather {
         // a strike flickers: a bright flash, a dip, a second flash
         const f = this.flashT > 0 ? this.flashPeak * (this.flashT > 0.3 ? (this.flashT - 0.3) / 0.15 : this.flashT > 0.18 ? 0.25 : this.flashT / 0.18 * 0.8) : 0;
         this.atmo.flash = local ? Math.min(1, f) : 0;
-        if ((this.kind === 2 || sea > 0.4) && local && this.rough > 0.55) {
+        if (local && ((this.kind === 2 && this.rough > 0.55) || (sea > 0.3 && this.gloom > 0.3))) {
             this.nextStrike -= dt;
-            if (this.nextStrike <= 0) { this.nextStrike = sea > 0.4 ? rnd(2, 6) : rnd(5, 16); this.strike(cam); }
+            if (this.nextStrike <= 0) { this.nextStrike = sea > 0.3 ? rnd(1.5, 5) : rnd(5, 16); this.strike(cam); }
         }
         this.boltT -= dt;
         this.bolt.setEnabled(this.boltT > 0);

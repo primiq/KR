@@ -538,6 +538,8 @@ async function main() {
     const game = new Game({ scene, camera, player, vegetation, input, spawn, springSpots, shadows: q.shadows, clock });
     // (no sea inside a submarine's hull)
     ocean.holes = game.subs.holes;
+    // (and none drawn over a raft's deck when a wave rises over the logs)
+    ocean.boxes = game.boats.holes;
     // ruined huts and shipwrecks with chests, and the caves under the island
     const sites = new SurfaceSites(game.ugRoot as unknown as THREE.Scene, sitePlan, vegetation.colliders, q.shadows);
     game.under.sites = sites;
@@ -1147,6 +1149,7 @@ async function main() {
                 seabed.update(dt, player.pos.x, player.pos.z, camera.position, player.underwater, onIsland && (player.underwater || heightAt(player.pos.x, player.pos.z) < 8));
             }
             dolphins.update(dt, player.pos.x, player.pos.z, player.yaw, game.under.active);
+            game.boats.raftHoles();
             ocean.bio = BIO.value;
             if (seaRefl) {
                 // (paused, not drawn at all, where the sea cannot be seen: in a headset, underground, out in the far places)

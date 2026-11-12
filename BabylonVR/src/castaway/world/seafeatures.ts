@@ -1,5 +1,5 @@
 // The open sea's layout: past the reef, out to SEA_R, the sea is cut into cells and some cells hold something: a little
-// islet (sand, a palm or two, maybe a rock, maybe a chest) or the reef a ship was wrecked on. Everything follows from the
+// islet (sand, palms, boulders, maybe ore, maybe a chest: see vegetation.ts planIslets) or the reef a ship was wrecked on. Everything follows from the
 // cell's number (no randomness at run time), so every player has the same sea without anything being sent.
 // Pure maths, no drawing: island.ts folds the heights in (so walking, wading, boats running aground, all just work), and
 // world/opensea.ts builds the meshes for the ones near you.

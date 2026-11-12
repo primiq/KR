@@ -30,6 +30,8 @@ export class Atmosphere {
     /** 0..1: the alien invasion's burning sunrise, whatever the hour (world/invaders) */
     dawn = 0;
     wet = 0;
+    /** 0..1: a storm out at sea, darker than any the island gets (weather sets it): black clouds, dim light, dark haze */
+    gloom = 0;
     private lastOvercast = 0;
     private clouds: Mesh;
     private cloudMat: StandardMaterial;
@@ -201,7 +203,7 @@ export class Atmosphere {
             this.sunDisc.setEnabled(sy > -0.05);
         }
         const om = this.ocean?.mesh.material as ShaderMaterial | undefined;
-        if (this.ocean) { this.ocean.daylight = 0.05 + 0.95 * day; this.ocean.flash = this.ug ? 0 : this.flash; }
+        if (this.ocean) { this.ocean.daylight = (0.05 + 0.95 * day) * (1 - 0.6 * this.gloom); this.ocean.flash = this.ug ? 0 : this.flash; }
         if (om) {
             om.setVector3("sunDir", this.lightDir);
             om.setColor3("sunColor", Color3.Lerp(new Color3(1, 0.86, 0.68), warm, low * 0.8).scale((5 * day + 0.3 * (1 - day) * up) * (1 - 0.85 * this.overcast)));
@@ -224,22 +226,25 @@ export class Atmosphere {
         // ---- the weather: a grey sky lets less sun and sky light through; lightning lights everything up for a moment
         const ov = this.overcast;
         this.sun.intensity *= 1 - 0.85 * ov;
+        const gl = this.gloom;
+        this.sun.intensity *= 1 - 0.75 * gl;
         // (a sandstorm hides the sun behind the dust)
         this.sun.intensity *= 1 - 0.6 * this.dust;
         this.scene.environmentIntensity *= 1 - 0.3 * this.dust;
         this.moon.intensity *= 1 - ov;
         this.scene.environmentIntensity *= 1 - 0.5 * ov;
+        this.scene.environmentIntensity *= 1 - 0.55 * gl;
         // under a storm the sky fill grows a little greyer and stronger: overcast light is soft and even
         this.caveFill.intensity *= 1 + 0.4 * ov;
         const cu = this.curse;
         this.clouds.setEnabled(ov > 0.01 || cu > 0.01);
         if (ov > 0.01 || cu > 0.01) {
-            const g = (0.08 + 0.55 * day) * (1 - 0.35 * ov) + this.flash * 0.9;
+            const g = (0.08 + 0.55 * day) * (1 - 0.35 * ov) * (1 - 0.62 * gl) + this.flash * 0.9;
             // grey cloud, or a cursed dark pink
             const pr = 0.55 * (0.35 + 0.65 * day), pg = 0.1 * (0.35 + 0.65 * day), pb = 0.32 * (0.35 + 0.65 * day);
             const k = cu / Math.max(1e-3, cu + ov);
             this.cloudMat.emissiveColor.set(g * 0.92 * (1 - k) + pr * k, g * 0.95 * (1 - k) + pg * k, g * 1.02 * (1 - k) + pb * k);
-            this.cloudMat.alpha = Math.min(0.94, Math.max(ov * 1.05, cu * 0.8));
+            this.cloudMat.alpha = Math.min(0.94 + 0.05 * gl, Math.max(ov * 1.05, cu * 0.8));
             this.sun.intensity *= 1 - 0.5 * cu;
         }
         // the alien invasion: a burning orange sky and a low warm light, whatever the hour
@@ -271,7 +276,7 @@ export class Atmosphere {
         // ---- the horizon: one colour the far sea, the bottom of the sky and the haze over distant land all fade into (towards
         //      the sun and away from it), so there is no seam where the sea ends; a storm greys it over
         {
-            const g = 0.08 + 0.5 * day, grey = new Color3(g * 0.9, g * 0.93, g);
+            const g = (0.08 + 0.5 * day) * (1 - 0.6 * this.gloom), grey = new Color3(g * 0.9, g * 0.93, g);
             // (the sunset glow dies away as the sun sinks below the horizon: once it has gone, the haze is the night's dark blue)
             // (and the daylight haze goes as fast as the sky darkens overhead, not when the sun is far below the horizon)
             const glow = smoothstep(-0.13, 0.03, sy), dg = dusk * glow, hzNight = 1 - smoothstep(-0.08, 0.15, sy);
@@ -297,7 +302,7 @@ export class Atmosphere {
             if (this.ocean) this.ocean.horizon = { away: this.hzAway, toSun: this.hzSun, sunX: this.sunDir.x, sunZ: this.sunDir.z };
             // the fog is never switched off (that would rebuild every lit shader: a freeze, just as a storm blows up)
             if (this.scene.fogMode !== Scene.FOGMODE_EXP2) this.scene.fogMode = Scene.FOGMODE_EXP2;
-            this.scene.fogDensity = 0.0008 + 0.0017 * ov + 0.0008 * this.desert + 0.0009 * this.cold;
+            this.scene.fogDensity = 0.0008 + 0.0017 * ov + 0.0012 * this.gloom + 0.0008 * this.desert + 0.0009 * this.cold;
             this.scene.fogColor = Color3.Lerp(this.hzAway, this.hzSun, 0.35);
             // a sandstorm: thick ochre dust, lit by what daylight gets through it
             if (this.dust > 0.001) {
@@ -314,7 +319,7 @@ export class Atmosphere {
                 this.scene.fogColor = Color3.Lerp(this.scene.fogColor, water, k);
             }
         }
-        if (Math.abs(ov - this.lastOvercast) > 0.15) { this.lastOvercast = ov; force = true; }
+        if (Math.abs(ov + this.gloom - this.lastOvercast) > 0.15) { this.lastOvercast = ov + this.gloom; force = true; }
         // re-capture the sky lighting every ~20 game minutes (or straight away when time jumps)
         const step = Math.abs(this.hour - this.lastCapture);
         if ((force || step > (this.lean ? 1.5 : 0.33)) && !this.capturing) void this.capture();

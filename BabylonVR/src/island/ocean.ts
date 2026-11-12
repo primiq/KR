@@ -142,6 +142,9 @@ uniform float bio;
 uniform float time;
 uniform float flash;
 uniform float rough;
+// 1 when the eye is under the sea surface (measured where the camera is, not per pixel: a wave crest taller than the eye
+// is still seen from above)
+uniform float camUnder;
 uniform vec3 hzAway;
 uniform vec3 hzSun;
 uniform vec3 hzSunXZ;
@@ -165,7 +168,17 @@ uniform vec4 lakeRect;
 // cut-outs: the inside of a submarine's hull (centre, yaw / half sizes, on), so no sea shows in it
 uniform vec4 holeA[4];
 uniform vec4 holeB[4];
+// boxes: the decks of rafts (same layout), so a wave rising over the logs is not drawn across the deck
+uniform vec4 boxA[4];
+uniform vec4 boxB[4];
 void main(void) {
+    for (int i = 0; i < 4; i++) {
+        if (boxB[i].w < 0.5) continue;
+        vec3 d = vPos - boxA[i].xyz;
+        float c = cos(boxA[i].w), s = sin(boxA[i].w);
+        vec3 q = abs(vec3(d.x * c - d.z * s, d.y, d.x * s + d.z * c)) / boxB[i].xyz;
+        if (max(q.x, max(q.y, q.z)) < 1.0) discard;
+    }
     for (int i = 0; i < 4; i++) {
         if (holeB[i].w < 0.5) continue;
         vec3 d = vPos - holeA[i].xyz;
@@ -201,7 +214,11 @@ void main(void) {
     vec3 toCam = cameraPos - vPos;
     float dist = length(toCam);
     vec3 V = toCam / dist;
+#ifdef LAKE
     bool under = cameraPos.y < vPos.y;
+#else
+    bool under = camUnder > 0.5;
+#endif
     if (under) N = -N;
 
     float NdV = max(dot(N, V), 0.0);
@@ -215,6 +232,9 @@ void main(void) {
         vec2 suv = gl_FragCoord.xy / screenSize + N.xz * (0.035 / (1.0 + dist * 0.02));
         vec2 edge = smoothstep(vec2(0.0), vec2(0.04), suv) * smoothstep(vec2(1.0), vec2(0.96), suv);
         vec3 pr = texture2D(reflTex, clamp(suv, 0.002, 0.998)).rgb;
+        // (the mirror picture only holds for water below the eye: a wave face above the horizon would show the reflection
+        // of whatever is under the sea plane there, so it fades back to the sky's own reflection)
+        edge *= smoothstep(-0.01, 0.06, V.y);
         refl = mix(refl, pr, edge.x * edge.y);
         // calm water a little more mirror-like than Fresnel alone, even looking straight down (where it is otherwise ~2%),
         // so you can see yourself (and the palms) in it; not in the shallows, where you see the sand
@@ -306,6 +326,8 @@ export class Ocean {
     reflectOn = true;
     /** submarines' hulls cut out of the surface: 4 x (x, y, z, yaw), then 4 x (half sizes, on) */
     holes: number[] = new Array(32).fill(0);
+    /** boxes kept clear of the sea (raft decks): centres + yaw, then half sizes + on (4 of each) */
+    boxes: number[] = new Array(32).fill(0);
 
     /**
      * Mirror the scene in the sea: a reduced-size HDR render of what `include` picks, reflected about sea level, refreshed
@@ -376,7 +398,7 @@ export class Ocean {
             { vertex: "ocean", fragment: "ocean" },
             {
                 attributes: ["position"],
-                uniforms: ["world", "viewProjection", "time", "waveA", "waveB", "seabedRect", "rippleRect", "rippleTexel", "cameraPos", "sunDir", "sunColor", "shallowColor", "deepColor", "daylight", "bio", "useRefl", "screenSize", "hzAway", "hzSun", "hzSunXZ", "flash", "rough", "holeA", "holeB"],
+                uniforms: ["world", "viewProjection", "time", "waveA", "waveB", "seabedRect", "rippleRect", "rippleTexel", "cameraPos", "sunDir", "sunColor", "shallowColor", "deepColor", "daylight", "bio", "useRefl", "screenSize", "hzAway", "hzSun", "hzSunXZ", "flash", "rough", "camUnder", "holeA", "holeB", "boxA", "boxB"],
                 samplers: ["seabed", "ripples", "envMap", "reflTex"],
                 defines: [`#define NUM_WAVES ${n}`, ...(q === "mobile" ? ["#define LITE"] : [])],
                 needAlphaBlending: true,
@@ -403,6 +425,8 @@ export class Ocean {
             e.setTexture("ripples", r.texture);
             e.setArray4("holeA", this.holes.slice(0, 16));
             e.setArray4("holeB", this.holes.slice(16, 32));
+            e.setArray4("boxA", this.boxes.slice(0, 16));
+            e.setArray4("boxB", this.boxes.slice(16, 32));
         });
         this.mesh.material = mat;
 
@@ -420,6 +444,7 @@ export class Ocean {
         e.setFloat("bio", this.bio);
         e.setFloat("flash", this.flash);
         e.setFloat("rough", this.rough);
+        e.setFloat("camUnder", this.underwater ? 1 : 0);
         const hz = this.horizon;
         if (hz) { e.setColor3("hzAway", hz.away); e.setColor3("hzSun", hz.toSun); }
         e.setFloat3("hzSunXZ", hz?.sunX ?? 0, hz?.sunZ ?? 0, hz ? 1 : 0);

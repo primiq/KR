@@ -4,7 +4,7 @@ A living summary of where the game is, how it is built and what was decided, so 
 person) can pick the work up without reading the whole conversation history. **Keep it up to date**: every batch of work
 adds to "Recent work" and updates any section it changes. Newest first. No long dashes anywhere (see Rules).
 
-Last updated: 2026-11-12 (mouse look fix)
+Last updated: 2026-11-12 (islet resources, raft deck, sea storm, wave crest fix)
 
 ## The project in one paragraph
 
@@ -19,7 +19,7 @@ through rings of open sea to an Arctic. Multiplayer is peer to peer (PeerJS), th
 - Never touch the `primiq/castaway` repo. Work only in `primiq/KR`, directly on `master`, push to `origin master`. No PRs.
 - **No long dashes ever** (em dash, en dash): not in code, comments, commit messages, game text, What's new, or replies.
 - Every player-facing change adds an entry at the TOP of `UPDATES` in `src/castaway/ui/whatsnew.ts` in the same commit
-  (its date drives the "new" dot on the menu). Dates so far run ahead of the calendar (latest 2026-11-23): keep going up.
+  (its date drives the "new" dot on the menu). Dates so far run ahead of the calendar (latest 2026-11-27): keep going up.
 - Commits end with the Co-Authored-By and Claude-Session lines; no model names or IDs in commits.
 - Performance changes must be measured (an earlier perf change was rolled back).
 - Keep this file (`progress.md`) current.
@@ -50,7 +50,7 @@ through rings of open sea to an Arctic. Multiplayer is peer to peer (PeerJS), th
 | Distance from the island's middle | What |
 |---|---|
 | 360 to 780 m | Reef storm. Without a compass aboard: giant wave and wreck (wakes you on the beach). With one: full storm 430 to 650 m, eases by 780 m, no wave |
-| 820 m to 2.1 km | Islets (sand, palms, rock, chest) and shipwrecks on reefs (`seafeatures.ts`, built by `opensea.ts`) |
+| 820 m to 2.1 km | Islets (sand, real palms to fell, boulders, some ore, coconuts, chest) and shipwrecks on reefs (`seafeatures.ts`, built by `opensea.ts`) |
 | from 2.1 km | Drift ice floes (`arctic.ts`) |
 | from 3.3 km | Icebergs (pinnacles and tabular), solid incl. underwater bulges; second storm 3.6 to 5.3 km |
 | about 7.6 km | The Arctic: a ring of ice land, wandering coast; cliffs, plateau, crevices, melt pools (drinkable), penguin colonies every ~600 m |
@@ -69,6 +69,18 @@ screen, deep sea abyss with glowing creatures (GlowLayer) and chests, open sea, 
 pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flute, butterflies, gulls, whales, dolphins.
 
 ## Recent work (newest first)
+
+- **Islet resources, raft deck, sea storm, wave crests**: the islets' palms, boulders and ore are now real vegetation
+  nodes (`planIslets` in `world/vegetation.ts`, from each islet's seed, appended after the oasis so older node numbers
+  never shift; bigger islets (r > 17) get 5 to 9 palms, 2 to 3 boulders, often ore). `opensea.ts` only builds the ground
+  and the chest now. Coconuts under islet palms are scattered last in `resources.ts` (coconut pickup cap 420, others 140).
+  Raft decks: `Boats.raftHoles()` fills 4 oriented boxes (from just under the deck to 4.5 m above) that the ocean shader
+  discards (`boxA/boxB` uniforms in `src/island/ocean.ts`), so waves are not drawn over the deck. Sea storm: new
+  `Weather.gloom` / `Atmosphere.gloom` (eased from the boat storm, fast) darkens clouds, light, haze, fog and the sea body;
+  lightning every 1.5 to 5 s once gloom > 0.3. Wave crest glitch: the ocean shader decided "seen from under water" per
+  pixel (camera lower than the pixel), so crests taller than the eye were drawn flipped and see-through; it now uses a
+  `camUnder` uniform (surface height at the camera), lakes keep the old test. The planar reflection also fades out on
+  water above the horizon.
 
 - **Menu readability, start smoothness, version**: Babylon simple buttons did not pass fontSize/fontWeight to their label
   (all button labels drew at the 18 px default); `vr/panel.ts` now patches Button.prototype to pass them on (affects VR
