@@ -1359,8 +1359,9 @@ async function main() {
         $("loading").classList.remove("hidden");
         progress(1, "Getting everything ready…");
         const t0 = performance.now();
-        // (safe mode: straight to waiting for smooth frames, no look round, no menu)
-        let smooth = 0, phase = SAFE ? 2 : 0, phaseT = 0;
+        // (phones and tablets, and safe mode: straight to waiting for smooth frames, no look round, no menu. Drawing every
+        //  direction at once froze phones on the first frame)
+        let smooth = 0, phase = SAFE || input.touch || q.tier === "mobile" ? 2 : 0, phaseT = 0;
         const recent: number[] = [];
         // (first a slow look all round, so everything in every direction has been drawn once; then the menu board opened
         //  for a moment, so its first real opening is quick; then wait for the frames to run smoothly)

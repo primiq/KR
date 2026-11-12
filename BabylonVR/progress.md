@@ -19,7 +19,7 @@ through rings of open sea to an Arctic. Multiplayer is peer to peer (PeerJS), th
 - Never touch the `primiq/castaway` repo. Work only in `primiq/KR`, directly on `master`, push to `origin master`. No PRs.
 - **No long dashes ever** (em dash, en dash): not in code, comments, commit messages, game text, What's new, or replies.
 - Every player-facing change adds an entry at the TOP of `UPDATES` in `src/castaway/ui/whatsnew.ts` in the same commit
-  (its date drives the "new" dot on the menu). Dates so far run ahead of the calendar (latest 2026-11-29): keep going up.
+  (its date drives the "new" dot on the menu). Dates so far run ahead of the calendar (latest 2026-11-30): keep going up.
 - Commits end with the Co-Authored-By and Claude-Session lines; no model names or IDs in commits.
 - Performance changes must be measured (an earlier perf change was rolled back).
 - Keep this file (`progress.md`) current.
@@ -69,6 +69,11 @@ screen, deep sea abyss with glowing creatures (GlowLayer) and chests, open sea, 
 pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flute, butterflies, gulls, whales, dolphins.
 
 ## Recent work (newest first)
+
+- **Phone freeze found**: the owner's phone froze on the first frame in normal mode but played with `?safe&diag`. Safe
+  mode skips the warm-up's 360 degree look round and menu opening and turns edge smoothing off, so on touch devices
+  (and the mobile tier) the warm-up now goes straight to waiting for smooth frames, and the mobile preset's `aa` is "off"
+  (was FXAA). Which of the two it was is not known; both were new on phones. `?safe` and `?diag` stay for future reports.
 
 - **Diagnostics for phones** (`ui/diag.ts`): `?diag` in the address shows a panel (version, loading stage, page and 3D
   frame counts, canvas size, GPU name, graphics lost count, memory, meshes, last errors); it also appears by itself on an

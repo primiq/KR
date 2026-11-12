@@ -6,6 +6,12 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-11-30", title: "Phones start again",
+        items: [
+            "Fixed the game freezing on its first frame on phones and tablets: the warm-up before Play no longer looks all round at once there, and edge smoothing is off by default on the phone settings (you can still turn it on in Graphics).",
+        ],
+    },
+    {
         date: "2026-11-29", title: "Lighter on phones",
         items: [
             "The islets' trees and rocks are only made once you sail near them, so the game needs much less memory at the start. This should stop the freeze or black screen some phones showed after pressing Play.",
