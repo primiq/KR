@@ -574,7 +574,8 @@ function makeRaft(r: Raft, shadows: boolean, ghost: THREE.Material | null = null
   if (only || ghost) return g;
   // the oar: a post at the back, the oar on a pivot at its top, its blade trailing in the water behind
   const RM = raftMats(), [px, py, pz] = r.oarPost();
-  const a = new THREE.Vector3(0, 0.12, -0.75), b = new THREE.Vector3(0, -1.45, 3.1), len = a.distanceTo(b);
+  // (the blade's end some 0.8 m under the waterline, so it stays in the water as the raft rocks and the oar sweeps)
+  const a = new THREE.Vector3(0, 0.12, -0.75), b = new THREE.Vector3(0, -2.35, 3.0), len = a.distanceTo(b);
   OAR ??= { post: new THREE.CylinderGeometry(0.07, 0.09, 1.1, 8), pole: new THREE.CylinderGeometry(0.045, 0.045, len, 7), blade: new THREE.BoxGeometry(0.34, 0.05, 0.85), grip: new THREE.CylinderGeometry(0.055, 0.055, 0.3, 7).rotateZ(Math.PI / 2) };
   const post = new THREE.Mesh(OAR.post, RM.beam); post.position.set(px, py + 0.55, pz); post.castShadow = shadows; g.add(post);
   const pv = new THREE.Group(); pv.position.set(px, py + 1.05, pz + 0.02); g.add(pv);
@@ -637,6 +638,27 @@ export class Boats {
   readonly list: Boat[] = [];
   /** the sea kept off the rafts' decks: up to 4 boxes for the ocean shader (centre, yaw / half sizes, on), see raftHoles */
   readonly holes: number[] = new Array(32).fill(0);
+  /** the wake: rings in the water round each boat under way (the sea's ripple simulation, the same one a wading player
+   *  stirs): along the leading edge and the sides, and where the raft's oar blade dips. `add(x, z, radius, strength)` */
+  wake(add: (x: number, z: number, r: number, k: number) => void) {
+    for (const b of this.list) {
+      const sp = Math.abs(b.v);
+      if (sp < 0.25 || b.lift > 0.5) continue;
+      const s = Math.sin(b.yaw), c = Math.cos(b.yaw), k = -(0.01 + 0.02 * Math.min(sp, 5)), fwd = b.v > 0;
+      const at = (lx: number, lz: number, r: number, kk: number) => add(b.x + lx * c + lz * s, b.z - lx * s + lz * c, r, kk);
+      if (b.raft) {
+        const r = b.raft, front = fwd ? r.z0 : r.z1, back = fwd ? r.z1 : r.z0, mid = (r.z0 + r.z1) / 2;
+        at(r.x0, front, 0.7, k); at(r.x1, front, 0.7, k); at((r.x0 + r.x1) / 2, front, 0.9, k * 0.8);
+        at(r.x0, mid, 0.5, k * 0.6); at(r.x1, mid, 0.5, k * 0.6);
+        at(r.x0, back, 0.6, k * 0.7); at(r.x1, back, 0.6, k * 0.7);
+        const [px, , pz] = r.oarPost(), sw = r.oar ? r.oar.rotation.y : 0;
+        at(px + Math.sin(sw) * 3.5, pz + Math.cos(sw) * 3.5, 0.5, k * 0.9);
+      } else {
+        const f = fwd ? -4.5 : 4.5;
+        at(0, f, 0.8, k * 1.2); at(-1.6, f * 0.4, 0.6, k * 0.8); at(1.6, f * 0.4, 0.6, k * 0.8); at(-1.5, -f * 0.8, 0.6, k * 0.6); at(1.5, -f * 0.8, 0.6, k * 0.6);
+      }
+    }
+  }
   /** fill `holes`: a box over each raft from just under its deck up past head height, so a wave that rises over the logs
    *  is not drawn across the deck and the people on it (the raft floats on, it is only the drawing) */
   raftHoles(): number[] {

@@ -19,7 +19,7 @@ through rings of open sea to an Arctic. Multiplayer is peer to peer (PeerJS), th
 - Never touch the `primiq/castaway` repo. Work only in `primiq/KR`, directly on `master`, push to `origin master`. No PRs.
 - **No long dashes ever** (em dash, en dash): not in code, comments, commit messages, game text, What's new, or replies.
 - Every player-facing change adds an entry at the TOP of `UPDATES` in `src/castaway/ui/whatsnew.ts` in the same commit
-  (its date drives the "new" dot on the menu). Dates so far run ahead of the calendar (latest 2026-12-02): keep going up.
+  (its date drives the "new" dot on the menu). Dates so far run ahead of the calendar (latest 2026-12-03): keep going up.
 - Commits end with the Co-Authored-By and Claude-Session lines; no model names or IDs in commits.
 - Performance changes must be measured (an earlier perf change was rolled back).
 - Keep this file (`progress.md`) current.
@@ -69,6 +69,13 @@ screen, deep sea abyss with glowing creatures (GlowLayer) and chests, open sea, 
 pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flute, butterflies, gulls, whales, dolphins.
 
 ## Recent work (newest first)
+
+- **Sky, oar, wake**: the cloud shader (`world/skyDeco.ts`) varies the cover across the sky with two slow big-scale
+  noises (banks and clear spells), adds billows, darker thick middles, and a high cirrus layer; `SkyDeco.update` swings
+  the overall cover with two slow sines of its own time (fair to cloudy spells, local, not synced). The raft oar's blade
+  end is now 2.35 m below the pivot (about 0.8 m under the waterline). `Boats.wake(add)` drops rings into the sea's ripple
+  simulation (the 32 m square that follows the player) at the leading corners, sides, stern and oar blade of every boat
+  under way; called from main each frame.
 
 - **Crafting list swipe, FXAA back on phones**: the old drag-to-scroll on the crafting ScrollViewer only worked between
   rows (GUI buttons are pointer blockers). `vr/panel.ts` now listens to page pointer events while the flat board is up:

@@ -1154,6 +1154,8 @@ async function main() {
             }
             dolphins.update(dt, player.pos.x, player.pos.z, player.yaw, game.under.active);
             game.boats.raftHoles();
+            // (boats under way leave a wake in the ripples, like a player wading)
+            game.boats.wake((x, z, r, k) => ocean.ripples.addDrop(x, z, r, k));
             ocean.bio = BIO.value;
             if (seaRefl) {
                 // (paused, not drawn at all, where the sea cannot be seen: in a headset, underground, out in the far places)

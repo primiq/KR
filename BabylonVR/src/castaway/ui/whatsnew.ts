@@ -6,6 +6,14 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-12-03", title: "A livelier sky, a raft that rows in the water",
+        items: [
+            "The clouds gather in banks with wide spells of clear blue between them, the weather drifts between fair and cloudier over time, the big clouds are grey underneath and bright on top, and thin high streaks of cirrus cross the sky.",
+            "The raft's oar now reaches well down into the water.",
+            "Rafts and boats leave a wake of rings in the water behind them as they move, just like you do when wading.",
+        ],
+    },
+    {
         date: "2026-12-02", title: "Swipe through the crafting list",
         items: [
             "On a phone or tablet, swipe up and down anywhere on the crafting list to scroll it (no more aiming for the scroll bar). A swipe never crafts the row it started on.",

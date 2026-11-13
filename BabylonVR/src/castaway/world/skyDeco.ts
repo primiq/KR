@@ -113,32 +113,48 @@ void main() {
     // a flat cloud deck seen from below: the pattern stretches towards the horizon as it would
     vec2 p = d.xz / (d.y + 0.12) * 1.15 + wind * time;
     float t = time * 0.012;
+    // the weather across the sky: big slow banks where the clouds crowd together, and wide spells of clear blue between
+    float bank = cNoise(vec3(p * 0.14 + 4.1, t * 0.45)) * 0.5 + 0.5;
+    float bank2 = cNoise(vec3(p * 0.055 - 2.3, t * 0.25)) * 0.5 + 0.5;
+    float local = cover + (0.5 - bank) * 0.34 + (0.5 - bank2) * 0.2;
     float n = fbm(vec3(p * 0.95, t));
+    // rounded billows on top (heaped cumulus, not flat smears)
+    float bil = 1.0 - abs(cNoise(vec3(p * 2.2, t * 1.3)));
+    n += (bil - 0.62) * 0.09;
     // fine detail eats into the edges (cauliflower tops, wispy fringes)
     float det = cNoise(vec3(p * 6.5, t * 2.0)) * 0.5 + 0.5;
-    n -= (det - 0.5) * 0.09 * (1.0 - smoothstep(cover, cover + 0.3, n));
-    float shape = smoothstep(cover, cover + 0.11, n);
-    if (shape < 0.003) discard;
+    n -= (det - 0.5) * 0.09 * (1.0 - smoothstep(local, local + 0.3, n));
+    float shape = smoothstep(local, local + 0.1, n);
+    // high cirrus: thin streaks far above, drifting faster, mostly where the low cloud has cleared
+    vec2 q = d.xz / (d.y + 0.05) * 0.5 + wind * time * 1.8;
+    float ci = cNoise(vec3(q.x * 0.35 + q.y * 0.2, q.y * 2.6 - q.x * 0.4, t * 0.6)) * 0.5 + 0.5;
+    ci *= cNoise(vec3(q * 0.9 + 7.0, t * 0.4)) * 0.5 + 0.5;
+    float cirrus = smoothstep(0.32, 0.6, ci) * (0.25 + 0.5 * bank) * 0.42;
+    if (shape < 0.003 && cirrus < 0.003) discard;
     // self-shadow: how much more cloud lies a little towards the light
     vec3 L = day > 0.02 ? sunDir : moonDir;
 #ifdef LITE
     float nl = n - 0.04;
 #else
     vec2 lp = p + normalize(L.xz + 1e-4) * 0.09;
-    float nl = fbm(vec3(lp * 0.95, t));
+    float nl = fbm(vec3(lp * 0.95, t)) + (bil - 0.62) * 0.09;
 #endif
-    float lit = clamp(1.0 - (nl - n) * 3.2, 0.25, 1.15);
-    float thick = smoothstep(cover, cover + 0.3, n);
+    float lit = clamp(1.0 - (nl - n) * 3.4, 0.2, 1.2);
+    float thick = smoothstep(local, local + 0.32, n);
     // towards the sun the edges glow (forward scattering)
     float toward = pow(max(dot(d, L), 0.0), 6.0);
     vec3 sunCol = mix(vec3(1.0, 0.98, 0.95), vec3(1.0, 0.55, 0.3), low);
-    vec3 dayCol = sunCol * (lit * 1.25 + toward * (1.0 - thick) * 1.6) * mix(1.0, 0.72, thick);
-    vec3 shade = mix(vec3(0.55, 0.62, 0.74), vec3(0.42, 0.3, 0.38), low);
-    dayCol = mix(shade * 0.9, dayCol, lit * 0.85 + 0.15);
+    // (the heaped middles are grey underneath, the thin edges bright: big clouds look big)
+    vec3 dayCol = sunCol * (lit * 1.25 + toward * (1.0 - thick) * 1.8) * mix(1.0, 0.58, thick * thick);
+    vec3 shade = mix(vec3(0.5, 0.57, 0.7), vec3(0.42, 0.3, 0.38), low);
+    dayCol = mix(shade * 0.85, dayCol, lit * 0.85 + 0.15);
     vec3 nightCol = vec3(0.05, 0.065, 0.1) * (0.6 + 0.8 * lit * moonUp) + vec3(0.25, 0.3, 0.42) * toward * moonUp * (1.0 - thick) * 0.6;
     vec3 col = mix(nightCol, dayCol * 2.4, day);
+    // the cirrus: white silk by day, gold at sunset, faint silver by night
+    vec3 ciCol = mix(vec3(0.06, 0.07, 0.1) * (0.5 + moonUp), mix(vec3(1.0), vec3(1.0, 0.7, 0.45), low) * 2.2 * (1.0 + toward), day);
     float fade = smoothstep(0.015, 0.22, d.y);
-    gl_FragColor = vec4(col, shape * fade * mix(0.75, 0.95, thick));
+    float a = shape * mix(0.75, 0.96, thick);
+    gl_FragColor = vec4(mix(ciCol, col, a / max(a + cirrus * (1.0 - a), 1e-4)), (a + cirrus * (1.0 - a)) * fade);
 }`;
 
 // stars: camera-facing quads round the sky, each with its own colour, size and twinkle; turned round the pole with the hour
@@ -429,7 +445,10 @@ export class SkyDeco {
         cm.setFloat("day", day);
         cm.setFloat("low", low);
         cm.setFloat("moonUp", moonUp);
-        cm.setFloat("cover", this.cover - overcast * 0.3);
+        // (spells of weather: over a quarter of an hour or so the sky swings between fair, a few heaps of cloud and much
+        //  blue, and cloudier, banks crowding in; the banks themselves drift across it, see the shader)
+        const spell = 0.075 * Math.sin(this.time * 0.0021 + 1.3) + 0.045 * Math.sin(this.time * 0.0057 + 0.4);
+        cm.setFloat("cover", this.cover + spell - overcast * 0.3);
         cm.setVector2("wind", { x: 0.010, y: 0.004 } as never);
     }
 }
