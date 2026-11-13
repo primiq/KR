@@ -342,7 +342,10 @@ body.inwarp #bottom, body.inwarp #compass, body.inwarp #prompt, body.inwarp #cro
 #menu .seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 #menu .seg button { padding: 10px 0; border-radius: 10px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.06); color: #fff; font-weight: 700; cursor: pointer; }
 #menu .seg button.on { background: var(--accent); color: #032; border-color: transparent; }
-#menu .gfx-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; margin-top: 12px; }
+/* two columns where they fit, else one (a fixed 1fr 1fr pushed the right column off narrow phones) */
+#menu .gfx-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 8px 16px; margin-top: 12px; }
+#menu .gfx-grid > label { min-width: 0; }
+#menu .gfx-grid select { min-width: 0; max-width: 62%; }
 #menu .gfx-grid label { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 14px; background: rgba(255,255,255,.05); border-radius: 10px; padding: 8px 10px; }
 #menu .gfx-grid select { background: #0b3440; color: #fff; border: 1px solid rgba(255,255,255,.25); border-radius: 8px; padding: 4px; }
 #menu .gfx-grid input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }

@@ -230,7 +230,6 @@ export class Birds {
       const want = day ? 16 : 4;
       if (this.list.length < want && Math.hypot(me.x, me.z) < 380) this.spawnFlock(me.x, me.z, day);
     }
-    let chirpBudget = 1;
     for (const b of this.list) {
       b.flap += dt;
       if (b.st === 'fly') {
@@ -250,7 +249,7 @@ export class Birds {
         const d = Math.hypot(q.x - b.x, q.z - b.z), R = b.st === 'perch' ? (q.fast ? 4 : 0) : q.fast ? 13 : 7;
         if (d < R) {
           const v = Math.max(0, 1 - Math.hypot(b.x - me.x, b.z - me.z) / 40);
-          this.sound?.('flutter', v * 0.9); if (day) this.sound?.('chirp', v * 0.4);
+          this.sound?.('flutter', v * 0.9);
           this.scare(b, q.x, q.z); break;
         }
       }
@@ -279,11 +278,7 @@ export class Birds {
         if (b.hop <= 0) { b.hop = 1 + Math.random() * 4; b.yaw += (Math.random() - 0.5) * 2; }
         if (b.rest < 0) { b.rest = 30 + Math.random() * 40; if (Math.random() < 0.5) this.scare(b, b.x - Math.sin(b.yaw), b.z - Math.cos(b.yaw)); }
       }
-      // song by day
-      if (day && chirpBudget > 0 && Math.random() < dt * (hour < 8 ? 0.5 : 0.12)) {
-        const v = Math.max(0, 1 - Math.hypot(b.x - me.x, b.z - me.z, (b.y - me.y) * 0.5) / 45);
-        if (v > 0.05) { this.sound?.('chirp', v * (b.kind >= 3 ? 0.55 : 0.35)); chirpBudget--; }
-      }
+      // (no song: the little birds sat unseen in the trees and the beeps had nothing to go with them)
     }
     this.draw();
   }

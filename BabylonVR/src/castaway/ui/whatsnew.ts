@@ -6,6 +6,13 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-12-01", title: "Quieter birds, a tidier Settings page",
+        items: [
+            "No more beep-beep-beep from birds you could not see: the little birds hidden in the trees no longer sing. They still flutter off when you come close.",
+            "The Settings page fits phone screens again: its options stack in one column when two do not fit.",
+        ],
+    },
+    {
         date: "2026-11-30", title: "Phones start again",
         items: [
             "Fixed the game freezing on its first frame on phones and tablets: the warm-up before Play no longer looks all round at once there, and edge smoothing is off by default on the phone settings (you can still turn it on in Graphics).",
