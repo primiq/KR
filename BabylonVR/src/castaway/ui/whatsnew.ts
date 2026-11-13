@@ -6,6 +6,14 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-12-04", title: "A new castaway: Bora",
+        items: [
+            "Character now has a Body choice: the classic castaway, or Bora, an old islander with white hair, a beard and tattoos.",
+            "Choose his hair colour, skin tone, a full, short or no beard, and the colour of his shorts (Trouser colour). Everyone in the game sees him as you chose him.",
+            "He walks, swims, sits and swings tools like everyone else. Shirts, trousers, hats and bags for Bora are on their way.",
+        ],
+    },
+    {
         date: "2026-12-03", title: "A livelier sky, a raft that rows in the water",
         items: [
             "The clouds gather in banks with wide spells of clear blue between them, the weather drifts between fair and cloudier over time, the big clouds are grey underneath and bright on top, and thin high streaks of cirrus cross the sky.",

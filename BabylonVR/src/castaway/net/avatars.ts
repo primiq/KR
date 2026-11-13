@@ -8,7 +8,8 @@ import { poseLeg, buildCat, PLAYER_COATS } from '../world/cats';
 import type { PState } from './session';
 import { heightAt } from '../world/island';
 import { ITEMS, type ItemId } from '../game/items';
-import { buildPlayer, buildArmor, buildHeld, flicker, makeNamePlate, HIP_Y, BODY_Y, HEAD_Y, TAG_Y, SH_X, SH_Y, UPPER, FORE, type PlayerRig } from './playerModel';
+import { buildPlayer, buildArmor, buildHeld, flicker, makeNamePlate, HIP_Y, BODY_Y, HEAD_Y, TAG_Y, SH_X, SH_Y, UPPER, FORE, type Look, type PlayerRig } from './playerModel';
+import { type BoraBody, boraReady, loadBora, makeBora } from './bora';
 import { lookFromOutfit, outfitFor, outfitKey, parseOutfit, getOutfit, myDisplayName, setPlayerOutfit, playerColor, type Outfit } from './outfit';
 
 export { playerColor };
@@ -190,10 +191,16 @@ class Avatar {
 
   /** what this avatar was built from, so it can be rebuilt when the player changes their look or name */
   readonly key: string;
+  /** the Bora body, when this player chose it (made as soon as his model has loaded) */
+  private look: Look;
+  private bora: BoraBody | null = null;
+  private fpView: { head: boolean; arms: boolean } | null = null;
   constructor(readonly id: number, readonly name: string, shadows: boolean, outfit: Outfit = outfitFor(id)) {
     this.shadowsOn = shadows;
     this.key = outfitKey(outfit) + '|' + name;
     const look = lookFromOutfit(outfit, id);
+    this.look = look;
+    if (look.bora) loadBora();
     this.shirtMat = lit(look.shirt); this.skinMat = lit(look.skin, 0.2);
     this.R = buildPlayer(look, shadows);
     this.arms = this.R.shoulders; this.head = this.R.head; this.body = this.R.body;
@@ -201,6 +208,7 @@ class Avatar {
     this.R.thighs.forEach((t) => t.scale.set(1.14, 1, 1.14)); this.R.shoulders.forEach((t) => t.scale.set(1.1, 1, 1.1));
     this.R.head.scale.setScalar(1.1); this.body.scale.set(1.05, 1, 1.07);
     this.R.grips[1].add(this.held);
+    this.held.userData.held = true; this.vrGrip.userData.held = true;
     this.R.body.add(makeNamePlate(name));
     const tag = nameTag(name); tag.position.set(0, TAG_Y, 0);
     this.tag = tag; this.bar.sprite.position.set(0, TAG_Y - 0.14, 0);
@@ -287,6 +295,15 @@ class Avatar {
   }
 
   update(dt: number) {
+    this.animate(dt);
+    // Bora copies the puppet's pose (see net/bora.ts)
+    if (this.look.bora) {
+      if (!this.bora && boraReady()) { this.bora = makeBora(this.R, this.look); if (this.fpView) this.bora?.firstPerson(this.fpView.head, this.fpView.arms); }
+      this.bora?.pose();
+    }
+  }
+
+  private animate(dt: number) {
     const s = this.target;
     if (!s) return;
     dt = Math.min(dt, 0.1);
@@ -737,6 +754,8 @@ class Avatar {
     if (!vr) this.arms.forEach((a) => { a.visible = false; });
     if (this.vr) { this.vr.hand.forEach((m) => { m.visible = false; }); this.vr.seg.forEach((m) => { m.visible = false; }); }
     this.fpHands = true;
+    this.fpView = { head: true, arms: !vr };
+    this.bora?.firstPerson(true, !vr);
   }
   private fpDone = false;
 
@@ -782,6 +801,7 @@ class Avatar {
   }
 
   dispose(scene?: THREE.Object3D) {
+    this.bora?.dispose(); this.bora = null;
     if (scene && this.bobber) { scene.remove(this.bobber, this.line!); this.bobber.geometry.dispose(); this.line!.geometry.dispose(); }
     this.group.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) { m.geometry.dispose(); if (m.name === 'nameplate') { const mm = m.material as THREE.MeshStandardMaterial; mm.map?.dispose(); mm.dispose(); } } });
   }

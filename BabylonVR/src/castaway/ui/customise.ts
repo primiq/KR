@@ -6,6 +6,7 @@ import * as THREE from "three";
 import { setPref } from "../core/prefs";
 import { cycleSlot, getOutfit, lookFromOutfit, myDisplayName, onOutfitChange, randomOutfit, SLOTS } from "../net/outfit";
 import { buildPlayer, makeNamePlate } from "../net/playerModel";
+import { type BoraBody, boraReady, loadBora, makeBora } from "../net/bora";
 import { ThreeMirror } from "../render/mirror";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -17,6 +18,7 @@ class Preview {
     private holder = new THREE.Scene();
     private turn = new THREE.Group();
     private rig: THREE.Group | null = null;
+    private bora: BoraBody | null = null;
     private mirror: ThreeMirror;
     private spin = 0; private drag = 0; private t = 0;
     private dragging = false; private lastX = 0;
@@ -67,7 +69,8 @@ class Preview {
     /** build the character again from the current choice */
     rebuild() {
         this.disposeRig();
-        const R = buildPlayer(lookFromOutfit(getOutfit(), 0), false);
+        const look = lookFromOutfit(getOutfit(), 0);
+        const R = buildPlayer(look, false);
         R.thighs.forEach((t) => t.scale.set(1.14, 1, 1.14)); R.shoulders.forEach((t) => t.scale.set(1.1, 1, 1.1));
         R.head.scale.setScalar(1.1); R.body.scale.set(1.05, 1, 1.07);
         R.body.add(makeNamePlate(myDisplayName()));
@@ -75,11 +78,14 @@ class Preview {
         R.shoulders.forEach((s, i) => { s.rotation.z = (i ? 1 : -1) * 0.1; });
         R.elbows.forEach((e) => { e.rotation.x = 0.18; });
         this.rig = R.rig; this.turn.add(R.rig);
+        // Bora: built on the same rig (it stays as his invisible puppet), once his model has loaded
+        if (look.bora) { if (boraReady()) this.bora = makeBora(R, look); else loadBora(() => this.rebuild()); }
     }
 
     private disposeRig() {
         if (!this.rig) return;
         this.turn.remove(this.rig); this.rig = null;
+        this.bora?.dispose(); this.bora = null;
     }
 
     private frame() {
@@ -90,6 +96,7 @@ class Preview {
         this.turn.rotation.y = this.spin;
         if (this.rig) this.rig.position.y = Math.sin(this.t * 1.6) * 0.004;
         this.holder.updateMatrixWorld();
+        this.bora?.pose();
         this.mirror.sync();
         this.scene.render();
     }

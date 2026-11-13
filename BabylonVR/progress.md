@@ -19,7 +19,7 @@ through rings of open sea to an Arctic. Multiplayer is peer to peer (PeerJS), th
 - Never touch the `primiq/castaway` repo. Work only in `primiq/KR`, directly on `master`, push to `origin master`. No PRs.
 - **No long dashes ever** (em dash, en dash): not in code, comments, commit messages, game text, What's new, or replies.
 - Every player-facing change adds an entry at the TOP of `UPDATES` in `src/castaway/ui/whatsnew.ts` in the same commit
-  (its date drives the "new" dot on the menu). Dates so far run ahead of the calendar (latest 2026-12-03): keep going up.
+  (its date drives the "new" dot on the menu). Dates so far run ahead of the calendar (latest 2026-12-04): keep going up.
 - Commits end with the Co-Authored-By and Claude-Session lines; no model names or IDs in commits.
 - Performance changes must be measured (an earlier perf change was rolled back).
 - Keep this file (`progress.md`) current.
@@ -69,6 +69,9 @@ screen, deep sea abyss with glowing creatures (GlowLayer) and chests, open sea, 
 pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flute, butterflies, gulls, whales, dolphins.
 
 ## Recent work (newest first)
+
+- **Bora step 2**: Bora is a selectable body (Customise > Body) with hair/skin/beard/shorts colours, synced like any
+  outfit. See "In progress: Bora".
 
 - **Bora step 1**: the model pipeline (`scripts/build-bora.mjs`, dev deps `@gltf-transform/*`), source in `assets-src/`,
   output `public/models/bora.glb`. Not used by the game yet. See "In progress: Bora".
@@ -174,12 +177,16 @@ Plan and state:
    15.9k vertices, 1.8 MB). Posing tested in three.js (arm, leg, head bend cleanly). Note: three.js strips dots from node
    names (`DEF-upper_arm.L` loads as `DEF-upper_armL`). The model is about 9 units tall, A-pose, faces +z, materials
    are unlit in the export (replace with lit ones in game).
-2. Avatar: load once, clone per player (SkeletonUtils), scale to ~1.8 m, drive its bones from the existing procedural
-   rig (`net/avatars.ts`, `net/playerModel.ts`) by world-delta retargeting (each limb's rest direction aligned to the
-   classic rig's rest, then the classic joints' world rotations applied). The mirror (`render/mirror.ts`) already
-   draws three.js SkinnedMesh.
-3. Customisation (`net/outfit.ts`, `ui/customise.ts`): add a Body slot (+ beard, beard colour); accept old 7-number
-   outfits. Clothes for Bora are made from his own body mesh (vertices of the shirt/trouser/boot regions by bone
+2. DONE: `net/bora.ts` (loadBora / makeBora). The classic rig stays as an invisible puppet; Bora's bones copy its
+   joints each frame (limbs first swung from his A-pose to hang straight, then the puppet joint's rig-space rotation);
+   hips follow the puppet's hips; the puppet's wrists are moved onto his hands so held items sit in his grip. First
+   person shrinks his head bone (and arm bones on a flat screen). Skin tone: his texture recoloured per tone (512 px,
+   shared). The GLB must use separate (not interleaved) vertex buffers: the mirror's CPU skinning reads plain arrays.
+   Tested: customise preview, walking with a hatchet next to a classic player.
+3. PARTLY: Body and Beard slots added (outfit is 9 numbers; 7-number outfits from older clients get Classic/full beard).
+   Hair colour, skin, trouser colour (his shorts), beard style work; Head "Buzz cut" hides his hair. Still to do: shirts,
+   trousers, boots, hats, shades, bags on Bora (the puppet's are hidden for him), armour on Bora, the name plate sits a
+   little in front of his chest, skin tint a bit red. Clothes for Bora are made from his own body mesh (vertices of the shirt/trouser/boot regions by bone
    weight, pushed out along the normal, coloured, same skin weights), hats/shades/bags rigid on head/spine bones.
 4. First person and VR hands (`game/hands.ts`, `vr/vr.ts`): arm IK to the controllers, finger curls from buttons,
    items parented to the hand bones; remote players' hands from the synced data.

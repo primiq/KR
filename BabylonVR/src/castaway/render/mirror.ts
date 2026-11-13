@@ -108,7 +108,8 @@ export class ThreeMirror {
         } else if (map && (map as THREE.CanvasTexture).image) {
             const p = new PBRMaterial(`mirror_tex${this.id(m)}`, this.scene); p.maxSimultaneousLights = lightRoom.n;
             const img = map.image as HTMLCanvasElement | ImageBitmap | HTMLImageElement;
-            const isCanvas = typeof HTMLCanvasElement !== "undefined" && img instanceof HTMLCanvasElement;
+            // (a canvas made once, a recoloured texture say, is just an image: not watched for changes, no glow)
+            const isCanvas = typeof HTMLCanvasElement !== "undefined" && img instanceof HTMLCanvasElement && !map.userData.still;
             // (a decoded image, e.g. from a .glb: copied onto a canvas once)
             let cv: HTMLCanvasElement;
             if (isCanvas) cv = img as HTMLCanvasElement;
@@ -139,6 +140,8 @@ export class ThreeMirror {
                 return u;
             }
             p.albedoTexture = t;
+            // (a tint over the texture: Bora's eyebrows take his hair colour)
+            if ((anyM as THREE.MeshStandardMaterial).color) { const c = anyM.color; p.albedoColor = new Color3(c.r, c.g, c.b); }
             if (isCanvas) { p.emissiveTexture = t; p.emissiveColor = new Color3(0.3, 0.3, 0.3); }
             p.roughness = (anyM as THREE.MeshStandardMaterial).roughness ?? 0.8;
             p.metallic = 0;

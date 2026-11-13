@@ -69,6 +69,8 @@ export interface Look {
   skin: string; hair: string; hairStyle: number; eye: string;
   shirt: string; shirtStyle: number; pants: string; pantsStyle: number; shoe: string; shoeStyle: number;
   beard: boolean; hat: number; glasses: boolean; pack: number; accent: string; canvas: string; scarf: boolean; smile: number;
+  /** the Bora body (net/bora.ts) instead of the classic one, and his beard: 0 full, 1 short, 2 none */
+  bora?: boolean; beardStyle?: number;
 }
 export const SKINS = ['#f3d2ae', '#e8b88c', '#d29a6a', '#b07746', '#855230', '#5e3a22'];
 export const HAIRS = ['#17120e', '#35261b', '#5b3a24', '#8a4b24', '#c89a4e', '#dac58a', '#b9b4ab', '#a02f1c'];

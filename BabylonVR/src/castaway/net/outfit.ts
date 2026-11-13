@@ -33,7 +33,7 @@ export const LEGS: Part[] = [
   { name: 'Shorts, sandals', set: { pantsStyle: 1, shoeStyle: 1 } },
 ];
 
-/** [head, hair colour, skin, torso, shirt colour, legs, trouser colour] */
+/** [head, hair colour, skin, torso, shirt colour, legs, trouser colour, body, beard] */
 export type Outfit = number[];
 export interface Slot { label: string; n: number; names?: string[]; colors?: string[] }
 export const SLOTS: Slot[] = [
@@ -44,13 +44,17 @@ export const SLOTS: Slot[] = [
   { label: 'Shirt colour', n: SHIRTS.length, colors: SHIRTS },
   { label: 'Legs', n: LEGS.length, names: LEGS.map((p) => p.name) },
   { label: 'Trouser colour', n: PANTS.length, colors: PANTS },
+  { label: 'Body', n: 2, names: ['Classic', 'Bora'] },
+  { label: 'Beard (Bora)', n: 3, names: ['Full beard', 'Short beard', 'No beard'] },
 ];
 
 /** accepts anything off the wire; returns a clean outfit or null */
 export function parseOutfit(x: unknown): Outfit | null {
+  // (an outfit from before the Body and Beard slots: the classic body, a full beard)
+  if (Array.isArray(x) && x.length === 7) x = [...x, 0, 0];
   if (!Array.isArray(x) || x.length !== SLOTS.length) return null;
   const o: number[] = [];
-  for (let i = 0; i < SLOTS.length; i++) { const v = x[i]; if (!Number.isInteger(v) || v < 0 || v >= SLOTS[i].n) return null; o.push(v); }
+  for (let i = 0; i < SLOTS.length; i++) { const v = (x as number[])[i]; if (!Number.isInteger(v) || v < 0 || v >= SLOTS[i].n) return null; o.push(v); }
   return o;
 }
 
@@ -64,7 +68,9 @@ export const outfitKey = (o: Outfit) => o.join(',');
 
 export function lookFromOutfit(o: Outfit, id = 0): Look {
   const base = lookFor(id, SHIRTS[o[4]]);   // the parts nobody chooses (eyes, accent colours, smile) stay stable per player
-  return { ...base, ...HEADS[o[0]].set, hair: HAIRS[o[1]], skin: SKINS[o[2]], ...TORSOS[o[3]].set, shirt: SHIRTS[o[4]], ...LEGS[o[5]].set, pants: PANTS[o[6]] };
+  const look: Look = { ...base, ...HEADS[o[0]].set, hair: HAIRS[o[1]], skin: SKINS[o[2]], ...TORSOS[o[3]].set, shirt: SHIRTS[o[4]], ...LEGS[o[5]].set, pants: PANTS[o[6]] };
+  look.bora = o[7] === 1; look.beardStyle = o[8] ?? 0;
+  return look;
 }
 
 // ---- this player's own choice

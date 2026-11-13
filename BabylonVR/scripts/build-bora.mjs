@@ -1,4 +1,4 @@
-// Builds the game's Bora character (public/models/bora.glb) from the artist's Blender export (assets-src/Bora.glb).
+// Builds the game's Bora character (src/castaway/assets/bora/bora.glb) from the artist's Blender export (assets-src/Bora.glb).
 //
 // The export carries Blender's whole control rig (990 bones: controls, mechanism and original bones next to the 69 that
 // bend the body) and very dense hair and beard. The game needs only the deforming body bones, so this:
@@ -8,7 +8,7 @@
 //  - simplifies the hair and the beard, drops the one-frame "animation" and the rig's widget shapes,
 //  - writes a small GLB the game loads (and clones per player).
 // Run: node scripts/build-bora.mjs   (the output is committed, so the build does not need this step)
-import { NodeIO } from "@gltf-transform/core";
+import { NodeIO, VertexLayout } from "@gltf-transform/core";
 import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
 import { prune, simplifyPrimitive, weldPrimitive, dedup } from "@gltf-transform/functions";
 import { MeshoptSimplifier } from "meshoptimizer";
@@ -16,7 +16,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const SRC = join(root, "assets-src", "Bora.glb"), OUT = join(root, "public", "models", "bora.glb");
+const SRC = join(root, "assets-src", "Bora.glb"), OUT = join(root, "src", "castaway", "assets", "bora", "bora.glb");
 
 // ---- 4x4 column-major matrix helpers (glTF order)
 const mul = (a, b) => {
@@ -39,7 +39,8 @@ const inv = (m) => {
 };
 
 await MeshoptSimplifier.ready;
-const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
+// (separate vertex buffers, not interleaved: the game's mirror reads positions, joints and weights as plain arrays)
+const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).setVertexLayout(VertexLayout.SEPARATE);
 const doc = await io.read(SRC);
 const R = doc.getRoot();
 
