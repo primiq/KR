@@ -6,6 +6,13 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-12-05", title: "Bora gets dressed",
+        items: [
+            "Bora now wears everything the classic castaway can: T-shirt, sleeveless top or camp shirt, trousers or his shorts, boots or sandals, the sun hat, shades, a scarf, a rucksack or a satchel.",
+            "His clothes are made to fit him and move with him as he walks, swims and works.",
+        ],
+    },
+    {
         date: "2026-12-04", title: "A new castaway: Bora",
         items: [
             "Character now has a Body choice: the classic castaway, or Bora, an old islander with white hair, a beard and tattoos.",

@@ -19,7 +19,7 @@ through rings of open sea to an Arctic. Multiplayer is peer to peer (PeerJS), th
 - Never touch the `primiq/castaway` repo. Work only in `primiq/KR`, directly on `master`, push to `origin master`. No PRs.
 - **No long dashes ever** (em dash, en dash): not in code, comments, commit messages, game text, What's new, or replies.
 - Every player-facing change adds an entry at the TOP of `UPDATES` in `src/castaway/ui/whatsnew.ts` in the same commit
-  (its date drives the "new" dot on the menu). Dates so far run ahead of the calendar (latest 2026-12-04): keep going up.
+  (its date drives the "new" dot on the menu). Dates so far run ahead of the calendar (latest 2026-12-05): keep going up.
 - Commits end with the Co-Authored-By and Claude-Session lines; no model names or IDs in commits.
 - Performance changes must be measured (an earlier perf change was rolled back).
 - Keep this file (`progress.md`) current.
@@ -69,6 +69,8 @@ screen, deep sea abyss with glowing creatures (GlowLayer) and chests, open sea, 
 pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flute, butterflies, gulls, whales, dolphins.
 
 ## Recent work (newest first)
+
+- **Bora step 3**: Bora wears the full wardrobe (clothes cut from his skin, hat/shades/scarf on bones, packs moved on).
 
 - **Bora step 2**: Bora is a selectable body (Customise > Body) with hair/skin/beard/shorts colours, synced like any
   outfit. See "In progress: Bora".
@@ -184,9 +186,12 @@ Plan and state:
    shared). The GLB must use separate (not interleaved) vertex buffers: the mirror's CPU skinning reads plain arrays.
    Tested: customise preview, walking with a hatchet next to a classic player.
 3. PARTLY: Body and Beard slots added (outfit is 9 numbers; 7-number outfits from older clients get Classic/full beard).
-   Hair colour, skin, trouser colour (his shorts), beard style work; Head "Buzz cut" hides his hair. Still to do: shirts,
-   trousers, boots, hats, shades, bags on Bora (the puppet's are hidden for him), armour on Bora, the name plate sits a
-   little in front of his chest, skin tint a bit red. Clothes for Bora are made from his own body mesh (vertices of the shirt/trouser/boot regions by bone
+   Hair colour, skin, trouser colour (his shorts), beard style work; Head "Buzz cut" hides his hair. Clothes DONE: `garments()`
+   in `net/bora.ts` cuts shirts (T, sleeveless, camp), trousers, boots and sandals from his body mesh (triangles chosen
+   by bone weights and height, pushed out along normals, his skin weights) as SkinnedMeshes bound to his skeleton; the
+   shorts mesh shows only with shorts. Hat, shades and scarf are small meshes on his head/neck bones (`onBone`); the
+   puppet's rucksack/satchel is moved onto his chest bone, squeezed to his size; the name plate sits on his chest.
+   Still to do: armour on Bora, skin tint a bit red, a few ragged edges at sleeve holes. Clothes for Bora are made from his own body mesh (vertices of the shirt/trouser/boot regions by bone
    weight, pushed out along the normal, coloured, same skin weights), hats/shades/bags rigid on head/spine bones.
 4. First person and VR hands (`game/hands.ts`, `vr/vr.ts`): arm IK to the controllers, finger curls from buttons,
    items parented to the hand bones; remote players' hands from the synced data.
