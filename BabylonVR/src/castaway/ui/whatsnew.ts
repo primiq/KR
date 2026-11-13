@@ -6,6 +6,14 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-12-06", title: "Bora's own hands",
+        items: [
+            "Playing Bora, the arms and hands you see in front of you are his, tattoos and all, gripping every tool and doing every move as before.",
+            "In a headset your hands are Bora's: his fingers close as you squeeze the grip and the trigger, tools sit in his hand, and other players see his arms reach where your hands are.",
+            "Bora's skin now matches the tone you pick exactly.",
+        ],
+    },
+    {
         date: "2026-12-05", title: "Bora gets dressed",
         items: [
             "Bora now wears everything the classic castaway can: T-shirt, sleeveless top or camp shirt, trousers or his shorts, boots or sandals, the sun hat, shades, a scarf, a rucksack or a satchel.",

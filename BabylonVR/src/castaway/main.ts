@@ -74,10 +74,10 @@ import { F_LOUNGE, StructureManager } from "./game/structures";
 import { isProbablyHeadset } from "../config";
 import { Dolphins } from "./world/dolphins";
 import { SEA } from "./world/waves";
-import { getOutfit, onOutfitChange, setPlayerOutfit } from "./net/outfit";
+import { getOutfit, lookFromOutfit, onOutfitChange, setPlayerOutfit } from "./net/outfit";
 import { SKINS } from "./net/playerModel";
 import { setupCustomise, setNameLocked } from "./ui/customise";
-import { setViewSkin } from "./game/viewmodel";
+import { setViewLook, setViewSkin } from "./game/viewmodel";
 import { Avatars, playerColor } from "./net/avatars";
 import { eraseSaves, guestKey, LAYOUT, loadChar, loadWorld, migrateWorld, newWorldId, saveChar, saveWorld } from "./net/save";
 import { type PState, Session } from "./net/session";
@@ -1223,6 +1223,7 @@ async function main() {
     const applyOutfit = () => {
         const o = getOutfit();
         setViewSkin(SKINS[o[2]]);
+        setViewLook(lookFromOutfit(o));
         if (!sync) { setPlayerOutfit(0, o); return; }
         const id = sync.session.myId, me = sync.session.players.get(id);
         setPlayerOutfit(id, o);

@@ -33,6 +33,8 @@ interface Template {
   restM: Map<string, THREE.Matrix4>;
   /** his back at chest height (rig space z), for the pack */
   backZ: number;
+  /** his forearms and hands on their own (first person, VR hands): see makeBoraArm */
+  arms: { L: ArmData; R: ArmData } | null;
 }
 
 let T: Template | null = null;
@@ -74,6 +76,7 @@ export function loadBora(onReady?: () => void) {
     let skin: THREE.Texture | null = null, brow: THREE.Texture | null = null, lash: THREE.Texture | null = null, beardShort: THREE.BufferGeometry | null = null;
     let chestY = 1.35, chestZ = -0.12, backZ = 0.1;
     let clothes: Record<string, THREE.BufferGeometry> = {};
+    let arms: { L: ArmData; R: ArmData } | null = null;
     scene.traverse((o) => {
       const m = o as THREE.SkinnedMesh;
       if (!m.isSkinnedMesh) return;
@@ -95,6 +98,7 @@ export function loadBora(onReady?: () => void) {
         }
         if (back > 0) backZ = back;
         clothes = garments(m);
+        arms = { L: armData(m, 'L'), R: armData(m, 'R') };
       }
       if (m.name === 'Beard') beardShort = trim(m.geometry);
       if (/eyebrow/.test(m.name)) brow = mat.map;
@@ -102,7 +106,7 @@ export function loadBora(onReady?: () => void) {
     });
     holder.remove(scene);
     scene.rotation.set(0, Math.PI, 0);
-    T = { scene, rest, hip0, rootParentInv, skin, brow, lash, skinBase: baseColour(skin), chest: { y: chestY, z: chestZ }, beardShort, clothes, restM, backZ };
+    T = { scene, rest, hip0, rootParentInv, skin, brow, lash, skinBase: baseColour(skin), chest: { y: chestY, z: chestZ }, beardShort, clothes, restM, backZ, arms };
     for (const f of waiting.splice(0)) f();
   })().catch((e) => { console.error('Bora failed to load', e); loading = null; });
 }
@@ -181,6 +185,144 @@ function garments(body: THREE.SkinnedMesh): Record<string, THREE.BufferGeometry>
   };
 }
 
+// ------------------------------------------------------------------ his arm on its own (first person, VR hands)
+/** the bones of one forearm and hand, in the order the arm's own skeleton has them */
+const ARM_BONES = (s: string) => [`DEF-forearm${s}`, `DEF-forearm${s}001`, `DEF-hand${s}`,
+  ...['thumb', 'f_index', 'f_middle', 'f_ring', 'f_pinky'].flatMap((f) => ['01', '02', '03'].map((k) => `DEF-${f}${k}${s}`))];
+interface ArmData {
+  geo: THREE.BufferGeometry;
+  names: string[];
+  /** each bone's rest in model space (the inverse of its bind matrix), its parent in the arm (-1 for the forearm) */
+  rest: THREE.Matrix4[]; inv: THREE.Matrix4[]; parent: number[];
+  /** each bone's "hand frame" (along the bone, out of the palm) in its own rest space: what lines it up with a rig's joint */
+  frame: THREE.Quaternion[];
+  /** the forearm's length (model units) */
+  fore: number;
+}
+/** his forearm and hand cut from the body (with weights only on their own bones), and the frames to drive them by */
+function armData(body: THREE.SkinnedMesh, side: 'L' | 'R'): ArmData {
+  const names = ARM_BONES(side), all = body.skeleton.bones.map((b) => b.name);
+  const map = new Map(names.map((n, i) => [all.indexOf(n), i]));
+  const g = body.geometry, P = g.getAttribute('position'), N = g.getAttribute('normal'), UV = g.getAttribute('uv');
+  const SI = g.getAttribute('skinIndex'), SW = g.getAttribute('skinWeight'), I = g.getIndex()!;
+  const own = (i: number) => { let t = 0; for (let k = 0; k < 4; k++) if (map.has(SI.getComponent(i, k))) t += SW.getComponent(i, k); return t; };
+  const vmap = new Map<number, number>(), pos: number[] = [], nor: number[] = [], uv: number[] = [], si: number[] = [], sw: number[] = [], idx: number[] = [];
+  const vert = (i: number) => {
+    let j = vmap.get(i);
+    if (j !== undefined) return j;
+    j = pos.length / 3; vmap.set(i, j);
+    pos.push(P.getX(i), P.getY(i), P.getZ(i)); nor.push(N.getX(i), N.getY(i), N.getZ(i)); if (UV) uv.push(UV.getX(i), UV.getY(i));
+    const ws: [number, number][] = [];
+    for (let k = 0; k < 4; k++) { const b = map.get(SI.getComponent(i, k)), w = SW.getComponent(i, k); if (b !== undefined && w > 0) ws.push([b, w]); }
+    const sum = ws.reduce((a, x) => a + x[1], 0) || 1;
+    for (let k = 0; k < 4; k++) { si.push(ws[k]?.[0] ?? 0); sw.push((ws[k]?.[1] ?? 0) / sum); }
+    return j;
+  };
+  for (let t = 0; t < I.count; t += 3) {
+    const a = I.getX(t), b = I.getX(t + 1), c = I.getX(t + 2);
+    if (own(a) > 0.5 && own(b) > 0.5 && own(c) > 0.5) idx.push(vert(a), vert(b), vert(c));
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  if (UV) geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4));
+  geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
+  geo.setIndex(idx);
+  // rest matrices (model space) and the frames
+  const inv = names.map((n) => body.skeleton.boneInverses[all.indexOf(n)].clone());
+  const rest = inv.map((m) => m.clone().invert());
+  const at = (n: string) => new THREE.Vector3().setFromMatrixPosition(rest[names.indexOf(n)]);
+  const across = at(`DEF-f_index01${side}`).sub(at(`DEF-f_pinky01${side}`));
+  const along = at(`DEF-f_middle01${side}`).sub(at(`DEF-hand${side}`));
+  // out of the palm: for the right hand thumb x fingers, for the left the other way round
+  const palm = (side === 'R' ? along.clone().cross(across) : across.clone().cross(along)).normalize();
+  const parent = names.map((n) => {
+    if (n.startsWith('DEF-forearm') && !n.includes('001')) return -1;
+    if (n.includes('forearm')) return 0;
+    if (n.startsWith('DEF-hand')) return 1;
+    const k = n.slice(-3, -1);      // the segment: 01, 02, 03
+    return k === '01' ? 2 : names.indexOf(n.replace(k + side, String(+k - 1).padStart(2, '0') + side));
+  });
+  const next = (i: number) => { const c = parent.indexOf(i); return c >= 0 ? c : -1; };
+  const frame = names.map((n, i) => {
+    const p0 = at(n);
+    let to = n.startsWith('DEF-hand') ? at(`DEF-f_middle01${side}`) : next(i) >= 0 ? at(names[next(i)]) : null;
+    const dir = to ? to.sub(p0) : p0.clone().sub(at(names[parent[i]]));
+    const y = dir.normalize(), z = palm.clone().addScaledVector(y, -palm.dot(y)).normalize(), x = new THREE.Vector3().crossVectors(y, z);
+    const F = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
+    const q0 = new THREE.Quaternion(); rest[i].decompose(new THREE.Vector3(), q0, new THREE.Vector3());
+    return q0.invert().multiply(F);
+  });
+  const fore = at(`DEF-hand${side}`).distanceTo(at(`DEF-forearm${side}`));
+  return { geo, names, rest, inv, parent, frame, fore };
+}
+
+/** the joints of a hand rig an arm follows (game/hands.ts HandRig): each a group whose y runs along the bone, z out of the palm */
+export interface HandJoints {
+  /** the elbow (null: no arm, as in a headset: the forearm then runs straight back from the wrist) */
+  elbow: THREE.Object3D | null;
+  wrist: THREE.Object3D;
+  /** index, middle, ring, little: three segments each */
+  fingers: [THREE.Object3D, THREE.Object3D, THREE.Object3D][];
+  thumb: [THREE.Object3D, THREE.Object3D];
+}
+export interface BoraArm { mesh: THREE.SkinnedMesh; pose(j: HandJoints): void; dispose(): void }
+
+/** Bora's forearm and hand for a first-person or VR hand rig; it goes into `parent` (the rig's unmirrored group) */
+export function makeBoraArm(left: boolean, look: Look, parent: THREE.Object3D, selfLight = 0): BoraArm | null {
+  const A = T?.arms?.[left ? 'L' : 'R'];
+  if (!A) return null;
+  const bones = A.names.map((n) => { const b = new THREE.Bone(); b.name = n; b.matrixAutoUpdate = false; parent.add(b); return b; });
+  const sk = new THREE.Skeleton(bones, A.inv);
+  const m = mat('arm' + look.skin + selfLight, () => {
+    const t = skinFor(look.skin);
+    const mm = std('#ffffff', 0.72, { map: t, emissiveMap: t, emissive: new THREE.Color(selfLight, selfLight, selfLight) });
+    return mm;
+  });
+  const mesh = new THREE.SkinnedMesh(A.geo, m);
+  mesh.frustumCulled = false; mesh.name = 'boraArm';
+  mesh.bind(sk, new THREE.Matrix4());
+  parent.add(mesh);
+  const world = A.names.map(() => new THREE.Matrix4());
+  const G = new THREE.Quaternion(), Q = new THREE.Quaternion(), S = new THREE.Vector3(SCALE, SCALE, SCALE), P = new THREE.Vector3();
+  const x = new THREE.Vector3(), y = new THREE.Vector3(), z = new THREE.Vector3(), b = new THREE.Matrix4(), pinv = new THREE.Matrix4();
+  /** a joint's frame from its world matrix (y along it, z out of the palm; a mirrored joint's x is ignored) */
+  const frameOf = (o: THREE.Object3D, out: THREE.Quaternion) => {
+    const e = o.matrixWorld.elements;
+    y.set(e[4], e[5], e[6]).normalize(); z.set(e[8], e[9], e[10]); z.addScaledVector(y, -z.dot(y)).normalize(); x.crossVectors(y, z);
+    return out.setFromRotationMatrix(b.makeBasis(x, y, z));
+  };
+  /** bone i takes frame `q` (rig joint) at position `p` */
+  const put = (i: number, q: THREE.Quaternion, p: THREE.Vector3) => { Q.copy(q).multiply(A.frame[i].clone().invert()); world[i].compose(p, Q, S); };
+  /** where bone i sits under its (already placed) parent, at rest */
+  const under = (i: number) => P.setFromMatrixPosition(A.rest[i]).applyMatrix4(A.inv[A.parent[i]]).applyMatrix4(world[A.parent[i]]);
+  const wristQ = new THREE.Quaternion(), W = new THREE.Vector3(), E = new THREE.Vector3(), mid = new THREE.Vector3(), fq = new THREE.Quaternion();
+  return {
+    mesh,
+    pose(j: HandJoints) {
+      frameOf(j.wrist, wristQ); j.wrist.getWorldPosition(W);
+      // the forearm: from the elbow to the wrist, turned with the hand (so the skin does not twist between them)
+      if (j.elbow) j.elbow.getWorldPosition(E);
+      else E.copy(W).addScaledVector(y.set(0, 1, 0).applyQuaternion(wristQ), -A.fore * SCALE);
+      y.subVectors(W, E).normalize();
+      z.set(0, 0, 1).applyQuaternion(wristQ); z.addScaledVector(y, -z.dot(y)).normalize(); x.crossVectors(y, z);
+      fq.setFromRotationMatrix(b.makeBasis(x, y, z));
+      put(0, fq, E); put(1, fq, mid.lerpVectors(E, W, 0.5)); put(2, wristQ, W);
+      // (no elbow, in a headset: your body's own arm reaches the wrist, so the forearm folds away into it)
+      if (!j.elbow) for (const i of [0, 1]) { world[i].compose(W, Q.copy(fq).multiply(A.frame[i].clone().invert()), mid.setScalar(SCALE * 1e-3)); }
+      // the thumb and the fingers: each segment turned as the rig's, placed where his own bones sit
+      const segs: [number, THREE.Object3D][] = [[3, j.thumb[0]], [4, j.thumb[1]], [5, j.thumb[1]]];
+      j.fingers.forEach((f, k) => f.forEach((o, s) => segs.push([6 + k * 3 + s, o])));
+      for (const [i, o] of segs) put(i, frameOf(o, G), under(i).clone());
+      pinv.copy(parent.matrixWorld).invert();
+      bones.forEach((bn, i) => { bn.matrix.multiplyMatrices(pinv, world[i]); bn.matrixWorldNeedsUpdate = true; });
+      parent.updateMatrixWorld(true);
+    },
+    dispose() { parent.remove(mesh); for (const bn of bones) parent.remove(bn); },
+  };
+}
+
 /** the bones that hang: each is swung so the way to the named bone points straight down, as the puppet's limbs do */
 const HANG: Record<string, string> = {};
 for (const s of ['L', 'R']) {
@@ -230,10 +372,14 @@ function skinFor(hex: string): THREE.Texture | null {
   const img = T.skin.image as CanvasImageSource, S = 512;
   const c = document.createElement('canvas'); c.width = c.height = S;
   const x = c.getContext('2d')!; x.drawImage(img, 0, 0, S, S);
-  const id = x.getImageData(0, 0, S, S), d = id.data, [br, bg, bb] = T.skinBase, to = new THREE.Color(hex);
-  const tr = to.r * 255, tg = to.g * 255, tb = to.b * 255;
+  const id = x.getImageData(0, 0, S, S), d = id.data, [br, bg, bb] = T.skinBase;
+  // (the swatch as it shows on screen: three's Color holds linear values, which made every tone redder and darker)
+  const hx = parseInt(hex.slice(1), 16), tr = (hx >> 16) & 255, tg = (hx >> 8) & 255, tb = hx & 255;
+  // (by brightness, not channel by channel: the chosen tone's own colour, lighter where his texture is lighter, the tattoos)
+  const lb = 0.3 * br + 0.59 * bg + 0.11 * bb;
   for (let i = 0; i < d.length; i += 4) {
-    d[i] = Math.min(255, d[i] / br * tr); d[i + 1] = Math.min(255, d[i + 1] / bg * tg); d[i + 2] = Math.min(255, d[i + 2] / bb * tb);
+    const k = (0.3 * d[i] + 0.59 * d[i + 1] + 0.11 * d[i + 2]) / lb;
+    d[i] = Math.min(255, k * tr); d[i + 1] = Math.min(255, k * tg); d[i + 2] = Math.min(255, k * tb);
   }
   x.putImageData(id, 0, 0);
   t = new THREE.Texture(c);
@@ -250,7 +396,7 @@ export interface BoraBody {
   /** copy the puppet's pose onto him (call after the puppet has been animated this frame) */
   pose(): void;
   /** first person: `head` hides the head (the camera is in it), `arms` the arms too (a flat screen draws its own) */
-  firstPerson(head: boolean, arms: boolean): void;
+  firstPerson(head: boolean, arms: boolean, hands?: boolean): void;
   dispose(): void;
 }
 
@@ -358,11 +504,21 @@ export function makeBora(R: PlayerRig, look: Look): BoraBody | null {
   const armBones = ['L', 'R'].map((s) => scene.getObjectByName(`DEF-upper_arm${s}`) as THREE.Bone);
   const hands = ['L', 'R'].map((s) => scene.getObjectByName(`DEF-hand${s}`) as THREE.Bone);
   const hp = new THREE.Vector3(), m4 = new THREE.Matrix4(), v = new THREE.Vector3();
-  let fpHead = false, fpArms = false;
+  let fpHead = false, fpArms = false, fpHands = false;
+  // a fist: each finger's segments bend about their own x (01 most at the knuckle), the thumb a little
+  const FIST: Record<string, number> = { '01': 1.25, '02': 1.35, '03': 0.95 };
+  const curlOf = new Map<THREE.Bone, { side: number; a: number }>();
+  for (const b of bones) {
+    const m = /^DEF-(f_[a-z]+|thumb)(0[123])([LR])$/.exec(b.name);
+    if (m) curlOf.set(b, { side: m[3] === 'L' ? 0 : 1, a: (m[1] === 'thumb' ? 0.45 : 1) * FIST[m[2]] });
+  }
+  const qc = new THREE.Quaternion(), XA = new THREE.Vector3(1, 0, 0);
 
   return {
     root,
     pose() {
+      // (whether the puppet's hands are fists this frame: holding something)
+      const fist = [R.fist[0].visible, R.fist[1].visible];
       for (const o of puppetMeshes) o.visible = false;
       R.rig.updateMatrixWorld(true);
       R.rig.getWorldQuaternion(rigInv).invert();
@@ -378,6 +534,8 @@ export function makeBora(R: PlayerRig, look: Look): BoraBody | null {
           world.set(b, q);
         } else {
           b.quaternion.copy(restLocal.get(b)!);
+          const c = curlOf.get(b);
+          if (c && fist[c.side]) b.quaternion.multiply(qc.setFromAxisAngle(XA, c.a));
           world.set(b, parentQ.clone().multiply(b.quaternion));
         }
       }
@@ -387,6 +545,8 @@ export function makeBora(R: PlayerRig, look: Look): BoraBody | null {
       // first person: the head (and on a screen the arms) shrunk away to nothing
       headBone.scale.setScalar(fpHead ? 1e-3 : 1);
       for (const a of armBones) a.scale.setScalar(fpArms ? 1e-3 : 1);
+      // (in a headset your own hands are drawn at the controllers: the body's are tucked away)
+      for (const h of hands) h.scale.setScalar(fpHands ? 1e-3 : 1);
       // whatever the puppet holds goes into Bora's hand: its wrists are put where his are
       scene.updateMatrixWorld(true);
       for (let i = 0; i < 2; i++) {
@@ -396,7 +556,7 @@ export function makeBora(R: PlayerRig, look: Look): BoraBody | null {
         w.position.copy(el.worldToLocal(v));
       }
     },
-    firstPerson(head: boolean, arms: boolean) { fpHead = head; fpArms = arms; for (const o of hide) if (head) o.visible = false; },
+    firstPerson(head: boolean, arms: boolean, handsToo = false) { fpHead = head; fpArms = arms; fpHands = handsToo; for (const o of hide) if (head) o.visible = false; },
     dispose() { R.rig.remove(root); },
   };
 }

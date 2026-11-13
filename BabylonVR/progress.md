@@ -19,7 +19,7 @@ through rings of open sea to an Arctic. Multiplayer is peer to peer (PeerJS), th
 - Never touch the `primiq/castaway` repo. Work only in `primiq/KR`, directly on `master`, push to `origin master`. No PRs.
 - **No long dashes ever** (em dash, en dash): not in code, comments, commit messages, game text, What's new, or replies.
 - Every player-facing change adds an entry at the TOP of `UPDATES` in `src/castaway/ui/whatsnew.ts` in the same commit
-  (its date drives the "new" dot on the menu). Dates so far run ahead of the calendar (latest 2026-12-05): keep going up.
+  (its date drives the "new" dot on the menu). Dates so far run ahead of the calendar (latest 2026-12-06): keep going up.
 - Commits end with the Co-Authored-By and Claude-Session lines; no model names or IDs in commits.
 - Performance changes must be measured (an earlier perf change was rolled back).
 - Keep this file (`progress.md`) current.
@@ -69,6 +69,8 @@ screen, deep sea abyss with glowing creatures (GlowLayer) and chests, open sea, 
 pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flute, butterflies, gulls, whales, dolphins.
 
 ## Recent work (newest first)
+
+- **Bora steps 4 and 5**: his own first-person arms and VR hands (see "In progress: Bora"); skin tone fixed.
 
 - **Bora step 3**: Bora wears the full wardrobe (clothes cut from his skin, hat/shades/scarf on bones, packs moved on).
 
@@ -193,8 +195,15 @@ Plan and state:
    puppet's rucksack/satchel is moved onto his chest bone, squeezed to his size; the name plate sits on his chest.
    Still to do: armour on Bora, skin tint a bit red, a few ragged edges at sleeve holes. Clothes for Bora are made from his own body mesh (vertices of the shirt/trouser/boot regions by bone
    weight, pushed out along the normal, coloured, same skin weights), hats/shades/bags rigid on head/spine bones.
-4. First person and VR hands (`game/hands.ts`, `vr/vr.ts`): arm IK to the controllers, finger curls from buttons,
-   items parented to the hand bones; remote players' hands from the synced data.
+4. DONE (screen): `makeBoraArm` in `net/bora.ts` cuts his forearm and hand (18 bones) from the body; `HandRig.syncBora`
+   in `game/hands.ts` poses it from the first-person rig's elbow, wrist, finger and thumb groups (each bone's "hand
+   frame", y along the bone and z out of the palm, lined up with the rig joint's; the palm sign was found by testing).
+   `setViewLook` (main applyOutfit) tells the hands which body you play. Mirror: textured materials can glow
+   (emissiveMap). Skin recolouring now by brightness from the swatch's sRGB value (three's Color is linear: was red).
+5. DONE, NOT TESTED ON A HEADSET: `VRHand.sync()` (called in vr.ts after the hand holder's matrices) poses Bora's hand
+   on the controller rig, so the existing finger curl (grip/trigger) and held items carry over; its forearm folds into
+   the wrist. Your own body in VR (`fpSelf`) tucks its hands away (`firstPerson(head, arms, hands)`). Other players: the
+   puppet's VR arms reach the controllers and Bora follows; his fingers close when the puppet's hand is a fist.
 
 ## Known issues and open ideas
 

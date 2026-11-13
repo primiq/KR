@@ -2,7 +2,8 @@ import type { Scene } from "@babylonjs/core";
 import * as THREE from "three";
 import { tok } from "../render/bake";
 import { ThreeMirror } from "../render/mirror";
-import { ViewModel as Hands, type ViewState, VM_LIGHT, tickViewMaterials, setViewSkin as setHandSkin } from "./hands";
+import { ViewModel as Hands, type ViewState, VM_LIGHT, tickViewMaterials, setViewSkin as setHandSkin, setViewLook } from "./hands";
+export { setViewLook };
 import { ITEMS, type ItemId } from "./items";
 
 const T = {
@@ -187,6 +188,7 @@ export class ViewModel {
         this.cam3.matrix.fromArray(this.camera.getWorldMatrix().m as unknown as number[]);
         this.cam3.matrixWorldNeedsUpdate = true;
         this.holder.updateMatrixWorld();
+        this.vm.syncBora();
         this.mirror.sync();
     }
 }

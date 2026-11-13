@@ -3,6 +3,8 @@ import * as THREE from 'three';
 import { flowerGeometry, FLOWERS } from '../world/flowers';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { ARMOR_TIER_COLOR, ITEMS, type ItemId } from './items';
+import { type BoraArm, boraReady, loadBora, makeBoraArm } from '../net/bora';
+import type { Look } from '../net/playerModel';
 
 export interface ViewState {
   speed: number;       // horizontal speed m/s (0..7)
@@ -56,6 +58,9 @@ const mesh = (g: THREE.BufferGeometry, m: THREE.Material, order: number) => {
 const SK_BASE = new THREE.Color('#c98f66');
 const SKIN_ARM = mat('#c98f66', 0.7, { rim: 0.3 });
 const SKIN_F = mat('#c98f66', 0.7, { rim: 0.3, vc: true });
+/** your whole look (the customise screen): with the Bora body, the hands are his (see HandRig.syncBora) */
+let VIEW_LOOK: Look | null = null;
+export function setViewLook(look: Look) { VIEW_LOOK = look; }
 /** recolour the first-person hands to the chosen skin */
 export function setViewSkin(hex: string) {
   SK_BASE.set(hex).multiplyScalar(0.96);
@@ -616,6 +621,10 @@ class HandRig {
   item: THREE.Group | null = null;
   grip: Grip = NO_GRIP;
   stow = 0;
+  private handMesh!: THREE.SkinnedMesh;
+  /** Bora's own forearm and hand, following this rig's joints (when you play him) */
+  private bora: BoraArm | null = null;
+  private boraKey = '';
 
   constructor(readonly side: 1 | -1) {
     this.forearm = mesh(FOREARM, SKIN_ARM, 1);
@@ -642,8 +651,25 @@ class HandRig {
     hand.renderOrder = 1006; hand.frustumCulled = false;
     // bones carry no bind offset: each part is modelled in its own joint's frame
     hand.bind(new THREE.Skeleton(bones, bones.map(() => new THREE.Matrix4())), new THREE.Matrix4());
+    this.handMesh = hand;
     this.g.add(hand, this.tb, this.anchor);
     this.g.scale.x = side;
+  }
+
+  /**
+   * With the Bora body: his forearm and hand instead of these (made once his model has loaded), posed from this rig's
+   * elbow, wrist, fingers and thumb. Call after the rig's matrices are up to date.
+   */
+  syncBora(withArm: boolean) {
+    const look = VIEW_LOOK, key = look?.bora ? look.skin : '';
+    if (key !== this.boraKey) { this.bora?.dispose(); this.bora = null; this.boraKey = key; if (key) loadBora(); }
+    if (key && !this.bora && boraReady() && this.g.parent) {
+      this.bora = makeBoraArm(this.side < 0, look!, this.g.parent, 1);
+      if (this.bora) { const m = this.bora.mesh.material as THREE.MeshStandardMaterial; m.userData.liveEmissive = true; if (!LIVE.some((l) => l.m === m)) LIVE.push({ m, k: 0.2 }); this.bora.mesh.renderOrder = 1001; }
+    }
+    const on = !!this.bora;
+    this.handMesh.visible = !on; this.forearm.visible = !on; this.sleeve.visible = !on;
+    this.bora?.pose({ elbow: withArm ? this.arm : null, wrist: this.g, fingers: this.fingers.map((f) => [f.p, f.m, f.d] as [THREE.Object3D, THREE.Object3D, THREE.Object3D]), thumb: [this.tb, this.ts] });
   }
 
   setItem(it: THREE.Group | null, grip: Grip) {
@@ -783,6 +809,8 @@ export class ViewModel {
     this.drinkWas = active;
   }
   visible(v: boolean) { this.root.visible = v; }
+  /** Bora's arms follow the hands (after the matrices are up to date) */
+  syncBora() { this.R.syncBora(true); this.Lh.syncBora(true); }
 
   /** one crawl stroke: the hand sweeps forward through the air, then pulls back low in the water */
   private stroke(side: number, p: number, sx: number, r0x: number, r0y: number, r0z: number, P: Pose, swk: number) {
@@ -1020,6 +1048,8 @@ export class VRHand {
     this.group.add(holder);
     this.update(0.35);
   }
+  /** after the hand's matrices are up to date: Bora's hand follows it, when you play him (no forearm drawn from an elbow) */
+  sync() { this.h.syncBora(false); }
   /** how closed the hand is: 0 open .. 1 a fist */
   update(curl: number) {
     const P = this.h.pose;

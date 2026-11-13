@@ -516,6 +516,8 @@ export class CastawayVR {
             }
         }
         this.handHolder.updateMatrixWorld();
+        // (Bora's hands, when you play him, follow the hand rigs just placed)
+        for (const hd of this.hands.values()) hd.hand?.sync();
         this.handMirror.sync();
 
         const R = this.hands.get("right") ?? null, L = this.hands.get("left") ?? null;

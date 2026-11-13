@@ -142,6 +142,11 @@ export class ThreeMirror {
             p.albedoTexture = t;
             // (a tint over the texture: Bora's eyebrows take his hair colour)
             if ((anyM as THREE.MeshStandardMaterial).color) { const c = anyM.color; p.albedoColor = new Color3(c.r, c.g, c.b); }
+            // (and a glow through the same texture: Bora's first-person arms light themselves a little, less at night)
+            if ((anyM as THREE.MeshStandardMaterial).emissiveMap) {
+                p.emissiveTexture = t; const e = anyM.emissive, k = anyM.emissiveIntensity ?? 1; p.emissiveColor = new Color3(e.r * k, e.g * k, e.b * k);
+                if (m.userData.liveEmissive) this.liveMats.push({ m: anyM, p });
+            }
             if (isCanvas) { p.emissiveTexture = t; p.emissiveColor = new Color3(0.3, 0.3, 0.3); }
             p.roughness = (anyM as THREE.MeshStandardMaterial).roughness ?? 0.8;
             p.metallic = 0;

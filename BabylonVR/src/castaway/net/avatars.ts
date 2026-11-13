@@ -194,7 +194,7 @@ class Avatar {
   /** the Bora body, when this player chose it (made as soon as his model has loaded) */
   private look: Look;
   private bora: BoraBody | null = null;
-  private fpView: { head: boolean; arms: boolean } | null = null;
+  private fpView: { head: boolean; arms: boolean; hands: boolean } | null = null;
   constructor(readonly id: number, readonly name: string, shadows: boolean, outfit: Outfit = outfitFor(id)) {
     this.shadowsOn = shadows;
     this.key = outfitKey(outfit) + '|' + name;
@@ -298,7 +298,7 @@ class Avatar {
     this.animate(dt);
     // Bora copies the puppet's pose (see net/bora.ts)
     if (this.look.bora) {
-      if (!this.bora && boraReady()) { this.bora = makeBora(this.R, this.look); if (this.fpView) this.bora?.firstPerson(this.fpView.head, this.fpView.arms); }
+      if (!this.bora && boraReady()) { this.bora = makeBora(this.R, this.look); if (this.fpView) this.bora?.firstPerson(this.fpView.head, this.fpView.arms, this.fpView.hands); }
       this.bora?.pose();
     }
   }
@@ -754,8 +754,8 @@ class Avatar {
     if (!vr) this.arms.forEach((a) => { a.visible = false; });
     if (this.vr) { this.vr.hand.forEach((m) => { m.visible = false; }); this.vr.seg.forEach((m) => { m.visible = false; }); }
     this.fpHands = true;
-    this.fpView = { head: true, arms: !vr };
-    this.bora?.firstPerson(true, !vr);
+    this.fpView = { head: true, arms: !vr, hands: vr };
+    this.bora?.firstPerson(true, !vr, vr);
   }
   private fpDone = false;
 
