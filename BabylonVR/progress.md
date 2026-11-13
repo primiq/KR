@@ -70,6 +70,9 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Bora step 1**: the model pipeline (`scripts/build-bora.mjs`, dev deps `@gltf-transform/*`), source in `assets-src/`,
+  output `public/models/bora.glb`. Not used by the game yet. See "In progress: Bora".
+
 - **Sky, oar, wake**: the cloud shader (`world/skyDeco.ts`) varies the cover across the sky with two slow big-scale
   noises (banks and clear spells), adds billows, darker thick middles, and a high cirrus layer; `SkyDeco.update` swings
   the overall cover with two slow sines of its own time (fair to cloudy spells, local, not synced). The raft oar's blade
@@ -157,6 +160,29 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 - **Anti-aliasing option** (off, FXAA, MSAA 4x, max), deep sea glow and fades, sub view half in/out of water, sub placement.
 - Earlier (summarised): raft and submarine, deep sea, big performance pass (reflection and shadow culling), flat-screen
   menu board, furnace fuel, gear slots, butterflies and flowers, desert digging, sandstorm, many VR fixes.
+
+## In progress: Bora, a second playable character
+
+The owner supplied `assets-src/Bora.glb` (an old castaway: white hair and beard, tattoos, shorts; Blender Rigify export).
+Decisions (owner): keep both bodies (a "Body" choice in customisation: Classic or Bora); Bora gets the same customisation
+(hair colour, beard, skin, shirts, trousers, shoes, hats, shades, bags) but clothes must fit well; in VR the controllers
+are hidden and Bora's hands follow the controllers (fingers react to buttons, items held in them).
+
+Plan and state:
+1. DONE: `scripts/build-bora.mjs` makes `public/models/bora.glb` (63 deform bones re-parented to each other, face bones
+   folded into the head, palms into the hands, all weights re-mapped; hair/beard welded without UVs and simplified;
+   15.9k vertices, 1.8 MB). Posing tested in three.js (arm, leg, head bend cleanly). Note: three.js strips dots from node
+   names (`DEF-upper_arm.L` loads as `DEF-upper_armL`). The model is about 9 units tall, A-pose, faces +z, materials
+   are unlit in the export (replace with lit ones in game).
+2. Avatar: load once, clone per player (SkeletonUtils), scale to ~1.8 m, drive its bones from the existing procedural
+   rig (`net/avatars.ts`, `net/playerModel.ts`) by world-delta retargeting (each limb's rest direction aligned to the
+   classic rig's rest, then the classic joints' world rotations applied). The mirror (`render/mirror.ts`) already
+   draws three.js SkinnedMesh.
+3. Customisation (`net/outfit.ts`, `ui/customise.ts`): add a Body slot (+ beard, beard colour); accept old 7-number
+   outfits. Clothes for Bora are made from his own body mesh (vertices of the shirt/trouser/boot regions by bone
+   weight, pushed out along the normal, coloured, same skin weights), hats/shades/bags rigid on head/spine bones.
+4. First person and VR hands (`game/hands.ts`, `vr/vr.ts`): arm IK to the controllers, finger curls from buttons,
+   items parented to the hand bones; remote players' hands from the synced data.
 
 ## Known issues and open ideas
 
