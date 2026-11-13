@@ -6,6 +6,13 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-12-07", title: "Bora holds things properly",
+        items: [
+            "Bora's hands now close round whatever you hold: the thumb over the handle of an axe, a pickaxe, a torch or a fishing rod, the fingers round a log, a fish or a stone, the palm under a coconut or berries.",
+            "Bent fingers, thumbs and elbows on Bora are lit the way they face, so they no longer look dark and flat.",
+        ],
+    },
+    {
         date: "2026-12-06", title: "Bora's own hands",
         items: [
             "Playing Bora, the arms and hands you see in front of you are his, tattoos and all, gripping every tool and doing every move as before.",

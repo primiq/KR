@@ -35,7 +35,7 @@ function softDot(col: THREE.Color) {
 }
 
 /** `bones`: the bone matrices it was last skinned with */
-interface SkinView { mesh: Mesh; pos: Float32Array; seen: number; bones: Float32Array | null }
+interface SkinView { mesh: Mesh; pos: Float32Array; seen: number; bones: Float32Array | null; nor?: Float32Array }
 
 /** `last`: how many instances it drew last frame; `dirty`: something moved, appeared or changed colour since */
 interface Bucket { key: string; sphere: [number, number, number, number]; mesh: Mesh; data: Float32Array; cap: number; n: number; col: Float32Array | null; last: number; dirty: boolean }
@@ -251,6 +251,8 @@ export class ThreeMirror {
             mesh.rotationQuaternion = new Quaternion();
             v = { mesh, pos: new Float32Array(P.count * 3), seen: 0, bones: null };
             mesh.setVerticesData("position", v.pos, true);
+            // (the normals turn with the bones too: a bent finger is lit as it now faces, not as it did at rest)
+            if (m.geometry.getAttribute("normal")) { v.nor = new Float32Array(P.count * 3); mesh.setVerticesData("normal", v.nor, true); }
             this.skins.set(m, v);
         }
         m.skeleton.update();
@@ -263,7 +265,7 @@ export class ThreeMirror {
         if (moved) {
             v.bones.set(bm);
             const src = P.array as ArrayLike<number>, si = m.geometry.getAttribute("skinIndex").array as ArrayLike<number>, sw = m.geometry.getAttribute("skinWeight").array as ArrayLike<number>;
-            const B = m.bindMatrix.elements, BI = m.bindMatrixInverse.elements, out = v.pos;
+            const B = m.bindMatrix.elements, BI = m.bindMatrixInverse.elements, out = v.pos, NO = v.nor, NA = NO ? m.geometry.getAttribute("normal").array as ArrayLike<number> : null;
             const ident = (e: ArrayLike<number>) => e[0] === 1 && e[5] === 1 && e[10] === 1 && e[15] === 1 && e[1] === 0 && e[2] === 0 && e[4] === 0 && e[6] === 0 && e[8] === 0 && e[9] === 0 && e[12] === 0 && e[13] === 0 && e[14] === 0;
             const bindI = ident(B) && ident(BI);
             for (let i = 0; i < P.count; i++) {
@@ -280,8 +282,26 @@ export class ThreeMirror {
                 }
                 if (!bindI) { const X = BI[0] * ox + BI[4] * oy + BI[8] * oz + BI[12], Y = BI[1] * ox + BI[5] * oy + BI[9] * oz + BI[13], Z = BI[2] * ox + BI[6] * oy + BI[10] * oz + BI[14]; ox = X; oy = Y; oz = Z; }
                 out[i * 3] = ox; out[i * 3 + 1] = oy; out[i * 3 + 2] = oz;
+                if (NO && NA) {
+                    // (the bones' rotations, weighted; scaled bones skew it a little, which the shading does not mind)
+                    let nx = NA[i * 3], ny = NA[i * 3 + 1], nz = NA[i * 3 + 2];
+                    if (!bindI) { const X = B[0] * nx + B[4] * ny + B[8] * nz, Y = B[1] * nx + B[5] * ny + B[9] * nz, Z = B[2] * nx + B[6] * ny + B[10] * nz; nx = X; ny = Y; nz = Z; }
+                    let ax = 0, ay = 0, az = 0;
+                    for (let j = 0; j < 4; j++) {
+                        const w = sw[i * 4 + j];
+                        if (w === 0) continue;
+                        const o = si[i * 4 + j] * 16;
+                        ax += w * (bm[o] * nx + bm[o + 4] * ny + bm[o + 8] * nz);
+                        ay += w * (bm[o + 1] * nx + bm[o + 5] * ny + bm[o + 9] * nz);
+                        az += w * (bm[o + 2] * nx + bm[o + 6] * ny + bm[o + 10] * nz);
+                    }
+                    if (!bindI) { const X = BI[0] * ax + BI[4] * ay + BI[8] * az, Y = BI[1] * ax + BI[5] * ay + BI[9] * az, Z = BI[2] * ax + BI[6] * ay + BI[10] * az; ax = X; ay = Y; az = Z; }
+                    const l = Math.hypot(ax, ay, az) || 1;
+                    NO[i * 3] = ax / l; NO[i * 3 + 1] = ay / l; NO[i * 3 + 2] = az / l;
+                }
             }
             v.mesh.updateVerticesData("position", out, false, false);
+            if (NO) v.mesh.updateVerticesData("normal", NO, false, false);
         }
         Matrix.FromArray(m.matrixWorld.elements).decompose(v.mesh.scaling, v.mesh.rotationQuaternion!, v.mesh.position);
         v.mesh.setEnabled(true);
