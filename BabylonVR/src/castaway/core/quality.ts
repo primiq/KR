@@ -47,7 +47,7 @@ export function pickQuality(pref = "auto", custom: GfxCustom = {}): Quality {
         ? { name, tier: "high", shadows: true, terrainSegments: 384, bushes: 1400, grass: 9000, treeCull: 260, palmDetail: 1, scale: 1, reflect: true, bloom: true, ao: true, grassTier: "high", aa: "max" }
         : name === "medium"
             ? { name, tier: "medium", shadows: true, terrainSegments: 256, bushes: 900, grass: 4500, treeCull: 170, palmDetail: 0.7, scale: 1, reflect: true, bloom: true, ao: false, grassTier: "medium", aa: "fxaa" }
-            : { name, tier: "mobile", shadows: false, terrainSegments: 192, bushes: 500, grass: 1800, treeCull: 120, palmDetail: 0.5, scale: 1, reflect: false, bloom: false, ao: false, grassTier: "low", aa: "off" };
+            : { name, tier: "mobile", shadows: false, terrainSegments: 192, bushes: 500, grass: 1800, treeCull: 120, palmDetail: 0.5, scale: 1, reflect: false, bloom: false, ao: false, grassTier: "low", aa: "fxaa" };
     if (custom.shadows !== undefined) base.shadows = custom.shadows;
     if (custom.reflect !== undefined) base.reflect = custom.reflect;
     if (custom.bloom !== undefined) base.bloom = custom.bloom;

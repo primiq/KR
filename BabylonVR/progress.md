@@ -19,7 +19,7 @@ through rings of open sea to an Arctic. Multiplayer is peer to peer (PeerJS), th
 - Never touch the `primiq/castaway` repo. Work only in `primiq/KR`, directly on `master`, push to `origin master`. No PRs.
 - **No long dashes ever** (em dash, en dash): not in code, comments, commit messages, game text, What's new, or replies.
 - Every player-facing change adds an entry at the TOP of `UPDATES` in `src/castaway/ui/whatsnew.ts` in the same commit
-  (its date drives the "new" dot on the menu). Dates so far run ahead of the calendar (latest 2026-12-01): keep going up.
+  (its date drives the "new" dot on the menu). Dates so far run ahead of the calendar (latest 2026-12-02): keep going up.
 - Commits end with the Co-Authored-By and Claude-Session lines; no model names or IDs in commits.
 - Performance changes must be measured (an earlier perf change was rolled back).
 - Keep this file (`progress.md`) current.
@@ -69,6 +69,12 @@ screen, deep sea abyss with glowing creatures (GlowLayer) and chests, open sea, 
 pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flute, butterflies, gulls, whales, dolphins.
 
 ## Recent work (newest first)
+
+- **Crafting list swipe, FXAA back on phones**: the old drag-to-scroll on the crafting ScrollViewer only worked between
+  rows (GUI buttons are pointer blockers). `vr/panel.ts` now listens to page pointer events while the flat board is up:
+  a drag starting over the pane scrolls it 1:1 with the finger (bar value by the list's hidden height); past 12 px the
+  rows stop taking hits until the lift, so a swipe never crafts. Mobile preset `aa` back to "fxaa" (the owner's phone
+  runs fine with it; the freeze was the warm-up's look round). `board` is exposed on `window` for tests.
 
 - **Beeps and the Settings page**: the island birds' day song (`game/nature.ts`, `sfx.chirp`: 2 to 3 short sine beeps
   from birds perched unseen in trees) is removed, and so is the chirp when they take off (the flutter stays). The town

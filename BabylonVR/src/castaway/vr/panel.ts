@@ -537,17 +537,40 @@ export class VRPanel {
         this.craftPane.barBackground = "#ffffff10";
         this.craftList = new StackPanel("craftList");
         this.craftPane.addControl(this.craftList);
-        // (a finger or the mouse can drag the list up and down, as on a phone)
+        // (a finger or the mouse can drag the list up and down, as on a phone, starting anywhere on it: the rows are
+        //  buttons, which keep the touch to themselves, so this listens on the page itself. A drag never counts as a tap
+        //  on the row it started on)
         {
-            let dragY: number | null = null;
-            this.craftPane.onPointerDownObservable.add((v) => { dragY = v.y; });
-            this.craftPane.onPointerMoveObservable.add((v) => {
-                if (dragY === null) return;
-                const bar = this.craftPane.verticalBar, dy = v.y - dragY; dragY = v.y;
-                bar.value = Math.max(0, Math.min(1, bar.value - dy / 2200));
+            const canvas = this.scene.getEngine().getRenderingCanvas()!;
+            let drag: { id: number; y: number; moved: boolean } | null = null;
+            const toPx = (clientY: number) => (clientY - canvas.getBoundingClientRect().top) * (this.scene.getEngine().getRenderHeight() / Math.max(1, canvas.clientHeight));
+            const inside = (e: PointerEvent) => {
+                if (!this.flat || !this.flatUI?.layer?.isEnabled || !this.craftPane.isVisible) return false;
+                const r = canvas.getBoundingClientRect(), sx = this.scene.getEngine().getRenderWidth() / Math.max(1, canvas.clientWidth);
+                const x = (e.clientX - r.left) * sx, y = toPx(e.clientY), m = (this.craftPane as unknown as { _currentMeasure: { left: number; top: number; width: number; height: number } })._currentMeasure;
+                return x >= m.left && x <= m.left + m.width && y >= m.top && y <= m.top + m.height;
+            };
+            canvas.addEventListener("pointerdown", (e) => { if (inside(e)) drag = { id: e.pointerId, y: toPx(e.clientY), moved: false }; });
+            window.addEventListener("pointermove", (e) => {
+                if (!drag || e.pointerId !== drag.id) return;
+                const y = toPx(e.clientY), dy = y - drag.y;
+                if (!drag.moved && Math.abs(dy) < 12) return;
+                if (!drag.moved) { drag.moved = true; this.craftList.isHitTestVisible = false; }
+                drag.y = y;
+                // (the list follows the finger: the part hidden below the pane is what the bar's 0..1 covers)
+                const listH = (this.craftList as unknown as { _currentMeasure: { height: number } })._currentMeasure.height;
+                const paneH = (this.craftPane as unknown as { _currentMeasure: { height: number } })._currentMeasure.height;
+                const bar = this.craftPane.verticalBar, hidden = Math.max(1, listH - paneH);
+                bar.value = Math.max(0, Math.min(1, bar.value - dy / hidden));
             });
-            this.craftPane.onPointerUpObservable.add(() => { dragY = null; });
-            this.craftPane.onPointerOutObservable.add(() => { dragY = null; });
+            const end = (e: PointerEvent) => {
+                if (!drag || e.pointerId !== drag.id) return;
+                const was = drag.moved; drag = null;
+                // (the rows take taps again once this lift has gone by)
+                if (was) setTimeout(() => { this.craftList.isHitTestVisible = true; }, 0);
+            };
+            window.addEventListener("pointerup", end);
+            window.addEventListener("pointercancel", end);
         }
         b.addControl(this.craftPane);
 

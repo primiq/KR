@@ -6,6 +6,13 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-12-02", title: "Swipe through the crafting list",
+        items: [
+            "On a phone or tablet, swipe up and down anywhere on the crafting list to scroll it (no more aiming for the scroll bar). A swipe never crafts the row it started on.",
+            "Edge smoothing (FXAA) is back on by default on the phone settings.",
+        ],
+    },
+    {
         date: "2026-12-01", title: "Quieter birds, a tidier Settings page",
         items: [
             "No more beep-beep-beep from birds you could not see: the little birds hidden in the trees no longer sing. They still flutter off when you come close.",
