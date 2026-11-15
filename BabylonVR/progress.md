@@ -70,6 +70,8 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Production plan items 28 and 30**: Vitest unit tests (18) and a GitHub Actions workflow (typecheck, tests, build).
+
 - **Production plan item 16 (Bora part)**: `makeBora().pose()` keeps one world quaternion per bone across frames and
   `makeBoraArm` precomputes its inverse frames (`frameInv`): no allocation per frame. Walk and first-person checks
   unchanged.
@@ -285,6 +287,10 @@ Plan and state:
 ## Testing notes (for whoever continues)
 
 - Build: `cd BabylonVR && npx tsc --noEmit -p . && npx vite build`; preview `npx vite preview --port 4173`.
+- Unit tests: `npm test` (Vitest, `tests/unit/`). `world.test.ts` checks heights and the sea layout against
+  `world.fixture.json`: if it fails, the world itself changed (bump `LAYOUT` in `net/save.ts` on purpose, then
+  `GEN=1 npx vitest run tests/unit/world.test.ts`). GitHub Actions (`.github/workflows/castaway.yml`) runs typecheck,
+  tests and build on every push.
 - Headless Playwright harness used during this work (session scratchpad, not in the repo): load
   `index.html?quality=low&go` (`go` skips the menu), run JS steps against the page globals `game`, `player`, `scene`,
   `engine`, `clock`, `heightAt`, take canvas screenshots. Headless runs at 1 to 2 fps, so frame-time judgements need a real

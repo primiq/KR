@@ -1,0 +1,28 @@
+# Castaway (BabylonVR): typecheck, unit tests and the production build on every push and pull request.
+# Cloudflare builds and deploys master on its own; this is the early warning that a push would break that build.
+name: Castaway checks
+on:
+  push:
+    branches: [master]
+    paths: ["BabylonVR/**", ".github/workflows/castaway.yml", "wrangler.jsonc"]
+  pull_request:
+    paths: ["BabylonVR/**"]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: BabylonVR
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # (the version line counts the commits)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: BabylonVR/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npx vite build

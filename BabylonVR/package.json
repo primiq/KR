@@ -11,7 +11,8 @@
     "fetch-assets": "node scripts/fetch-assets.mjs",
     "fetch-assets:playground": "node scripts/fetch-assets.mjs --playground",
     "typecheck": "tsc --noEmit",
-    "build:cf": "npm run fetch-assets && npm run build"
+    "build:cf": "npm run fetch-assets && npm run build",
+    "test": "vitest run"
   },
   "dependencies": {
     "@babylonjs/core": "^9.32.0",
@@ -31,6 +32,7 @@
     "@types/three": "^0.186.0",
     "@vitejs/plugin-basic-ssl": "^2.3.0",
     "typescript": "^7.0.2",
-    "vite": "^8.3.5"
+    "vite": "^8.3.5",
+    "vitest": "^5.1.0"
   }
 }
