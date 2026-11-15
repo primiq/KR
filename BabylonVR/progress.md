@@ -70,6 +70,10 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Production plan**: `PRODUCTION_PLAN.md` (audit and a phased plan: saves, network hardening, loading size, GPU
+  skinning for Bora, polish, tests and CI, release routine, questions for the owner). Nothing implemented yet: work it
+  in order and tick items off there.
+
 - **Bora's grip**: his first-person/VR hand now takes the hand rig's measurements each frame (palm length and width,
   each finger and thumb segment starting at the rig joint and stretched to the rig's segment length, `put(..., k)` in
   `makeBoraArm`), so every grip in `GRIPS` (tuned for the rig's hand) closes his fingers and thumb round the item.
