@@ -159,7 +159,7 @@ vertices in about 1400 meshes.
 31. **Release checklist** in `docs/RELEASE.md`: bump What's new, run smoke tests, check the Cloudflare build went green
     and the menu shows the new version, test join between an old and a new tab, test the phone. Keep a short
     "last known good" commit noted there for rolling back.
-32. **Licences and credits.** List every third-party asset and library with its licence in `CREDITS.md` and link it from
+32. PARTLY DONE (Mario replaced by Bob, his model and both clips removed, 2026-11-15) **Licences and credits.** List every third-party asset and library with its licence in `CREDITS.md` and link it from
     the menu: Babylon.js, three.js, PeerJS, Havok, ez-tree, nipplejs, the Bora model (owner's own: confirm), the Mario
     model in `assets/mario` (question 4: this is a Nintendo character and should not ship in a public release), the
     song and narration, the HDR environments. Remove anything whose licence does not allow redistribution.

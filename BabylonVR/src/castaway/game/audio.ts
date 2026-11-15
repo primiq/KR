@@ -162,6 +162,38 @@ export class Sfx {
     }
   }
 
+  /**
+   * The druid circle's summoning (13.6 s): a dark, detuned chord that sinks slowly, a filter opening over it, a wind that
+   * rises, and a swell at the end. Returns a stop function (the summoning can be cut short).
+   */
+  summonDrone(len = 13.6, vol = 0.5): () => void {
+    const c = this.ctx; if (!c || !this.master) return () => {};
+    const t0 = c.currentTime, g = c.createGain(), lp = c.createBiquadFilter();
+    lp.type = 'lowpass'; lp.Q.value = 6;
+    lp.frequency.setValueAtTime(180, t0); lp.frequency.exponentialRampToValueAtTime(1400, t0 + len * 0.85); lp.frequency.exponentialRampToValueAtTime(300, t0 + len);
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol * 0.6, t0 + 2.5);
+    g.gain.linearRampToValueAtTime(vol, t0 + len * 0.9); g.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
+    lp.connect(g); g.connect(this.master);
+    const nodes: AudioScheduledSourceNode[] = [];
+    for (const [f, type, det] of [[55, 'sawtooth', -9], [55, 'sawtooth', 8], [82.4, 'triangle', 0], [110, 'sawtooth', 4], [65.4, 'square', -3]] as [number, OscillatorType, number][]) {
+      const o = c.createOscillator(); o.type = type; o.detune.value = det;
+      o.frequency.setValueAtTime(f, t0); o.frequency.exponentialRampToValueAtTime(f * 0.89, t0 + len);
+      const og = c.createGain(); og.gain.value = type === 'square' ? 0.08 : 0.2;
+      // (a slow wobble, so it breathes)
+      const lfo = c.createOscillator(), lg = c.createGain(); lfo.frequency.value = 0.15 + Math.random() * 0.2; lg.gain.value = 3; lfo.connect(lg); lg.connect(o.detune);
+      o.connect(og); og.connect(lp); o.start(t0); o.stop(t0 + len + 0.1); lfo.start(t0); lfo.stop(t0 + len + 0.1);
+      nodes.push(o, lfo);
+    }
+    if (this.noise) {
+      const n = c.createBufferSource(); n.buffer = this.noise; n.loop = true;
+      const bf = c.createBiquadFilter(); bf.type = 'bandpass'; bf.Q.value = 1.4;
+      bf.frequency.setValueAtTime(300, t0); bf.frequency.exponentialRampToValueAtTime(2200, t0 + len);
+      const ng = c.createGain(); ng.gain.setValueAtTime(0.0001, t0); ng.gain.exponentialRampToValueAtTime(0.35, t0 + len * 0.95);
+      n.connect(bf); bf.connect(ng); ng.connect(g); n.start(t0); n.stop(t0 + len + 0.1); nodes.push(n);
+    }
+    return () => { const now = c.currentTime; g.gain.cancelScheduledValues(now); g.gain.setValueAtTime(g.gain.value, now); g.gain.exponentialRampToValueAtTime(0.0001, now + 0.6); for (const nd of nodes) try { nd.stop(now + 0.7); } catch { /* */ } };
+  }
+
   private tone(freq: number, dur: number, type: OscillatorType, vol: number, slide = 0) {
     const c = this.ctx; if (!c || !this.master) return;
     const o = c.createOscillator(), g = c.createGain();
@@ -233,7 +265,7 @@ export class Sfx {
   ping() { this.tone(880, 0.25, 'sine', 0.16); setTimeout(() => this.tone(1320, 0.4, 'sine', 0.14), 110); }
   land(strength = 1) { this.burst(0.12, 300, 0.7, Math.min(0.5, 0.2 * strength), 'lowpass'); this.tone(70, 0.15, 'sine', Math.min(0.4, 0.2 * strength), 0.6); }
   splash(strength = 1) { this.burst(0.35, 1300, 0.7, 0.2 * strength); this.burst(0.18, 3200, 1.5, 0.08 * strength); }
-  /** Mario: a cartoon bonk when hit, a springy hop, a puff of smoke, and the stone's hum when touched */
+  /** Bob: a cartoon bonk when hit, a springy hop, a puff of smoke, and the stone's hum when touched */
   bonk() { this.tone(520, 0.12, 'square', 0.12, 0.45); this.burst(0.08, 900, 1.2, 0.35, 'lowpass'); }
   hop(v = 1) { this.tone(260, 0.2, 'square', 0.07 * v, 3.2); }
   poof(v = 1) { this.burst(0.7, 700, 0.6, 0.5 * v, 'lowpass'); this.tone(90, 0.6, 'sine', 0.25 * v, 0.5); }

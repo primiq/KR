@@ -65,7 +65,8 @@ const BW = 0.72, BH = 0.95;
 const newBody = (x: number): Body => ({ x, y: GY - BH - 0.01, vx: 0, vy: 0, g: true, face: 1, walk: 0, state: 'play', coyote: 0, buf: 0, blink: 0, jumpWas: false });
 
 interface Pal { cap: string; shirt: string; over: string; skin: string; hair: string; mustache: boolean }
-const MARIO: Pal = { cap: '#d82800', shirt: '#d82800', over: '#2038ec', skin: '#ffcc9c', hair: '#6b3a10', mustache: true };
+// Bob the plumber: teal cap, yellow shirt, denim overalls, no moustache (his own look)
+const MARIO: Pal = { cap: '#2a6f97', shirt: '#f2c14e', over: '#3d5a80', skin: '#e0a878', hair: '#4a2e1a', mustache: false };
 
 // ------------------------------------------------------------------ the pipe on the island
 const _f = new THREE.Vector3(), _want = new THREE.Vector3(), _to = new THREE.Vector3();
@@ -191,7 +192,7 @@ export class Warp {
       this.me = newBody(1.2 + k * 0.9);
       this.overlay.classList.add('on'); document.body.classList.add('inwarp');
       this.voice?.('start');
-    } else this.say?.('Mario and your friends jumped into the pipe!');
+    } else this.say?.('Bob and your friends jumped into the pipe!');
   }
   /** everybody back to the island */
   private finish() {

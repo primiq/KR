@@ -3,30 +3,26 @@
 // Eleven weathered standing stones and a trilithon round a flat altar stone. Each has a colour (its carving glows it, a crystal
 // above shows it): red, blue or a sleeping grey. Touch a stone (E) and its carving lights up; two stones of one colour touched
 // within 30 s of each other (or every player on the island touching one of that colour) make a call. Blue brings the alien
-// invasion (invaders.ts). Red brings Mario: the summoning starts: a funeral drone plays (13.6 s, its whole length) while the sky bleeds to a dark pink, the runes pulse and a vortex
-// of pink light winds up over the altar. When the drone ends there is a flash, and Mario stands in the circle: "it's-a me!".
+// invasion (invaders.ts). Red brings Bob the plumber: the summoning starts: a dark drone plays (13.6 s, synthesised by
+// game/audio.ts summonDrone) while the sky bleeds to a dark pink, the runes pulse and a vortex of pink light winds up over
+// the altar. When the drone ends there is a flash, and Bob stands in the circle and says hello.
 // He follows the players about, runs and hops, and now and then goes after a cat. He doesn't hurt anyone; a few good hits
 // with any tool finish him (he pops up and drops through the ground, the classic way), and the sky clears.
 //
 // The host (or the solo player) runs it all and tells the others (events zt / zp / zm / zh); it is saved with the world.
 //
-// Model: "Mario Terminal 7 New Super Mario Bros Style" by JameSmartGuy02 (Sketchfab), CC-BY-4.0. It comes as one rigid mesh
-// in a T-pose, so it is rigged here: each vertex is given to the body, a leg, an arm or the head by where it sits (blended
-// over a few centimetres at each joint), and those bones are swung procedurally (run, hop, flinch, wave, death).
+// Bob is the game's own: built from the player model's parts (net/playerModel.ts) in his work clothes, with a cap and a big
+// wrench, and swung procedurally (run, hop, flinch, look about, death). (He replaced a borrowed character in 2026-11.)
 // Babylon port: Castaway's code, drawn by render/mirror.ts. The stones are named 'druidRock' (the Babylon rock material),
-// the carvings 'rune' and the funnel 'vortex' (their glow shaders are in world/druidView.ts); Mario is a three.js skinned
-// mesh, skinned on the CPU by the mirror.
+// the carvings 'rune' and the funnel 'vortex' (their glow shaders are in world/druidView.ts).
 import * as THREE from 'three';
 import { heightAt, slopeAt } from './island';
 import type { ColliderGrid, Collider } from './vegetation';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { buildPlayer, lookFor, Mesher, type PlayerRig } from '../net/playerModel';
 
 interface V3 { x: number; y: number; z: number }
 /** a stand-in for a shader uniform: the Babylon side reads .value every frame */
 const uniform = (v: number) => ({ value: v });
-import marioUrl from '../assets/mario/mario.glb?url';
-import summonUrl from '../assets/mario/summon.mp3?url';
-import itsMeUrl from '../assets/mario/its-me.mp3?url';
 
 export type DruidPhase = 'idle' | 'summon' | 'alive' | 'dying';
 const SUMMON_S = 13.63;            // the drone's length: the summoning lasts exactly that long
@@ -95,12 +91,13 @@ export class Druids {
   private moteT: number[] = [];
   private flashT = 0;
   // ---- Mario
-  private mario: MarioRig | null = null;
+  private mario: BobRig | null = null;
   readonly m = { x: 0, y: 0, z: 0, yaw: 0, vy: 0, anim: 0, hurt: 0, speed: 0, ground: true };
   private ai = { target: -1 as number, catT: 20, cat: -1, hopT: 5, mode: 'follow' as 'follow' | 'cat' | 'idle', modeT: 0, inv: 0 };
-  private summonAudio: HTMLAudioElement | null = null;
-  private itsMe: HTMLAudioElement | null = null;
-  /** seconds until Mario says "it's-a me!" again (about once a minute while he is about) */
+  /** the summoning's drone (game/audio.ts summonDrone): returns a stop function */
+  drone: (() => () => void) | null = null;
+  private stopDrone: (() => void) | null = null;
+  /** seconds until Bob says hello again (about once a minute while he is about) */
   private voiceT = 60;
   private cols: Collider[] = [];
 
@@ -179,7 +176,7 @@ export class Druids {
     this.group.add(this.motes);
     scene.add(this.group);
     // get him ready in the background, so he is there the moment the drone ends (hidden until then)
-    setTimeout(() => { void this.loadMario(); }, 6000);
+    setTimeout(() => { this.loadMario(); }, 6000);
   }
   private curseU = uniform(0);
 
@@ -268,7 +265,7 @@ export class Druids {
       this.spawnMario();
     } else if (p === 'dying') {
       this.m.vy = 9; this.m.ground = false;
-      this.say?.('Mario is gone. The sky begins to clear.');
+      this.say?.('Bob is gone. The sky begins to clear.');
     } else if (p === 'idle') {
       this.stopSummon(); this.away = false;
       if (this.mario) this.mario.root.visible = false;
@@ -276,14 +273,8 @@ export class Druids {
     }
     if (!remote) this.onPhase?.(p);
   }
-  private playSummon() {
-    try {
-      this.summonAudio ??= new Audio(summonUrl);
-      this.summonAudio.currentTime = 0; this.summonAudio.volume = 0.9;
-      void this.summonAudio.play().catch(() => {});
-    } catch { /* no audio */ }
-  }
-  private stopSummon() { try { this.summonAudio?.pause(); } catch { /* */ } }
+  private playSummon() { this.stopDrone?.(); this.stopDrone = this.drone?.() ?? null; }
+  private stopSummon() { this.stopDrone?.(); this.stopDrone = null; }
 
   private spawnMario() {
     const C = this.centre;
@@ -299,29 +290,18 @@ export class Druids {
   away = false;
   /** where Mario is (feet) */
   marioPos() { return { x: this.m.x, y: this.m.y, z: this.m.z }; }
+  /** Bob says hello (the browser's own voice, if it has one: no recording) */
   sayItsMe(vol: number) {
-    try { this.itsMe ??= new Audio(itsMeUrl); this.itsMe.currentTime = 0; this.itsMe.volume = Math.max(0, Math.min(1, vol)); void this.itsMe.play().catch(() => {}); } catch { /* */ }
-  }
-  private loading = false;
-  private async loadMario() {
-    if (this.mario) { this.mario.root.visible = this.phase === 'alive' || this.phase === 'dying'; return; }
-    if (this.loading) return;
-    this.loading = true;
     try {
-      const buf = await (await fetch(marioUrl)).arrayBuffer();
-      const gltf = await new GLTFLoader().parseAsync(buf, '');
-      // the file's materials use the old specular-glossiness extension (no longer read), so its two colour textures (the
-      // body, and the eyes with a see-through surround) are taken straight out of the file and decoded here
-      const tex = await glbImages(buf);
-      gltf.scene.traverse((o: any) => {
-        if (!o.isMesh) return;
-        const eye = o.material?.name === 'eye_tx';
-        o.material = new THREE.MeshStandardMaterial({ map: tex[eye ? 1 : 0], roughness: 0.6, metalness: 0, side: THREE.DoubleSide, alphaTest: eye ? 0.4 : 0 });
-      });
-      this.mario = new MarioRig(gltf.scene as unknown as THREE.Object3D);
-      this.group.add(this.mario.root);
-      this.mario.root.visible = this.phase === 'alive' || this.phase === 'dying';
-    } catch (e) { console.warn('Mario failed to load', e); }
+      const lines = ["Hi there! I'm Bob!", "Bob's the name, pipes are the game!", "Anyone got a leak?", "Hello, island!"];
+      const u = new SpeechSynthesisUtterance(lines[Math.floor(Math.random() * lines.length)]);
+      u.pitch = 1.25; u.rate = 1.05; u.volume = Math.max(0, Math.min(1, vol));
+      window.speechSynthesis?.speak(u);
+    } catch { /* no voice */ }
+  }
+  private loadMario() {
+    if (!this.mario) { this.mario = new BobRig(); this.group.add(this.mario.root); }
+    this.mario.root.visible = this.phase === 'alive' || this.phase === 'dying';
   }
 
   // ------------------------------------------------------------ hits
@@ -426,7 +406,7 @@ export class Druids {
     if (ai.mode !== 'cat' && ai.catT <= 0 && this.cats) {
       const cs = this.cats.list(); let ci = -1, cd = 45;
       cs.forEach((c, i) => { const d = Math.hypot(c.x - m.x, c.z - m.z); if (d < cd) { cd = d; ci = i; } });
-      if (ci >= 0) { ai.mode = 'cat'; ai.cat = ci; ai.modeT = 7 + Math.random() * 4; this.say?.('Mario is chasing a cat!'); }
+      if (ci >= 0) { ai.mode = 'cat'; ai.cat = ci; ai.modeT = 7 + Math.random() * 4; this.say?.('Bob is chasing a cat!'); }
       ai.catT = 18 + Math.random() * 20;
     }
     if (ai.mode === 'cat' && (ai.modeT <= 0 || !this.cats)) { ai.mode = 'follow'; }
@@ -490,7 +470,7 @@ export class Druids {
     this.setPhase('alive', true);
     this.hp = Math.max(1, Math.min(HP, s.hp ?? HP));
     if (typeof s.x === 'number') { this.m.x = s.x; this.m.z = s.z; this.m.y = heightAt(s.x, s.z); this.net.x = s.x; this.net.z = s.z; this.net.y = this.m.y; }
-    try { this.itsMe?.pause(); } catch { /* */ }
+    try { window.speechSynthesis?.cancel(); } catch { /* */ }
   }
 
   private pose(dt: number) {
@@ -506,106 +486,60 @@ export class Druids {
   dispose() { for (const c of this.cols) this.colliders.remove(c); }
 }
 
-/** the images embedded in a .glb, as textures (in the file's order) */
-async function glbImages(buf: ArrayBuffer): Promise<THREE.Texture[]> {
-  const dv = new DataView(buf), jsonLen = dv.getUint32(12, true);
-  const json = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 20, jsonLen)));
-  const binStart = 20 + jsonLen + 8;
-  const out: THREE.Texture[] = [];
-  for (const im of json.images ?? []) {
-    const bv = json.bufferViews[im.bufferView];
-    const blob = new Blob([new Uint8Array(buf, binStart + (bv.byteOffset ?? 0), bv.byteLength)], { type: im.mimeType });
-    const bmp = await createImageBitmap(blob);
-    const t = new THREE.Texture(bmp as any);
-    t.flipY = false; t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.needsUpdate = true;
-    out.push(t);
-  }
-  return out;
-}
-
 const turn = (a: number, b: number, k: number) => { let d = b - a; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return a + Math.max(-k, Math.min(k, d)); };
 
 /**
- * The GLB's single mesh, rigged by hand: hips, two legs, two arms (lowered from the T-pose), the head. Coordinates of the model:
- * z up, -y forward, about 18.8 units tall; the rig is built in those units and the root scales and turns it into the world.
+ * Bob the plumber: the player model's jointed body in his work clothes (yellow shirt, denim work trousers, boots), a short
+ * beard, a teal cap with a peak and a big wrench in his right hand. Faces -Z; swung procedurally.
  */
-class MarioRig {
+class BobRig {
   readonly root = new THREE.Group();
-  private bones: Record<'root' | 'body' | 'legL' | 'legR' | 'armL' | 'armR' | 'head', THREE.Bone>;
+  private R: PlayerRig;
   private t = 0;
   private hop = 0;
-  constructor(scene: THREE.Object3D) {
-    const H = 1.45, S = H / 18.8;
-    const holder = new THREE.Group();
-    holder.scale.setScalar(S);
-    holder.rotation.x = -Math.PI / 2;                       // z-up model into y-up
-    this.root.add(holder);
-    holder.rotation.z = Math.PI;                            // its front (-y) to the game's forward (-z)
-    // bones (model units)
-    const B = () => new THREE.Bone();
-    const root = B(), body = B(), legL = B(), legR = B(), armL = B(), armR = B(), head = B();
-    body.position.set(0, 0, 5.6); root.add(body);
-    legL.position.set(-1.4, 0, 0); legR.position.set(1.4, 0, 0); body.add(legL, legR);
-    armL.position.set(-3.3, 0, 4.0); armR.position.set(3.3, 0, 4.0); body.add(armL, armR);
-    head.position.set(0, 0, 5.7); body.add(head);
-    holder.add(root);
-    this.bones = { root, body, legL, legR, armL, armR, head };
-    const list = [root, body, legL, legR, armL, armR, head];
-    holder.updateMatrixWorld(true);
-    const skeleton = new THREE.Skeleton(list);
-    // every mesh in the file becomes a skinned mesh weighted by where each vertex sits
-    const meshes: THREE.Mesh[] = [];
-    scene.traverse((o) => { if ((o as THREE.Mesh).isMesh) meshes.push(o as THREE.Mesh); });
-    for (const src of meshes) {
-      // the raw mesh (z up, as modelled): the file's own root node turns it y-up, but the rig and the holder do that here
-      const g = src.geometry.clone();
-      const P = g.attributes.position, n = P.count;
-      const si = new Uint16Array(n * 4), sw = new Float32Array(n * 4);
-      const sm = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
-      for (let i = 0; i < n; i++) {
-        const x = P.getX(i), z = P.getZ(i);
-        // leg share (below the hips), arm share (out past the shoulders), head share (above the neck)
-        const leg = 1 - sm(4.9, 6.3, z), arm = sm(3.0, 3.9, Math.abs(x)) * sm(7.0, 7.9, z) * (1 - sm(11.6, 12.2, z)), hd = sm(10.9, 11.7, z) * (1 - sm(3.6, 4.2, Math.abs(x)));
-        const w: [number, number][] = [];
-        if (leg > 0) w.push([x < 0 ? 2 : 3, leg]);
-        if (arm > 0) w.push([x < 0 ? 4 : 5, arm * (1 - leg)]);
-        if (hd > 0) w.push([6, hd * (1 - leg) * (1 - arm)]);
-        const rest = Math.max(0, 1 - w.reduce((a, b) => a + b[1], 0));
-        w.push([1, rest]);
-        w.sort((a, b) => b[1] - a[1]);
-        const tot = w.slice(0, 4).reduce((a, b) => a + b[1], 0) || 1;
-        w.slice(0, 4).forEach(([b, v], k) => { si[i * 4 + k] = b; sw[i * 4 + k] = v / tot; });
-      }
-      g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4));
-      g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
-      const mesh = new THREE.SkinnedMesh(g, src.material as THREE.Material);
-      mesh.castShadow = true; mesh.frustumCulled = false;
-      holder.add(mesh);
-      mesh.updateMatrixWorld(true);
-      mesh.bind(skeleton);                                  // bound where it stands, so the rest pose draws the model as it is
-    }
+  constructor() {
+    const look = {
+      ...lookFor(7, '#f2c14e'),
+      skin: '#e0a878', hair: '#4a2e1a', hairStyle: 0, beard: true, hat: 0, glasses: false,
+      shirt: '#f2c14e', shirtStyle: 0, pants: '#3d5a80', pantsStyle: 0, shoe: '#3a2a1c', shoeStyle: 0, pack: 0, scarf: false, accent: '#2a6f97',
+    };
+    this.R = buildPlayer(look, true);
+    // his cap: a teal crown and a peak to the front
+    const cap = new Mesher();
+    cap.sph(0.118, '#2a6f97', 0, 0.075, 0.005, 1.04, 0.62, 1.08, 14);
+    cap.box(0.2, 0.014, 0.1, '#245f82', 0, 0.06, -0.12);
+    cap.box(0.03, 0.03, 0.006, '#f2c14e', 0, 0.115, -0.112);
+    this.R.head.add(cap.build(true));
+    // the wrench, held in the right hand, its jaw up
+    const w = new Mesher();
+    w.box(0.035, 0.42, 0.02, '#9aa4ad', 0, 0.12, 0);
+    w.box(0.11, 0.05, 0.03, '#9aa4ad', 0.025, 0.34, 0);
+    w.box(0.04, 0.06, 0.03, '#9aa4ad', 0.06, 0.3, 0);
+    w.box(0.04, 0.16, 0.026, '#c0392b', 0, -0.02, 0);
+    const wrench = w.build(true); wrench.rotation.x = -Math.PI / 2 - 0.25;
+    this.R.grips[1].add(wrench);
+    this.R.fist[1].visible = true; this.R.open[1].visible = false;
+    this.root.add(this.R.rig);
   }
   /** speed m/s, airborne, hurt 0..0.45, dying, idle (looking about) */
   update(dt: number, speed: number, air: boolean, hurt: number, dying: boolean, idle: boolean) {
-    const b = this.bones;
-    const run = Math.min(1, speed / 6.5);
+    const R = this.R, run = Math.min(1, speed / 6.5);
     this.t += dt * (2.2 + speed * 1.55);
     const s = Math.sin(this.t), c = Math.cos(this.t);
     this.hop += ((air ? 1 : 0) - this.hop) * Math.min(1, dt * 12);
-    // arms down from the T-pose, swinging against the legs; in the air the classic one-fist-up jump
-    const down = 1.2;
-    b.armL.rotation.set(0, -down * (1 - this.hop * 0.4) + s * 0.1 * run, 0);
-    b.armR.rotation.set(0, down * (1 - this.hop) - this.hop * 1.2, 0);
-    b.armL.rotation.x = -s * 0.9 * run; b.armR.rotation.x = s * 0.9 * run * (1 - this.hop);
-    // legs: stride, tucked up in the air
-    b.legL.rotation.x = s * 0.85 * run - this.hop * 0.6; b.legR.rotation.x = -s * 0.85 * run + this.hop * 0.35;
-    // body: bob and lean into the run, flinch when hit, wobble when idle
+    // legs: stride, knees bending on the way through, tucked up in the air
+    R.thighs[0].rotation.x = s * 0.8 * run + this.hop * 0.7; R.thighs[1].rotation.x = -s * 0.8 * run + this.hop * 0.3;
+    R.knees[0].rotation.x = -Math.max(0, -s) * 0.9 * run - this.hop * 0.9; R.knees[1].rotation.x = -Math.max(0, s) * 0.9 * run - this.hop * 0.4;
+    // arms swing against the legs; in the air the wrench goes up
+    R.shoulders[0].rotation.x = -s * 0.7 * run; R.shoulders[0].rotation.z = -0.12;
+    R.shoulders[1].rotation.x = s * 0.7 * run * (1 - this.hop) - this.hop * 2.4; R.shoulders[1].rotation.z = 0.12;
+    R.elbows[0].rotation.x = 0.25 + 0.4 * run; R.elbows[1].rotation.x = 0.35 + 0.4 * run;
+    // body: bob and lean into the run, flinch when hit; head looks about when idle
     const flinch = hurt > 0 ? Math.sin(hurt * 30) * 0.25 : 0;
-    b.body.position.z = 5.6 + Math.abs(c) * 0.5 * run;
-    b.body.rotation.x = -0.18 * run + flinch;
-    b.head.rotation.z = idle ? Math.sin(this.t * 0.4) * 0.5 : 0;
-    b.root.rotation.z = 0;
-    if (dying) { b.armL.rotation.set(0, 0.3, 0); b.armR.rotation.set(0, -0.3, 0); b.legL.rotation.x = 0.4; b.legR.rotation.x = -0.4; }
+    R.rig.position.y = Math.abs(c) * 0.06 * run;
+    R.body.rotation.x = 0.12 * run + flinch;
+    R.head.rotation.y = idle ? Math.sin(this.t * 0.4) * 0.6 : 0;
+    if (dying) { R.shoulders[0].rotation.set(0, 0, -1.2); R.shoulders[1].rotation.set(0, 0, 1.2); R.thighs[0].rotation.x = 0.4; R.thighs[1].rotation.x = -0.4; }
     this.root.scale.setScalar(hurt > 0 ? 1 + Math.sin(hurt * 40) * 0.05 : 1);
   }
 }

@@ -6,6 +6,13 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-12-11", title: "Meet Bob the plumber",
+        items: [
+            "Two red stones at the druid circle now summon Bob, a cheerful plumber in a teal cap with a big wrench. He leads you to the warp pipe and its secret level, just as before.",
+            "The summoning has a new, darker drone, and Bob says hello in his own words.",
+        ],
+    },
+    {
         date: "2026-12-10", title: "Install it on your phone",
         items: [
             "On a phone or tablet you can now add the game to your home screen (your browser's menu, Install or Add to home screen). It then opens full screen, without the browser's bars.",
@@ -335,7 +342,7 @@ export const UPDATES: Update[] = [
             "Survive on a tropical island: gather, craft, build, fish, cook and sleep - alone or with friends, on screen or in VR.",
             "Wildlife, weather, caves to dig into, shipwrecks with chests, sailing boats and the storm at sea.",
             "The secret room and its doors: the airstrip, the cat house, Hideaway Isle, the Chamber of Tiles, Banana or Salmon, Locations, and the cloud-door skydive.",
-            "The stone circle, Mario's warp pipe, the alien invasion, the giant water slide - and paint pictures to hang on your walls.",
+            "The stone circle, Bob's warp pipe, the alien invasion, the giant water slide - and paint pictures to hang on your walls.",
         ],
     },
 ];

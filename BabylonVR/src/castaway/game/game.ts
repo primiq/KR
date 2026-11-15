@@ -342,7 +342,7 @@ export class Game {
             if (line === "start") this.druids.sayItsMe(1);
             else {
                 // (no recording of this one: the browser's own voice, pitched up, if it has one)
-                try { const u = new SpeechSynthesisUtterance("Thank you so much for-a playing my game!"); u.pitch = 1.6; u.rate = 1.05; window.speechSynthesis?.speak(u); } catch { /* */ }
+                try { const u = new SpeechSynthesisUtterance("Thanks for the help, everybody! Those pipes are fixed!"); u.pitch = 1.25; u.rate = 1.05; window.speechSynthesis?.speak(u); } catch { /* */ }
             }
         };
         this.warp.onExit = () => {
@@ -412,10 +412,11 @@ export class Game {
         };
         this.warp.onFinished = () => {
             this.druids.setPhase("idle");
-            this.hud.message("Mario waves goodbye and goes home. The sky clears.");
+            this.hud.message("Bob waves goodbye and goes home. The sky clears.");
         };
         this.druids.myId = () => this.netId;
         this.druids.players = () => (this.net.targets?.() ?? [{ id: this.netId, x: this.player.pos.x, y: this.player.pos.y, z: this.player.pos.z }]).filter((p) => Math.abs(p.x) < 500 && Math.abs(p.z) < 500);
+        this.druids.drone = () => this.sfx.summonDrone();
         this.druids.sound = (k, v) => { if (k === "bonk") this.sfx.bonk(); else if (k === "hop") this.sfx.hop(v); else if (k === "poof") this.sfx.poof(v); else if (k === "touch") this.sfx.hum(v); else this.sfx.whoosh(); };
         this.offshore.sound = (k, v) => { if (k === "blow") this.sfx.blow(v); else if (k === "splash") this.sfx.bigSplash(v); else this.sfx.horn(v); };
         this.stalkers.onSound = (w, x, z) => this.fauna.onSound?.(w, x, z);
@@ -2013,7 +2014,7 @@ export class Game {
         if (w.running) dr.away = true;
         const alive = dr.phase === "alive";
         w.setShown(alive && !dr.away);
-        if (alive && !dr.away && w.pipeAt && !this.pipeHinted) { this.pipeHinted = true; this.hud.message("A green warp pipe has popped up by the old hut with the odd door. Lead Mario to it!"); }
+        if (alive && !dr.away && w.pipeAt && !this.pipeHinted) { this.pipeHinted = true; this.hud.message("A green warp pipe has popped up by the old hut with the odd door. Lead Bob to it!"); }
         if (!alive) this.pipeHinted = false;
         // host: Mario has followed somebody to the pipe: in they all go (everybody near it)
         if (!w.remote && !w.running && alive && !dr.away && w.pipeAt) {

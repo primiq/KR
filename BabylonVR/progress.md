@@ -19,7 +19,7 @@ through rings of open sea to an Arctic. Multiplayer is peer to peer (PeerJS), th
 - Never touch the `primiq/castaway` repo. Work only in `primiq/KR`, directly on `master`, push to `origin master`. No PRs.
 - **No long dashes ever** (em dash, en dash): not in code, comments, commit messages, game text, What's new, or replies.
 - Every player-facing change adds an entry at the TOP of `UPDATES` in `src/castaway/ui/whatsnew.ts` in the same commit
-  (its date drives the "new" dot on the menu). Dates so far run ahead of the calendar (latest 2026-12-10): keep going up.
+  (its date drives the "new" dot on the menu). Dates so far run ahead of the calendar (latest 2026-12-11): keep going up.
 - Commits end with the Co-Authored-By and Claude-Session lines; no model names or IDs in commits.
 - Performance changes must be measured (an earlier perf change was rolled back).
 - Keep this file (`progress.md`) current.
@@ -69,6 +69,13 @@ screen, deep sea abyss with glowing creatures (GlowLayer) and chests, open sea, 
 pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flute, butterflies, gulls, whales, dolphins.
 
 ## Recent work (newest first)
+
+- **Mario replaced by Bob the plumber** (owner's choice; a licensing problem for a public release). `world/druids.ts`
+  `BobRig`: the player model's jointed body (`buildPlayer`) in work clothes, beard, teal cap, wrench, animated
+  procedurally (same `update` signature as before). The summoning drone is synthesised (`game/audio.ts summonDrone`,
+  wired as `druids.drone`); his greeting and thanks use the browser's speech. The 2D secret level's sprite palette is
+  his (teal cap, yellow shirt, denim, no moustache). `assets/mario/` (model, summon clip, "it's me" clip) deleted.
+  Internal names (`mario`, `marioPos`, `MARIO`) were left as they are; every player-visible "Mario" now says Bob.
 
 - **Production plan items 11 and 12**: `public/manifest.webmanifest` (fullscreen, landscape, icons 192/512 PNG made
   from `icon.svg`, plus maskable), linked from `index.html`. `public/_headers`: nosniff, same-origin referrer,
