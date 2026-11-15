@@ -6,9 +6,10 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
-        date: "2026-12-13", title: "No more holes in the sea",
+        date: "2026-12-13", title: "Smoother sailing",
         items: [
             "A raft that is not a plain rectangle (one you have built out to the side) no longer cuts a hole in the water next to it, where you could see the sea floor.",
+            "Sailing is quieter: the random creak every few seconds, which sounded like the boat hitting something, is gone. You still hear the water against the hull.",
         ],
     },
     {

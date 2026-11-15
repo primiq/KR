@@ -70,6 +70,9 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **No random creak while sailing**: `world/boat.ts` played `sfx.creak()` on 30% of the 2 to 5 s hull-sound ticks; players
+  heard it as hitting something. Removed; the splashes stay.
+
 - **Raft holes in the sea fixed**: the ocean shader's deck boxes (kept free of waves) were one bounding box per raft, so an
   L-shaped raft cut a hole in the open water beside it (seabed visible). `Raft.cover` now splits the tiles into a few
   rectangles (`Raft.rects`), `Boats.raftHoles(near)` sends up to `HOLES` = 8 of them, nearest rafts first; the shader

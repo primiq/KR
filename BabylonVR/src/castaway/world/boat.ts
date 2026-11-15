@@ -1171,10 +1171,10 @@ export class Boats {
       this.mvT -= dt;
       if (this.mvT <= 0) { this.mvT = 0.1; this.onEvent?.({ op: 'mv', n: m.nid, x: +m.x.toFixed(2), z: +m.z.toFixed(2), r: +m.yaw.toFixed(3), v: +m.v.toFixed(2) }); }
     }
-    // the sea against the hull, the rigging creaking
+    // the sea against the hull (no random creak any more: it sounded like the boat hitting something)
     if (m) {
       this.sndT -= dt;
-      if (this.sndT <= 0) { this.sndT = 2 + Math.random() * 3; if (Math.abs(m.v) > 1.2 || this.storm > 0.3) this.sfx?.splash(0.15 + Math.min(0.3, Math.abs(m.v) * 0.03)); if (Math.random() < 0.3) this.sfx?.creak(); }
+      if (this.sndT <= 0) { this.sndT = 2 + Math.random() * 3; if (Math.abs(m.v) > 1.2 || this.storm > 0.3) this.sfx?.splash(0.15 + Math.min(0.3, Math.abs(m.v) * 0.03)); }
     }
     // ---- the giant wave
     {
