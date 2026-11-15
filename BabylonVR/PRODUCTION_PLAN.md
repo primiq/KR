@@ -99,7 +99,7 @@ vertices in about 1400 meshes.
     `build-bora.mjs`) and skip finger bones; beyond the avatar fade distance skip posing entirely.
 15. **Avatar cost audit.** With 8 players (4 classic, 4 Bora) on screen record draw calls and frame time; the classic
     body is about 25 draws each. Confirm thin-instance batching still holds with mixed outfits.
-16. **Garbage per frame.** `net/bora.ts` `pose()` and `makeBoraArm.pose()` allocate quaternions and vectors every frame
+16. PARTLY DONE (net/bora.ts pose and makeBoraArm allocate nothing per frame; the sweep of game.update, avatars, vegetation, boats is still to do) **Garbage per frame.** `net/bora.ts` `pose()` and `makeBoraArm.pose()` allocate quaternions and vectors every frame
     (`clone()`, `new`). Hoist them. Do the same sweep over the hot paths named in `progress.md` (`game.update`,
     `avatars.update`, `vegetation.update`, `boats`): no `new` or array literals per frame per object.
 17. **Long session check.** Run the harness for 30 minutes of scripted play (walk, chop, build, sail, enter and leave a

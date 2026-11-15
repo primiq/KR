@@ -198,6 +198,8 @@ interface ArmData {
   rest: THREE.Matrix4[]; inv: THREE.Matrix4[]; parent: number[];
   /** each bone's "hand frame" (along the bone, out of the palm) in its own rest space: what lines it up with a rig's joint */
   frame: THREE.Quaternion[];
+  /** the same, inverted (used every frame) */
+  frameInv: THREE.Quaternion[];
   /** the forearm's length; each bone's length (to its next bone; the tips as long as 0.8 of the one before); the palm's
    *  length (wrist to the middle finger's root) and width (index to little finger root); all model units */
   fore: number; len: number[]; palm: number; knuckles: number;
@@ -263,7 +265,7 @@ function armData(body: THREE.SkinnedMesh, side: 'L' | 'R'): ArmData {
   names.forEach((_n, i) => { if (!len[i] && A_TIP(names[i])) len[i] = len[parent[i]] * 0.8; });
   const palmLen = at(`DEF-f_middle01${side}`).distanceTo(at(`DEF-hand${side}`));
   const knuckles = at(`DEF-f_index01${side}`).distanceTo(at(`DEF-f_pinky01${side}`));
-  return { geo, names, rest, inv, parent, frame, fore, len, palm: palmLen, knuckles };
+  return { geo, names, rest, inv, parent, frame, frameInv: frame.map((q) => q.clone().invert()), fore, len, palm: palmLen, knuckles };
 }
 
 const A_TIP = (n: string) => /03[LR]$/.test(n);
@@ -306,7 +308,7 @@ export function makeBoraArm(left: boolean, look: Look, parent: THREE.Object3D, s
   /** bone i takes frame `q` (rig joint) at position `p`, stretched by `k` along the frame's axes (x across, y along, z out of the palm) */
   const one = new THREE.Vector3(1, 1, 1), rot = new THREE.Matrix4(), sc = new THREE.Matrix4().makeScale(SCALE, SCALE, SCALE);
   const put = (i: number, q: THREE.Quaternion, p: THREE.Vector3, k: THREE.Vector3 = one) => {
-    world[i].compose(p, q, k).multiply(rot.makeRotationFromQuaternion(A.frame[i].clone().invert())).multiply(sc);
+    world[i].compose(p, q, k).multiply(rot.makeRotationFromQuaternion(A.frameInv[i])).multiply(sc);
   };
   const va = new THREE.Vector3(), vb = new THREE.Vector3(), vc = new THREE.Vector3(), sv = new THREE.Vector3();
   /** where bone i sits under its (already placed) parent, at rest */
@@ -324,7 +326,7 @@ export function makeBoraArm(left: boolean, look: Look, parent: THREE.Object3D, s
       fq.setFromRotationMatrix(b.makeBasis(x, y, z));
       put(0, fq, E); put(1, fq, mid.lerpVectors(E, W, 0.5));
       // (no elbow, in a headset: your body's own arm reaches the wrist, so the forearm folds away into it)
-      if (!j.elbow) for (const i of [0, 1]) { world[i].compose(W, Q.copy(fq).multiply(A.frame[i].clone().invert()), mid.setScalar(SCALE * 1e-3)); }
+      if (!j.elbow) for (const i of [0, 1]) { world[i].compose(W, Q.copy(fq).multiply(A.frameInv[i]), mid.setScalar(SCALE * 1e-3)); }
       // his hand takes the rig's measurements, so every grip in the game (tuned for the rig's hand) closes his fingers and
       // thumb round the item just as it closes the rig's: the palm as long and wide as the rig's, each finger and thumb
       // segment starting at the rig's joint and as long as the rig's
@@ -332,14 +334,14 @@ export function makeBoraArm(left: boolean, look: Look, parent: THREE.Object3D, s
       const F = j.fingers, wide = at(F[0][0], va).distanceTo(at(F[3][0], vb)) / (A.knuckles * SCALE);
       const palmL = at(F[1][0], va).distanceTo(W) / (A.palm * SCALE);
       put(2, wristQ, W, sv.set(wide, palmL, wide));
-      const seg = (i: number, o: THREE.Object3D, rigLen: number) => put(i, frameOf(o, G), at(o, vc).clone(), sv.set(wide, rigLen / (A.len[i] * SCALE), wide));
+      const seg = (i: number, o: THREE.Object3D, rigLen: number) => put(i, frameOf(o, G), at(o, vc), sv.set(wide, rigLen / (A.len[i] * SCALE), wide));
       F.forEach((f, k) => {
         const l0 = at(f[0], va).distanceTo(at(f[1], vb)), l1 = vb.distanceTo(at(f[2], vc));
         seg(6 + k * 3, f[0], l0); seg(7 + k * 3, f[1], l1); seg(8 + k * 3, f[2], l1 * 0.83);
       });
       const t0 = at(j.thumb[0], va).distanceTo(at(j.thumb[1], vb));
       seg(3, j.thumb[0], t0); seg(4, j.thumb[1], t0 * 0.83);
-      put(5, frameOf(j.thumb[1], G), under(5).clone(), sv.set(wide, t0 * 0.6 / (A.len[5] * SCALE), wide));
+      put(5, frameOf(j.thumb[1], G), under(5), sv.set(wide, t0 * 0.6 / (A.len[5] * SCALE), wide));
       pinv.copy(parent.matrixWorld).invert();
       bones.forEach((bn, i) => { bn.matrix.multiplyMatrices(pinv, world[i]); bn.matrixWorldNeedsUpdate = true; });
       parent.updateMatrixWorld(true);
@@ -522,7 +524,9 @@ export function makeBora(R: PlayerRig, look: Look): BoraBody | null {
   const bones: THREE.Bone[] = [];
   scene.traverse((o) => { if ((o as THREE.Bone).isBone) bones.push(o as THREE.Bone); });   // (parents before children)
   const restLocal = new Map(bones.map((b) => [b, b.quaternion.clone()]));
-  const world = new Map<THREE.Object3D, THREE.Quaternion>();
+  // (each bone's world rotation this frame, in rig space: made once, reused every frame)
+  const world = new Map<THREE.Object3D, THREE.Quaternion>(bones.map((b) => [b, new THREE.Quaternion()]));
+  const pinv = new THREE.Quaternion();
   const rigInv = new THREE.Quaternion(), tq = new THREE.Quaternion(), rootQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI, 0));
   const hipBone = scene.getObjectByName('DEF-spine') as THREE.Bone;
   const headBone = scene.getObjectByName('DEF-spine006') as THREE.Bone;
@@ -549,19 +553,19 @@ export function makeBora(R: PlayerRig, look: Look): BoraBody | null {
       R.rig.getWorldQuaternion(rigInv).invert();
       // every bone, parents first: those that follow a puppet joint take its rotation (after hanging like it at rest);
       // the others (fingers, toes, the pelvis wings) keep their own rest pose under their parent
+      // (no allocation here: every bone has its own world quaternion, kept from frame to frame)
       for (const b of bones) {
-        const parentQ = world.get(b.parent!) ?? rootQ;
+        const parentQ = world.get(b.parent!) ?? rootQ, q = world.get(b)!;
         const s = src.get(b.name), r = T!.rest.get(b.name);
         if (s && r) {
           s.getWorldQuaternion(tq);
-          const q = rigInv.clone().multiply(tq).multiply(r.ref);
-          b.quaternion.copy(parentQ.clone().invert().multiply(q));
-          world.set(b, q);
+          q.copy(rigInv).multiply(tq).multiply(r.ref);
+          b.quaternion.copy(pinv.copy(parentQ).invert()).multiply(q);
         } else {
           b.quaternion.copy(restLocal.get(b)!);
           const c = curlOf.get(b);
           if (c && fist[c.side]) b.quaternion.multiply(qc.setFromAxisAngle(XA, c.a));
-          world.set(b, parentQ.clone().multiply(b.quaternion));
+          q.copy(parentQ).multiply(b.quaternion);
         }
       }
       // the hips go where the puppet's hips go (crouching, sitting, lying down, swimming)

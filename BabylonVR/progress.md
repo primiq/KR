@@ -70,6 +70,10 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Production plan item 16 (Bora part)**: `makeBora().pose()` keeps one world quaternion per bone across frames and
+  `makeBoraArm` precomputes its inverse frames (`frameInv`): no allocation per frame. Walk and first-person checks
+  unchanged.
+
 - **Mario replaced by Bob the plumber** (owner's choice; a licensing problem for a public release). `world/druids.ts`
   `BobRig`: the player model's jointed body (`buildPlayer`) in work clothes, beard, teal cap, wrench, animated
   procedurally (same `update` signature as before). The summoning drone is synthesised (`game/audio.ts summonDrone`,
