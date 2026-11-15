@@ -1198,7 +1198,7 @@ async function main() {
                 seabed.update(dt, player.pos.x, player.pos.z, camera.position, player.underwater, onIsland && (player.underwater || heightAt(player.pos.x, player.pos.z) < 8));
             }
             dolphins.update(dt, player.pos.x, player.pos.z, player.yaw, game.under.active);
-            game.boats.raftHoles();
+            game.boats.raftHoles(player.pos);
             // (boats under way leave a wake in the ripples, like a player wading)
             game.boats.wake((x, z, r, k) => ocean.ripples.addDrop(x, z, r, k));
             ocean.bio = BIO.value;

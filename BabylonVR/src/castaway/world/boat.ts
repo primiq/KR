@@ -383,6 +383,9 @@ const RDECK = 0.45;
 const RC = CELL, RWH = WALL_H;
 const RAFT_MAX = 4, RAFT_TILES = 36, RAFT_LEVELS = 2;
 const EDGE_KINDS = ['wall', 'doorway', 'window', 'railing'];
+/** how many deck boxes the ocean shader keeps clear (island/ocean.ts BOXES) */
+export const HOLES = 8;
+
 export class Raft {
   tiles = new Set<string>();
   edges = new Map<string, string>();
@@ -396,6 +399,29 @@ export class Raft {
   /** the section the oar is on (the back of the raft), its extent in raft space, how far it reaches from the origin */
   hi = 0; hj = 0;
   x0 = -RC / 2; x1 = RC / 2; z0 = -RC / 2; z1 = RC / 2; rad = 2.2;
+  /** the deck as a few rectangles of whole tiles (raft space): the sea is kept off these, not off the raft's bounding box,
+   *  which on an L-shaped raft would also cut a hole in the open water beside it */
+  rects: { x0: number; x1: number; z0: number; z1: number }[] = [];
+  /** tiles to rectangles: runs along x in each row, joined with the row before when they span the same columns */
+  static cover(tiles: Set<string>) {
+    const rows = new Map<number, number[]>();
+    for (const k of tiles) { const [i, j] = k.split(',').map(Number); (rows.get(j) ?? rows.set(j, []).get(j)!).push(i); }
+    const out: { x0: number; x1: number; z0: number; z1: number }[] = [];
+    let open: { a: number; b: number; j0: number; j1: number }[] = [];
+    for (const j of [...rows.keys()].sort((p, q) => p - q)) {
+      const is = rows.get(j)!.sort((p, q) => p - q), runs: [number, number][] = [];
+      for (const i of is) { const r = runs[runs.length - 1]; if (r && i === r[1] + 1) r[1] = i; else runs.push([i, i]); }
+      const next: typeof open = [];
+      for (const [a, b] of runs) {
+        const o = open.find((q) => q.a === a && q.b === b && q.j1 === j - 1);
+        if (o) { o.j1 = j; next.push(o); } else next.push({ a, b, j0: j, j1: j });
+      }
+      for (const q of open) if (!next.includes(q)) out.push({ x0: q.a * RC - RC / 2, x1: q.b * RC + RC / 2, z0: q.j0 * RC - RC / 2, z1: q.j1 * RC + RC / 2 });
+      open = next;
+    }
+    for (const q of open) out.push({ x0: q.a * RC - RC / 2, x1: q.b * RC + RC / 2, z0: q.j0 * RC - RC / 2, z1: q.j1 * RC + RC / 2 });
+    return out;
+  }
   /** solid things to walk into (raft space) */
   boxes: { x0: number; x1: number; z0: number; z1: number; y0: number; y1: number }[] = [];
   constructor(plan?: RaftPiece[]) {
@@ -441,6 +467,7 @@ export class Raft {
       if (j > hj || (j === hj && (Math.abs(i) < Math.abs(hi) || (Math.abs(i) === Math.abs(hi) && i < hi)))) { hi = i; hj = j; }
     }
     Object.assign(this, { x0, x1, z0, z1, hi, hj });
+    this.rects = Raft.cover(this.tiles);
     this.rad = Math.max(Math.hypot(x0, z0), Math.hypot(x1, z0), Math.hypot(x0, z1), Math.hypot(x1, z1)) + 0.3;
     this.boxes = [];
     const T = 0.16;
@@ -636,8 +663,8 @@ const reach = (b: Boat) => (b.raft ? b.raft.rad : LEN / 2 + 0.5);
 
 export class Boats {
   readonly list: Boat[] = [];
-  /** the sea kept off the rafts' decks: up to 4 boxes for the ocean shader (centre, yaw / half sizes, on), see raftHoles */
-  readonly holes: number[] = new Array(32).fill(0);
+  /** the sea kept off the rafts' decks: up to HOLES boxes for the ocean shader (centre, yaw / half sizes, on), see raftHoles */
+  readonly holes: number[] = new Array(HOLES * 8).fill(0);
   /** the wake: rings in the water round each boat under way (the sea's ripple simulation, the same one a wading player
    *  stirs): along the leading edge and the sides, and where the raft's oar blade dips. `add(x, z, radius, strength)` */
   wake(add: (x: number, z: number, r: number, k: number) => void) {
@@ -659,22 +686,28 @@ export class Boats {
       }
     }
   }
-  /** fill `holes`: a box over each raft from just under its deck up past head height, so a wave that rises over the logs
-   *  is not drawn across the deck and the people on it (the raft floats on, it is only the drawing) */
-  raftHoles(): number[] {
+  /** fill `holes`: a box over each part of each raft's deck (Raft.rects) from just under the deck up past head height, so a
+   *  wave that rises over the logs is not drawn across the deck and the people on it (the raft floats on, it is only the
+   *  drawing). Only over logs: open water next to the raft is never cut. Nearest rafts first when there are too many. */
+  raftHoles(near?: { x: number; z: number }): number[] {
     let n = 0;
-    for (const b of this.list) {
-      if (!b.raft || n >= 4) continue;
-      const r = b.raft, o = n * 4, s = Math.sin(b.yaw), c = Math.cos(b.yaw), mx = (r.x0 + r.x1) / 2, mz = (r.z0 + r.z1) / 2;
-      const hx = (r.x1 - r.x0) / 2, hz = (r.z1 - r.z0) / 2;
+    const rafts = this.list.filter((b) => b.raft);
+    if (near) rafts.sort((p, q) => Math.hypot(p.x - near.x, p.z - near.z) - Math.hypot(q.x - near.x, q.z - near.z));
+    for (const b of rafts) {
+      const r = b.raft!, s = Math.sin(b.yaw), c = Math.cos(b.yaw);
       // (a tilted deck's edge dips a little: the box starts lower by that much)
-      const dip = Math.abs(Math.sin(b.pitch)) * hz + Math.abs(Math.sin(b.roll)) * hx;
+      const dip = Math.abs(Math.sin(b.pitch)) * Math.max(-r.z0, r.z1) + Math.abs(Math.sin(b.roll)) * Math.max(-r.x0, r.x1);
       const y0 = b.y + b.lift + RDECK - 0.08 - dip, y1 = b.y + b.lift + RDECK + 4.5;
-      this.holes[o] = b.x + mx * c + mz * s; this.holes[o + 1] = (y0 + y1) / 2; this.holes[o + 2] = b.z - mx * s + mz * c; this.holes[o + 3] = b.yaw;
-      this.holes[16 + o] = hx - 0.02; this.holes[16 + o + 1] = (y1 - y0) / 2; this.holes[16 + o + 2] = hz - 0.02; this.holes[16 + o + 3] = 1;
-      n++;
+      for (const q of r.rects) {
+        if (n >= HOLES) break;
+        const o = n * 4, mx = (q.x0 + q.x1) / 2, mz = (q.z0 + q.z1) / 2;
+        this.holes[o] = b.x + mx * c + mz * s; this.holes[o + 1] = (y0 + y1) / 2; this.holes[o + 2] = b.z - mx * s + mz * c; this.holes[o + 3] = b.yaw;
+        const B = HOLES * 4 + o;
+        this.holes[B] = (q.x1 - q.x0) / 2 - 0.02; this.holes[B + 1] = (y1 - y0) / 2; this.holes[B + 2] = (q.z1 - q.z0) / 2 - 0.02; this.holes[B + 3] = 1;
+        n++;
+      }
     }
-    for (; n < 4; n++) this.holes[16 + n * 4 + 3] = 0;
+    for (; n < HOLES; n++) this.holes[HOLES * 4 + n * 4 + 3] = 0;
     return this.holes;
   }
   myId = 0;

@@ -70,6 +70,11 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Raft holes in the sea fixed**: the ocean shader's deck boxes (kept free of waves) were one bounding box per raft, so an
+  L-shaped raft cut a hole in the open water beside it (seabed visible). `Raft.cover` now splits the tiles into a few
+  rectangles (`Raft.rects`), `Boats.raftHoles(near)` sends up to `HOLES` = 8 of them, nearest rafts first; the shader
+  (`island/ocean.ts`) takes 8 boxes. Unit test `tests/unit/raft.test.ts`.
+
 - **Production plan item 29**: browser smoke tests in `tests/smoke/smoke.mjs` (`npm run smoke`, `ONLY=<name>` runs one,
   `BASE=<url>` tests another server), run in the GitHub workflow after the build. Note: `?go` always starts a fresh
   island; the save test comes back with Continue.

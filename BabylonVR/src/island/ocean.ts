@@ -169,10 +169,10 @@ uniform vec4 lakeRect;
 uniform vec4 holeA[4];
 uniform vec4 holeB[4];
 // boxes: the decks of rafts (same layout), so a wave rising over the logs is not drawn across the deck
-uniform vec4 boxA[4];
-uniform vec4 boxB[4];
+uniform vec4 boxA[8];
+uniform vec4 boxB[8];
 void main(void) {
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 8; i++) {
         if (boxB[i].w < 0.5) continue;
         vec3 d = vPos - boxA[i].xyz;
         float c = cos(boxA[i].w), s = sin(boxA[i].w);
@@ -326,8 +326,8 @@ export class Ocean {
     reflectOn = true;
     /** submarines' hulls cut out of the surface: 4 x (x, y, z, yaw), then 4 x (half sizes, on) */
     holes: number[] = new Array(32).fill(0);
-    /** boxes kept clear of the sea (raft decks): centres + yaw, then half sizes + on (4 of each) */
-    boxes: number[] = new Array(32).fill(0);
+    /** boxes kept clear of the sea (raft decks): centres + yaw, then half sizes + on (8 of each) */
+    boxes: number[] = new Array(64).fill(0);
 
     /**
      * Mirror the scene in the sea: a reduced-size HDR render of what `include` picks, reflected about sea level, refreshed
@@ -425,8 +425,8 @@ export class Ocean {
             e.setTexture("ripples", r.texture);
             e.setArray4("holeA", this.holes.slice(0, 16));
             e.setArray4("holeB", this.holes.slice(16, 32));
-            e.setArray4("boxA", this.boxes.slice(0, 16));
-            e.setArray4("boxB", this.boxes.slice(16, 32));
+            e.setArray4("boxA", this.boxes.slice(0, 32));
+            e.setArray4("boxB", this.boxes.slice(32, 64));
         });
         this.mesh.material = mat;
 
