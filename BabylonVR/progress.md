@@ -70,6 +70,14 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Raft engine** (`raft_engine`, workbench): model in `game/engine.ts` (stand, tech box, tubes and wires, an upside-down
+  office bottle with 7 butterflies whose wings are kept nodes that flap, `flapWings`). `s.lit` = running; E toggles it
+  (`game.openStructure`), synced with a `k: "en"` event and saved like any structure's lit. `Boats.engines` (set in
+  game.ts) sums the facings (-sin yaw, -cos yaw) of running engines on a deck; `Boats.drive` adds that push (`b.ex/ez`,
+  `ENGINE_V` 4.2 m/s, eased) on top of the oar's `v`. With nobody at the oar, a player aboard becomes its `pilot`: holds
+  `helm` without standing at the oar and sends `mv` (with ex/ez), until the engine is off and the raft has glided to a
+  stop. Taking the oar (`helm` event with `oar: 1`) takes over; two pilots: the lower id keeps it.
+
 - **Iceberg material**: `world/arcticView.ts` gives bergs their own material (`bergMat`, the ice plugin with the `ICEBERG`
   define): white tops, pale blue walls varying per facet, deep blue veins and strata, turquoise waterline notch, deep
   blue to navy below, stronger blue edge glow. Floes and the land keep the old ice look.

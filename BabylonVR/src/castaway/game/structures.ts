@@ -8,6 +8,7 @@ import type { Collider, ColliderGrid } from "../world/vegetation";
 import { rayGround } from "./building";
 import { type Cloth, flagModel, makeCloth, setClothData, waveCloth } from "./flag";
 import { compassModel, type CompassParts, type Dial, makeDial, roseMaterial, updateDial } from "./compass";
+import { ENGINE_WINGS, engineModel, flapWings, makeWings, type Wing, type WingPart } from "./engine";
 import { Inventory } from "./inventory";
 import { ITEMS, type ItemId, type PlaceKind } from "./items";
 import { MAX_FUEL, STATION_RECIPES, WOOD_BURN } from "./recipes";
@@ -64,8 +65,42 @@ function matFor(scene: Scene, key: string, local = false): Material {
     case "homeMark": return glowMat(scene, "#ff5a3a");
     case "card": return roseMaterial(scene);
     case "screen": return solid(scene, "#06120e", 1);
-    default: return solid(scene, "#ff00ff");
+    // (the raft engine)
+    case "bottle": return bottleMaterial(scene);
+    case "bottleCap": return solid(scene, "#2f6fd6", 0.5);
+    case "rubber": return solid(scene, "#1d1f22", 0.8);
+    case "copper": return solid(scene, "#c8743c", 0.35, 0.9);
+    case "wireRed": return solid(scene, "#d8352a", 0.6);
+    case "wireYellow": return solid(scene, "#f2c41c", 0.6);
+    case "wireBlue": return solid(scene, "#2a6fe0", 0.6);
+    case "engineLamp": return glowMat(scene, "#62ff9a");
+    default: {
+      const w = /^wing(\d)$/.exec(key);
+      if (w) return wingMaterial(scene, ENGINE_WINGS[+w[1]]);
+      return solid(scene, "#ff00ff");
+    }
   }
+}
+
+let BOTTLE: PBRMaterial | null = null;
+/** the engine's water bottle: clear blue plastic you see the butterflies through */
+function bottleMaterial(scene: Scene): PBRMaterial {
+  if (BOTTLE) return BOTTLE;
+  const m = (BOTTLE = new PBRMaterial("engineBottle", scene));
+  m.albedoColor = Color3.FromHexString("#9fd2f0").toLinearSpace();
+  m.alpha = 0.2; m.roughness = 0.12; m.metallic = 0; m.backFaceCulling = false;
+  m.transparencyMode = PBRMaterial.PBRMATERIAL_ALPHABLEND;
+  return m;
+}
+const wingMats = new Map<string, StandardMaterial>();
+/** a butterfly's wing: flat colour, both sides, a little self-lit so it reads through the bottle */
+function wingMaterial(scene: Scene, hex: string): StandardMaterial {
+  let m = wingMats.get(hex);
+  if (m) return m;
+  m = new StandardMaterial(`wing${hex}`, scene);
+  m.emissiveColor = Color3.FromHexString(hex).scale(0.9); m.disableLighting = true; m.backFaceCulling = false;
+  wingMats.set(hex, m);
+  return m;
 }
 
 const flameMats = new Map<string, StandardMaterial>();
@@ -158,6 +193,7 @@ const FOOT: Record<PlaceKind, Foot> = {
   drum: { cols: [[0, 0, 0.36]], hits: [[0, 0.5, 0, 0.45]] },
   lounger: { cols: [[0, -0.5, 0.36], [0, 0.45, 0.36]], hits: [[0, 0.45, -0.5, 0.5], [0, 0.4, 0.45, 0.5]] },
   compass: { cols: [[0, 0, 0.22]], hits: [[0, 0.5, 0, 0.3], [0, 1.0, 0, 0.3]] },
+  raft_engine: { cols: [[0, 0, 0.32]], hits: [[0, 0.35, 0, 0.36], [0, 1.0, 0, 0.3]] },
   flag: { cols: [[0, 0, 0.2]], hits: [[0, 0.9, 0, 0.3], [0, 1.8, 0, 0.3]] },
 };
 /** height of a small table's top */
@@ -173,7 +209,7 @@ export const F_LOUNGE = 1 << 24;
 export const DRUM_TOP = 0.86, DRUM_R = 0.33;
 const ON_TABLE: PlaceKind[] = ['flower_pot', 'cat_bed', 'lantern'];
 
-export const STRUCT_NAME: Record<PlaceKind, string> = { campfire: 'Campfire', furnace: 'Furnace', workbench: 'Workbench', bed: 'Bed', sleeping_bag: 'Sleeping Bag', box: 'Storage Box', torch: 'Torch', flower_pot: 'Clay Pot', rug: 'Rug', lantern: 'Lantern', table: 'Small Table', cat_bed: 'Cat Bed', lounger: 'Sun Lounger', drum: 'Drum', compass: 'Compass', flag: 'Flag' };
+export const STRUCT_NAME: Record<PlaceKind, string> = { campfire: 'Campfire', furnace: 'Furnace', workbench: 'Workbench', bed: 'Bed', sleeping_bag: 'Sleeping Bag', box: 'Storage Box', torch: 'Torch', flower_pot: 'Clay Pot', rug: 'Rug', lantern: 'Lantern', table: 'Small Table', cat_bed: 'Cat Bed', lounger: 'Sun Lounger', drum: 'Drum', compass: 'Compass', flag: 'Flag', raft_engine: 'Raft Engine' };
 
 
 export interface PlaceAim { ok: boolean; reason: string; x: number; y: number; z: number; yaw: number }
@@ -195,7 +231,7 @@ function mesh(g: THREE.BufferGeometry, m: THREE.Material, x = 0, y = 0, z = 0, s
 const cyl = (r0: number, r1: number, h: number, seg = 8) => new THREE.CylinderGeometry(r0, r1, h, seg);
 
 /** `hook`: lanterns only, how high above the floor they hang from (a ceiling); 0 = on their own hook post */
-function buildModel(kind: PlaceKind, shadows: boolean, hook = 0): { group: THREE.Group; flames: THREE.Mesh[]; glow: THREE.Mesh | null; dial?: CompassParts; cloth?: THREE.Object3D } {
+function buildModel(kind: PlaceKind, shadows: boolean, hook = 0): { group: THREE.Group; flames: THREE.Mesh[]; glow: THREE.Mesh | null; dial?: CompassParts; cloth?: THREE.Object3D; wings?: WingPart[] } {
   const S = shared(), W = woodMaterials(), g = new THREE.Group();
   const flames: THREE.Mesh[] = [];
   let glow: THREE.Mesh | null = null;
@@ -203,6 +239,7 @@ function buildModel(kind: PlaceKind, shadows: boolean, hook = 0): { group: THREE
 
   if (kind === 'compass') return { group: g, flames, glow, dial: compassModel(g, shadows) };
   if (kind === 'flag') return { group: g, flames, glow, cloth: flagModel(g, shadows) };
+  if (kind === 'raft_engine') return { group: g, flames, glow, wings: engineModel(g, shadows) };
   switch (kind) {
     case 'campfire': {
       for (let k = 0; k < 9; k++) {
@@ -445,6 +482,8 @@ export interface Structure {
   emberT: number;
   /** a compass's card, home bezel and screen */
   dial?: Dial;
+  /** a raft engine's butterflies' wings (`lit`: the engine is on) */
+  wings?: Wing[];
   /** a flag's cloth and its picture */
   cloth?: Cloth;
   /** set down on a boat's deck: which boat, and where on it (boat-space x, y, z, turn): it sails with it */
@@ -711,7 +750,7 @@ export class StructureManager {
     const s: Structure = {
       id: this.nextId++, nid: nid ?? this.freshNid(), kind, x: a.x, y: a.y, z: a.z, yaw: a.yaw, node, cols, hits, inv,
       // a new campfire is built with a few logs already burning
-      deck, dial, cloth,
+      deck, dial, cloth, wings: m.wings ? makeWings(m.wings, baked.kept) : undefined,
       fuel: kind === "campfire" ? 3 * WOOD_BURN.campfire : 0, lit: kind === "torch" || kind === "lantern" || kind === "campfire", prog: 0, flames, glow, lamp, phase: Math.random() * 10, emberT: 0,
     };
     if (kind === "lantern" && lamp) {
@@ -831,6 +870,7 @@ export class StructureManager {
       if (s.kind === "flower_pot") { this.potFlower(s); continue; }
       if (s.cloth) { if (Math.hypot(s.x - px, s.z - pz) < 90) waveCloth(s.cloth, t, this.wind, this.stillFlag === s); continue; }
       if (s.dial) { if (Math.hypot(s.x - px, s.z - pz) < 80) updateDial(s.dial, s.x, s.z, s.yaw, dt); continue; }
+      if (s.wings) { if (Math.hypot(s.x - px, s.z - pz) < 60) flapWings(s.wings, t, s.lit); continue; }
       if (s.kind === "lantern") {
         const d = Math.hypot(s.x - px, s.z - pz);
         s.glow?.setEnabled(d < 350);

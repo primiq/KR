@@ -57,6 +57,8 @@ export class Boat {
   /** who holds the wheel (player id) */
   helm: number | null = null;
   v = 0; yawV = 0; y = 0; pitch = 0; roll = 0;
+  /** a raft engine's push (world m/s, on top of the oar's v along the heading) */
+  ex = 0; ez = 0;
   /** remote: where the helmsman says it is */
   tx: number; tz: number; tyaw: number; tv = 0;
   /** a giant wave is coming for it */
@@ -386,6 +388,9 @@ const EDGE_KINDS = ['wall', 'doorway', 'window', 'railing'];
 /** how many deck boxes the ocean shader keeps clear (island/ocean.ts BOXES) */
 export const HOLES = 8;
 
+/** a raft engine's top speed (m/s; rowing is 5.1), and no hands on the oar */
+const ENGINE_V = 4.2, NO_CTL = { x: 0, y: 0, boost: false };
+
 export class Raft {
   tiles = new Set<string>();
   edges = new Map<string, string>();
@@ -711,6 +716,11 @@ export class Boats {
     return this.holes;
   }
   myId = 0;
+  /** (set by the game) the raft engines switched on aboard a boat: the sum of their facings (world x, z), or null */
+  engines: ((b: Boat) => { x: number; z: number } | null) | null = null;
+  /** the raft I drive for its engine without holding the oar (nobody else steers it): see update */
+  private pilot: Boat | null = null;
+  private bonkT = 0;
   /** the boat I'm standing on (or swimming beside: null), and whether I hold its wheel */
   on: Boat | null = null;
   atHelm = false;
@@ -1057,7 +1067,7 @@ export class Boats {
   takeHelm(b: Boat): boolean {
     if (b.helm !== null && b.helm !== this.myId && this.present(b.helm)) return false;
     b.helm = this.myId; this.on = b; this.atHelm = true; this.lastYaw = NaN; b.tv = b.v;
-    this.onEvent?.({ op: 'helm', n: b.nid, on: 1 });
+    this.onEvent?.({ op: 'helm', n: b.nid, on: 1, oar: 1 });
     return true;
   }
   leaveHelm() {
@@ -1125,11 +1135,24 @@ export class Boats {
     }
     const yaw0 = this.on ? this.on.yaw : 0;
 
+    // ---- raft engines: one aboard and switched on, and nobody at the oar: I drive it (as the helmsman would, telling the
+    //      others where it is) while I am on it. Someone taking the oar takes over and steers; the engine keeps pushing.
+    // (switched off, it glides on to a stop first)
+    if (this.pilot && (this.pilot.helm !== this.myId || this.on !== this.pilot || (!this.engines?.(this.pilot) && Math.hypot(this.pilot.ex, this.pilot.ez) < 0.15))) {
+      const p = this.pilot; this.pilot = null;
+      if (p.helm === this.myId && !(this.atHelm && this.on === p)) { p.helm = null; this.onEvent?.({ op: 'helm', n: p.nid, on: 0 }); }
+    }
+    const om = this.on;
+    if (!this.pilot && om?.raft && om.helm === null && this.engines?.(om)) {
+      om.helm = this.myId; this.pilot = om; om.tv = om.v;
+      this.onEvent?.({ op: 'helm', n: om.nid, on: 1 });
+    }
+    this.bonkT -= dt;
     for (const b of this.list) {
       if (b.helm !== null && b.helm !== this.myId && !this.present(b.helm)) b.helm = null;
-      const mine = b === this.on && this.atHelm;
+      const mine = (b === this.on && this.atHelm) || b === this.pilot;
       if (mine) {
-        this.drive(b, dt, time, ctl);
+        this.drive(b, dt, time, b === this.on && this.atHelm ? ctl : NO_CTL);
         // (the edge of the open sea: a current that will not let you further, you are turned back)
         const back = keepInSea(b.x, b.z);
         if (back) {
@@ -1140,12 +1163,12 @@ export class Boats {
       }
       else if (b.helm !== null) {
         // somebody else steers: follow what they say (and guess ahead a little)
-        b.tx -= Math.sin(b.tyaw) * b.tv * dt; b.tz -= Math.cos(b.tyaw) * b.tv * dt;
+        b.tx += -Math.sin(b.tyaw) * b.tv * dt + b.ex * dt; b.tz += -Math.cos(b.tyaw) * b.tv * dt + b.ez * dt;
         const k = 1 - Math.exp(-dt * 6);
         b.x += (b.tx - b.x) * k; b.z += (b.tz - b.z) * k;
         let d = b.tyaw - b.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); b.yaw += d * k; b.yawV = d * 2;
         b.v = b.tv;
-      } else { b.v *= Math.exp(-dt * 0.5); b.yawV *= Math.exp(-dt); b.tx = b.x; b.tz = b.z; b.tyaw = b.yaw; }
+      } else { b.v *= Math.exp(-dt * 0.5); b.yawV *= Math.exp(-dt); b.ex *= Math.exp(-dt * 0.5); b.ez *= Math.exp(-dt * 0.5); b.tx = b.x; b.tz = b.z; b.tyaw = b.yaw; }
       b.lift = this.wave.active ? this.wave.liftAt(this.wave.ahead(b.x, b.z)) : 0;
       this.float(b, dt, time);
       this.animate(b, dt, time);
@@ -1167,9 +1190,9 @@ export class Boats {
         this.onEvent?.({ op: 'on', n: m.nid, x: +l.x.toFixed(2), y: +l.y.toFixed(2), z: +l.z.toFixed(2), r: +(look.yaw - m.yaw).toFixed(2) });
       }
     } else if (was) this.onEvent?.({ op: 'off', n: was.nid });
-    if (m && this.atHelm) {
+    if (m && (this.atHelm || this.pilot === m)) {
       this.mvT -= dt;
-      if (this.mvT <= 0) { this.mvT = 0.1; this.onEvent?.({ op: 'mv', n: m.nid, x: +m.x.toFixed(2), z: +m.z.toFixed(2), r: +m.yaw.toFixed(3), v: +m.v.toFixed(2) }); }
+      if (this.mvT <= 0) { this.mvT = 0.1; this.onEvent?.({ op: 'mv', n: m.nid, x: +m.x.toFixed(2), z: +m.z.toFixed(2), r: +m.yaw.toFixed(3), v: +m.v.toFixed(2), ex: +m.ex.toFixed(2), ez: +m.ez.toFixed(2) }); }
     }
     // the sea against the hull (no random creak any more: it sounded like the boat hitting something)
     if (m) {
@@ -1209,18 +1232,23 @@ export class Boats {
     const maxV = rf ? (ctl.boost ? 6.9 : 5.1) : ctl.boost ? 9.5 : 7;
     const want = ctl.y >= 0 ? ctl.y * maxV : ctl.y * (rf ? 2.1 : 2);
     b.v += (want - b.v) * Math.min(1, dt * (Math.abs(want) > Math.abs(b.v) ? 0.3 : 0.6));
-    const turn = -ctl.x * (rf ? 0.42 : 0.5) * Math.min(1, 0.3 + Math.abs(b.v) / 4) * (b.v < -0.1 ? -1 : 1);
+    // (raft engines: their push builds and fades over a few seconds, along the way each one faces)
+    const eng = rf ? this.engines?.(b) ?? null : null;
+    const ek = Math.min(1, dt * 0.5);
+    b.ex += ((eng ? eng.x * ENGINE_V : 0) - b.ex) * ek; b.ez += ((eng ? eng.z * ENGINE_V : 0) - b.ez) * ek;
+    const espd = Math.hypot(b.ex, b.ez);
+    const turn = -ctl.x * (rf ? 0.42 : 0.5) * Math.min(1, 0.3 + Math.max(Math.abs(b.v), espd) / 4) * (b.v < -0.1 ? -1 : 1);
     b.yawV += (turn - b.yawV) * Math.min(1, dt * 2);
     const st = this.storm;
     if (st > 0) { b.yawV += st * Math.sin(time * 0.9 + Math.sin(time * 0.37) * 2) * 0.35 * dt; b.v -= st * 0.5 * dt * Math.sign(b.v); }
     b.yaw += b.yawV * dt;
-    const nx = b.x - Math.sin(b.yaw) * b.v * dt, nz = b.z - Math.cos(b.yaw) * b.v * dt;
+    const nx = b.x - Math.sin(b.yaw) * b.v * dt + b.ex * dt, nz = b.z - Math.cos(b.yaw) * b.v * dt + b.ez * dt;
     const clear = (rf ? raftAfloat(rf, nx, nz, b.yaw, 0.55) : this.afloat(nx, nz, b.yaw, 0.9))
       && !this.list.some((o) => o !== b && Math.hypot(o.x - nx, o.z - nz) < reach(o) + reach(b) - 1);
     if (clear) { b.x = nx; b.z = nz; }
     else {
-      if (Math.abs(b.v) > 1.5) { this.sfx?.bonk(); this.shake?.(0.3); this.say?.('Aground! Back off with S.'); }
-      b.v *= -0.25;
+      if ((Math.abs(b.v) > 1.5 || espd > 1.5) && this.bonkT <= 0) { this.bonkT = 3; this.sfx?.bonk(); this.shake?.(0.3); this.say?.(espd > 1.5 && !(this.atHelm && this.on === b) ? 'Aground! Switch the engine off, or turn it round.' : 'Aground! Back off with S.'); }
+      b.v *= -0.25; b.ex *= -0.25; b.ez *= -0.25;
     }
     b.tx = b.x; b.tz = b.z; b.tyaw = b.yaw; b.tv = b.v;
   }
@@ -1601,13 +1629,15 @@ export class Boats {
         if (e.on) {
           // both of us took the wheel at once: the lower id keeps it
           if (b.helm === this.myId && this.atHelm && this.on === b) { if (this.myId < from) { this.onEvent?.({ op: 'helm', n: b.nid, on: 1 }); break; } this.atHelm = false; this.say?.('Somebody else has the wheel'); }
+          // (driving it for its engine, and somebody else took it: at the oar they steer; two engine drivers, the lower id)
+          else if (b === this.pilot) { if (this.myId < from && !e.oar) { this.onEvent?.({ op: 'helm', n: b.nid, on: 1 }); break; } this.pilot = null; }
           b.helm = from;
         } else if (b.helm === from) b.helm = null;
         break;
       }
       case 'on': if (b && [e.x, e.y, e.z].every((v: unknown) => Number.isFinite(+(v as number)))) this.riders.set(from, { b, x: +e.x, y: +e.y, z: +e.z, r: +e.r || 0, t: this.clock }); break;
       case 'off': this.riders.delete(from); break;
-      case 'mv': if (b && !(b === this.on && this.atHelm)) { b.tx = +e.x; b.tz = +e.z; b.tyaw = +e.r; b.tv = +e.v || 0; } break;
+      case 'mv': if (b && !(b === this.on && this.atHelm) && b !== this.pilot) { b.tx = +e.x; b.tz = +e.z; b.tyaw = +e.r; b.tv = +e.v || 0; b.ex = +e.ex || 0; b.ez = +e.ez || 0; } break;
       case 'wave': if (b && !b.doomed) this.bringWave(true, b); break;
     }
   }

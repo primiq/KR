@@ -210,6 +210,8 @@ export class Game {
         /** is another player lying on the lounger here? */
         lyingOn?: (x: number, z: number) => boolean;
         inUse?: (s: Structure) => string | null;
+        /** a raft engine switched on or off (everybody sees it, and the raft moves for whoever is aboard) */
+        engine?: (nid: string, on: boolean) => void;
         slept?: () => void;
         died?: () => void;
         /** the host tells everybody whether the sea glows tonight; clients just follow */
@@ -322,7 +324,7 @@ export class Game {
             f.onDrop = (id, n, x, y, z) => { this.resources.pickups.spawn(id, n, x, y, z); };
             f.onBlood = (x, y, z, n) => this.resources.burst(new Vector3(x, y, z), "flesh", n, 3);
             f.blocked = (x, z, r, y) => this.building.touches(x, z, r, y + 0.3);
-            f.nearFire = (x, z, r) => this.structures.list.some((q) => q.lit && Math.hypot(q.x - x, q.z - z) < r);
+            f.nearFire = (x, z, r) => this.structures.list.some((q) => q.lit && q.kind !== "raft_engine" && Math.hypot(q.x - x, q.z - z) < r);
             f.onHurtPlayer = (dmg, fx, fz, by, target) => {
                 if (target !== this.netId) { this.net.hurtRemote?.(target, dmg, fx, fz, by); return; }
                 this.hurtPlayer(dmg, fx, fz, by);
@@ -371,6 +373,14 @@ export class Game {
         this.boats.say = (t) => this.hud.message(t);
         this.boats.sfx = this.sfx as never;
         this.boats.shake = (a) => this.player.shake(a);
+        // raft engines switched on, on a boat's deck: the way they face (summed; a pair facing the same way is no faster)
+        this.boats.engines = (b) => {
+            let x = 0, z = 0, n = 0;
+            for (const s of this.structures.list) if (s.kind === "raft_engine" && s.lit && s.deck?.n === b.nid) { x -= Math.sin(s.yaw); z -= Math.cos(s.yaw); n++; }
+            if (!n) return null;
+            const l = Math.hypot(x, z);
+            return l < 0.05 ? null : { x: x / Math.max(l, n === 1 ? 1 : l), z: z / Math.max(l, n === 1 ? 1 : l) };
+        };
         this.boats.onWreck = () => this.startWreck();
         this.subs = new Subs(this.natureRoot, !!o.shadows);
         this.subs.surface = (x, z) => this.player.surfaceAt(x, z);
@@ -422,8 +432,8 @@ export class Game {
         this.stalkers.onSound = (w, x, z) => this.fauna.onSound?.(w, x, z);
         this.stalkers.onBlood = (x, y, z, n) => this.fauna.onBlood?.(x, y, z, n);
         this.twins.onSound = (w, x, z) => this.fauna.onSound?.(w, x, z);
-        this.twins.nearFire = (x, z, r) => this.structures.list.some((q) => q.lit && Math.hypot(q.x - x, q.z - z) < r);
-        this.stalkers.nearFire = (x, z, r) => this.structures.list.some((q) => q.lit && Math.hypot(q.x - x, q.z - z) < r);
+        this.twins.nearFire = (x, z, r) => this.structures.list.some((q) => q.lit && q.kind !== "raft_engine" && Math.hypot(q.x - x, q.z - z) < r);
+        this.stalkers.nearFire = (x, z, r) => this.structures.list.some((q) => q.lit && q.kind !== "raft_engine" && Math.hypot(q.x - x, q.z - z) < r);
         this.doors = new Doors(o.scene, this.building, o.shadows);
         this.paintings = new Paintings(o.scene, o.shadows);
         this.paintings.raftWorld = (n, key, l, out) => this.boats.raftWallWorld(n, key, l, out);
@@ -678,6 +688,13 @@ export class Game {
         if (src.sendTo(slot, dst) <= 0) { this.hud.message(fromCont ? "Your bag is full" : "That doesn’t go there"); this.sfx.denied(); }
     }
     private openStructure(s: Structure) {
+        if (s.kind === "raft_engine") {
+            s.lit = !s.lit;
+            this.net.engine?.(s.nid, s.lit);
+            if (s.lit) { this.sfx.craft(); this.hud.message(s.deck ? "The butterflies start beating their wings: the raft moves the way the engine faces. Steer with the oar." : "The butterflies beat their wings... set it on a raft and it will push it along."); }
+            else { this.sfx.remove(); this.hud.message("The engine stops: the butterflies rest."); }
+            return;
+        }
         if (s.kind === "workbench") { this.setInventory(true, "craft"); return; }
         if (s.kind === "flag") { this.openFlag(s); return; }
         if (s.kind === "bed" || s.kind === "sleeping_bag") { this.useBed(s); return; }
@@ -1534,6 +1551,7 @@ export class Game {
         if (s.kind === "drum") return this.hud.setPrompt(name, `${this.keyLabel("E")} ${this.drum.active === s ? "put the sticks down" : "take up the sticks"} &nbsp;·&nbsp; hold ${this.keyLabel("E")} pick up`, true);
         if (s.kind === "flag") return this.hud.setPrompt(name, `${this.keyLabel("E")} paint your flag &nbsp;·&nbsp; hold ${this.keyLabel("E")} take it down`, true);
         if (s.kind === "compass") return this.hud.setPrompt(name, `hold ${this.keyLabel("E")} pick up`, true);
+        if (s.kind === "raft_engine") return this.hud.setPrompt(name + (s.lit ? " (running)" : ""), `${this.keyLabel("E")} switch ${s.lit ? "off" : "on"} &nbsp;·&nbsp; hold ${this.keyLabel("E")} pick up`, true);
         if (s.kind === "lounger") return this.hud.setPrompt(name, `${this.keyLabel("E")} ${this.lounger === s ? "get up" : "lie down"} &nbsp;·&nbsp; hold ${this.keyLabel("E")} pick up`, true);
         const tap = s.kind === "bed" || s.kind === "sleeping_bag" ? "sleep / set respawn" : s.kind === "workbench" ? "craft" : s.kind === "flower_pot" ? (s.inv?.slots[0] ? "change the flower" : "plant a flower") : "open";
         if (s.kind === "torch" || s.kind === "rug" || s.kind === "lantern" || s.kind === "table" || s.kind === "cat_bed") return this.hud.setPrompt(name, `hold ${this.keyLabel("E")} pick up`, true);

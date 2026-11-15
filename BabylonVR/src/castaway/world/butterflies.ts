@@ -7,12 +7,12 @@ import * as THREE from 'three';
 import { heightAt } from './island';
 
 const N = 36, NEAR = 8, FAR = 34, LOSE = 46;
-const PALETTE = ['#f28a1a', '#2f7bff', '#ffd23a', '#f4f1e6', '#ff6fb1', '#9be35a', '#e8452e', '#8f6cff', '#36d1c4'];
+export const PALETTE = ['#f28a1a', '#2f7bff', '#ffd23a', '#f4f1e6', '#ff6fb1', '#9be35a', '#e8452e', '#8f6cff', '#36d1c4'];
 
 interface Fly { x: number; y: number; z: number; yaw: number; ph: number; speed: number; seed: number; rest: number; restY: number; alive: boolean }
 
 /** one wing (the right one; the left is its mirror), hinged along the body (+z forward, wing out along +x) */
-function wingGeometry(): THREE.BufferGeometry {
+export function wingGeometry(): THREE.BufferGeometry {
   // a fore wing and a hind wing, rounded, as one flat shape
   const s = new THREE.Shape();
   s.moveTo(0, 0.012);

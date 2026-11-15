@@ -10,11 +10,11 @@ export type ItemId =
   | 'building_plan' | 'torch' | 'sapling' | 'picture_frame' | 'flower_pot' | 'rug' | 'lantern' | 'door'
   | 'leather' | 'leather_cap' | 'leather_vest' | 'leather_pants' | 'metal_helmet' | 'metal_chestplate' | 'metal_greaves'
   | 'diamond_helmet' | 'diamond_chestplate' | 'diamond_greaves' | 'boat' | 'raft' | 'submarine' | 'table' | 'cat_bed' | 'lounger' | 'drum' | 'drumsticks'
-  | 'meat_stick' | 'roast_stick' | 'guitar' | 'sand' | 'compass' | 'flag' | 'flute';
+  | 'meat_stick' | 'roast_stick' | 'guitar' | 'sand' | 'compass' | 'flag' | 'flute' | 'raft_engine';
 export type ArmorSlot = 'head' | 'chest' | 'legs';
 export const ARMOR_SLOTS: ArmorSlot[] = ['head', 'chest', 'legs'];
 export const ARMOR_SLOT_LABEL: Record<ArmorSlot, string> = { head: 'Head', chest: 'Chest', legs: 'Legs' };
-export type PlaceKind = 'campfire' | 'furnace' | 'workbench' | 'bed' | 'sleeping_bag' | 'box' | 'torch' | 'flower_pot' | 'rug' | 'lantern' | 'table' | 'cat_bed' | 'lounger' | 'drum' | 'compass' | 'flag';
+export type PlaceKind = 'campfire' | 'furnace' | 'workbench' | 'bed' | 'sleeping_bag' | 'box' | 'torch' | 'flower_pot' | 'rug' | 'lantern' | 'table' | 'cat_bed' | 'lounger' | 'drum' | 'compass' | 'flag' | 'raft_engine';
 export type GatherKind = 'wood' | 'stone' | 'ore';
 export type ItemKind = 'resource' | 'tool' | 'food' | 'placeable' | 'plan' | 'armor' | 'seed';
 
@@ -318,6 +318,11 @@ export const ITEMS = {
     id: 'compass', name: 'Compass', stack: 1, kind: 'placeable', place: 'compass',
     desc: 'A ship\u2019s compass on a stand. Set it on a raft or a boat: it shows north, south, east and west, a little house points the way home to the island, and the screen under it says how far away it is. With a compass aboard you can steer through the storm past the reef and out to the open sea.',
     icon: svg('<rect x="13" y="18" width="6" height="11" fill="#7a5532"/><circle cx="16" cy="12" r="9" fill="#c99a3c"/><circle cx="16" cy="12" r="7" fill="#1f3140"/><path d="M16 5l2 7h-4z" fill="#e8452e"/><path d="M16 19l-2-7h4z" fill="#f4f1e6"/>'),
+  },
+  raft_engine: {
+    id: 'raft_engine', name: 'Raft Engine', stack: 1, kind: 'placeable', place: 'raft_engine',
+    desc: 'A big water bottle full of butterflies on a stand of humming tech. Set it on your raft facing the way you want to go and press E to switch it on: the butterflies beat their wings and push the raft along, no rowing needed. Use the oar to steer.',
+    icon: svg('<rect x="9" y="25" width="14" height="4" fill="#3d4348"/><rect x="11" y="19" width="10" height="7" fill="#5a6168"/><circle cx="19" cy="22" r="1.3" fill="#62ff9a"/><path d="M14 19v-2h4v2z" fill="#2f6fd6"/><rect x="9" y="4" width="14" height="14" rx="3" fill="#9fd2f0" opacity=".85"/><path d="M13 9l-3-2v4zM13 9l3-2v4z" fill="#f28a1a"/><path d="M19 13l-3-2v4zM19 13l3-2v4z" fill="#2f7bff"/><path d="M21 21c4 0 4 4 2 6" stroke="#d8352a" fill="none" stroke-width="1.2"/>'),
   },
   door: {
     id: 'door', name: 'Door', stack: 5, kind: 'resource',

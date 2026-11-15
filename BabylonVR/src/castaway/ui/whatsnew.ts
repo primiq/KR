@@ -6,8 +6,10 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
-        date: "2026-12-14", title: "Real-looking icebergs",
+        date: "2026-12-14", title: "Butterfly power and real-looking icebergs",
         items: [
+            "New at the workbench: the Raft Engine (6 metal, 4 wood, 6 fibre, 3 berries). A big water bottle full of butterflies on a stand of humming tech, tubes and wires. Set it on your raft facing the way you want to go and press E: the butterflies beat their wings and push the raft along, no rowing needed.",
+            "Take the oar to steer while the engine pushes. Press E again to switch it off and the raft glides to a stop. Everybody aboard sees the butterflies at work.",
             "Icebergs now look like real ice: snow-white tops, pale blue walls with deep blue veins and layers, a bright turquoise band where the waves wear at them, and deep blue fading to navy under the water.",
             "Light seems to shine through their edges, and at night they glow a cold blue.",
         ],
