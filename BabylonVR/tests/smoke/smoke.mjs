@@ -21,6 +21,7 @@ async function page(browser, opts = {}) {
 }
 
 async function check(name, fn) {
+  if (process.env.ONLY && !name.includes(process.env.ONLY)) return;
   const t0 = Date.now();
   try { await fn(); results.push([name, 'ok', Date.now() - t0]); }
   catch (e) { results.push([name, 'FAIL: ' + (e.message || e).toString().slice(0, 300), Date.now() - t0]); }
@@ -55,9 +56,11 @@ async function main() {
       const p = await page(browser);
       await boot(p, 'low');
       const mark = await p.evaluate(() => { window.game.inv.add('rock', 7); window.board.menuActions.save(); return window.game.inv.count('rock'); });
-      await p.reload();
+      // (`?go` always starts a fresh island: come back the way a player does, with Continue)
+      await p.goto(`${BASE}/index.html?quality=low`);
+      await p.click('#continue');
       await p.waitForFunction(() => window.game && window.player, null, { polling: 1000 });
-      await p.waitForTimeout(2000);
+      await p.waitForTimeout(3000);
       const after = await p.evaluate(() => window.game.inv.count('rock'));
       if (after !== mark) throw new Error(`stones before ${mark}, after reload ${after}`);
       noErrors(p); await p.context().close();

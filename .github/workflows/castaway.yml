@@ -26,3 +26,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npx vite build
+      # browser smoke tests (tests/smoke/smoke.mjs): boots, save round trip, customise, phone layout; about 4 minutes
+      - run: npm i --no-save playwright@1.63.0 && npx playwright install --with-deps chromium
+      - run: npm run smoke
+        timeout-minutes: 15

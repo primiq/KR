@@ -70,6 +70,10 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Production plan item 29**: browser smoke tests in `tests/smoke/smoke.mjs` (`npm run smoke`, `ONLY=<name>` runs one,
+  `BASE=<url>` tests another server), run in the GitHub workflow after the build. Note: `?go` always starts a fresh
+  island; the save test comes back with Continue.
+
 - **Production plan items 31 and 32**: `docs/RELEASE.md` (checklist, rollback, last known good commit) and `CREDITS.md`
   (libraries with licences, assets with their terms; three marked for the owner to confirm), Settings > Credits.
 

@@ -150,11 +150,11 @@ vertices in about 1400 meshes.
     what saves and multiplayer depend on), `seafeatures`, `arctic`, `planIslets` node order and count (832 nodes
     today: a test that fails if the count or the first/last positions change), `net/outfit.ts` parse and migrate,
     `net/save.ts` migrate, recipes (every recipe's inputs and outputs exist in `ITEMS`), `GRIPS` covers every item.
-29. **Smoke tests in the browser.** Turn the session's ad hoc harness into `tests/smoke/*.mjs` run by one npm script:
+29. DONE (tests/smoke/smoke.mjs, `npm run smoke`, about 4 minutes, also in CI: boots on Low and High, save and Continue round trip, customise with each body, phone Settings fit. Not covered: two players in a room, too slow headless) **Smoke tests in the browser.** Turn the session's ad hoc harness into `tests/smoke/*.mjs` run by one npm script:
     boots to Play on low and high; real Play flow with the warm-up; a save and reload round trip; two pages in one
     room (host and guest: join, see each other, chop a tree, see it fall on both, place a structure, leave); customise
     with each body; an emulated phone boots and the Settings and crafting pages fit. Each fails on any page error.
-30. DONE (typecheck, unit tests, build; browser smoke tests still to add) **CI.** A GitHub Actions workflow on push: typecheck, unit tests, build, and the smoke tests that run in under
+30. DONE (typecheck, unit tests, build, browser smoke tests) **CI.** A GitHub Actions workflow on push: typecheck, unit tests, build, and the smoke tests that run in under
     10 minutes headless. Cloudflare builds only what is on master, so a red check should be seen quickly.
 31. DONE (docs/RELEASE.md, with rollback and a last known good commit) **Release checklist** in `docs/RELEASE.md`: bump What's new, run smoke tests, check the Cloudflare build went green
     and the menu shows the new version, test join between an old and a new tab, test the phone. Keep a short
