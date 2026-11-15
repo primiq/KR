@@ -49,11 +49,11 @@ vertices in about 1400 meshes.
 3. DONE **No HTML injection.** 21 uses of `innerHTML`. Player-supplied text is escaped where I looked (`esc(p.name)`,
    narrator), and the others interpolate constants, but audit all 21: anything from the network or from user input
    must go through `textContent` or `esc`. Chat is preset phrases only: keep it that way.
-4. **Errors are visible.** `ui/diag.ts` already catches errors for `?diag`. Add: after an uncaught error in the main
+4. DONE **Errors are visible.** `ui/diag.ts` already catches errors for `?diag`. Add: after an uncaught error in the main
    loop, keep the game running if it can, count errors, and after 3 in 10 s show a small "Something went wrong"
    bar with Reload and "Copy details" (version, device, last errors, no personal data). No outside reporting service
    unless the owner asks for one.
-4b. **Anonymous usage reporting** (owner said yes). The Worker serves the static site; give it a tiny script
+4b. DONE (level event still to add: levels have no single entry point) **Anonymous usage reporting** (owner said yes). The Worker serves the static site; give it a tiny script
    (`worker/index.ts`, `main` in `wrangler.jsonc`) with a `POST /api/e` endpoint writing to Workers Analytics Engine
    (binding `EVENTS`), every other path to `env.ASSETS`. The game sends a few events (session start with device class,
    quality and body; Play pressed; level entered; multiplayer joined; errors counted; session length on pagehide via

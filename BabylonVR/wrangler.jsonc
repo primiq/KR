@@ -4,8 +4,13 @@
   // Build command = npm run build:cf, Deploy command = npx wrangler deploy.
   "name": "kr",
   "compatibility_date": "2026-10-01",
+  // the game is static files; the Worker only answers /api/e (anonymous usage events, logged: see worker/index.ts)
+  "main": "./worker/index.ts",
   "assets": {
     "directory": "./dist",
+    "binding": "ASSETS",
     "not_found_handling": "404-page"
-  }
+  },
+  // (the usage events are log lines: Workers Logs keeps them to read and query in the dashboard)
+  "observability": { "enabled": true, "head_sampling_rate": 1 }
 }

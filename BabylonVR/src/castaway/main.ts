@@ -1,4 +1,5 @@
 import { diagEngine, diagStage, SAFE } from "./ui/diag";
+import { setTelemetry, startTelemetry, telemetryOn, track } from "./net/telemetry";
 import { SAX as SUB_SAX, SAZ as SUB_SAZ } from "./world/sub";
 import { coldAt, inSeaWorld } from "./world/arctic";
 import { ArcticView, Snowfall } from "./world/arcticView";
@@ -159,6 +160,14 @@ async function main() {
     // the start (nothing here can be switched later without rebuilding every shader): no post-processing, room for 5 lights
     // not 8 (the moon and the lightning ride on the sun and the sky fill light), two fire lights not three
     const headset = isProbablyHeadset() || params.has("headset");
+    // anonymous usage (Settings > Privacy): what kind of device, which quality, which body
+    startTelemetry(__CASTAWAY_VERSION__);
+    track("start", { dev: headset ? "headset" : "ontouchstart" in window && navigator.maxTouchPoints > 0 ? "touch" : "desktop", q: q.name, body: getOutfit()[7] === 1 ? "bora" : "classic" });
+    {
+        const box = $<HTMLInputElement>("telemetry-on");
+        box.checked = telemetryOn();
+        box.addEventListener("change", () => setTelemetry(box.checked));
+    }
     if (headset) { lightRoom.n = 5; StructureManager.POOL = 2; toneMapOwnShaders(); }
     const qSel = $<HTMLSelectElement>("quality");
     qSel.value = getPref("castaway.quality") ?? "auto";
@@ -1324,6 +1333,7 @@ async function main() {
     window.addEventListener("beforeunload", (e) => { if (started && !leaving) { e.preventDefault(); e.returnValue = ""; } });
     const begin = () => {
         diagStage("playing");
+        track("play", { vr: !!vrActive() });
         started = true;
         setNameLocked(true);
         settle();
@@ -1610,6 +1620,7 @@ async function main() {
             let session: Session;
             try { session = await Session.host(netKind, myName(), pvp, wid, old); }
             catch (e) { if (!old) throw e; session = await Session.host(netKind, myName(), pvp, wid); }
+            track("mp", { as: "host" });
             setPref(roomKey, session.code);
             guestWorld = false;
             attach(session);
@@ -1634,6 +1645,7 @@ async function main() {
         if (started && !guestWorld) doSave();
         try {
             const { session, snap, hour } = await Session.join(netKind, code, myName());
+            track("mp", { as: "join" });
             clock.hour = hour;
             wid = session.wid || wid;
             guestWorld = true;

@@ -6,6 +6,13 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-12-09", title: "Fewer surprises",
+        items: [
+            "If something goes wrong in the game, a small bar now says so, with Reload and Copy details (to send to the developer), instead of a wall of developer text.",
+            "Settings > Privacy: the game can send anonymous usage data (which kind of device, quality, sessions, errors) to help make it better. No names, chat or pictures. Switch it off there at any time.",
+        ],
+    },
+    {
         date: "2026-12-08", title: "Your island is safer",
         items: [
             "Every save keeps the one before it: if a save is ever damaged, the game loads the previous one and tells you.",

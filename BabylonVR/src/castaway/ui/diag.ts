@@ -3,6 +3,7 @@
 // address, and by itself as soon as something goes wrong (an uncaught error, the graphics lost). It is plain HTML updated
 // by a timer, so it stays readable even when the 3D view has stopped; a screenshot of it says where things stand.
 import type { Engine, Scene } from "@babylonjs/core";
+import { track } from "../net/telemetry";
 
 const on = new URLSearchParams(location.search).has("diag");
 const t0 = performance.now();
@@ -45,9 +46,35 @@ function draw() {
 
 function show() { shown = true; draw(); }
 
+/** recent error times: three within ten seconds bring up the "something went wrong" bar (once) */
+const recent: number[] = [];
+let barShown = false, reported = 0;
 function addError(msg: string) {
   errors.push(`[${sec(performance.now() - t0)}] ${msg}`.slice(0, 300));
-  show();
+  if (reported < 5) { reported++; track('err', { m: msg.slice(0, 40) }); }
+  // the panel itself only with ?diag (it is a developer's view); players get a small bar when things go badly wrong
+  if (on) { show(); return; }
+  const now = performance.now();
+  recent.push(now); while (recent.length && now - recent[0] > 10_000) recent.shift();
+  if (recent.length >= 3 && !barShown) errorBar();
+}
+
+/** a quiet bar at the bottom: the game goes on if it can; reload, or copy what went wrong to send to the developer */
+function errorBar() {
+  barShown = true;
+  const bar = document.createElement('div');
+  bar.id = 'err-bar';
+  bar.style.cssText = 'position:fixed;left:50%;top:calc(48px + env(safe-area-inset-top));transform:translateX(-50%);z-index:2147483646;display:flex;gap:10px;align-items:center;max-width:min(94vw,560px);padding:10px 12px;border-radius:12px;background:rgba(20,26,30,.92);color:#fff;font:600 14px/1.35 system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.4)';
+  const txt = document.createElement('span'); txt.textContent = 'Something went wrong in the game.'; txt.style.flex = '1';
+  const btn = (label: string, f: () => void) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.style.cssText = 'border:0;border-radius:8px;padding:7px 11px;font:inherit;cursor:pointer;background:#2fd3c4;color:#05282e'; b.addEventListener('click', f); return b; };
+  const copy = btn('Copy details', () => {
+    const ver = document.getElementById('version')?.textContent || '?';
+    const text = [`Castaway ${ver}`, navigator.userAgent, `gpu: ${gpu}`, `stage: ${stage}`, ...errors.slice(-8)].join('\n');
+    void navigator.clipboard?.writeText(text).then(() => { copy.textContent = 'Copied'; }).catch(() => { copy.textContent = 'Could not copy'; });
+  });
+  const close = btn('×', () => bar.remove()); close.style.background = 'transparent'; close.style.color = '#fff';
+  bar.append(txt, btn('Reload', () => location.reload()), copy, close);
+  document.body.appendChild(bar);
 }
 
 window.addEventListener("error", (e) => addError(e.message || String(e.error)));

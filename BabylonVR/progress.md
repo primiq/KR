@@ -19,7 +19,7 @@ through rings of open sea to an Arctic. Multiplayer is peer to peer (PeerJS), th
 - Never touch the `primiq/castaway` repo. Work only in `primiq/KR`, directly on `master`, push to `origin master`. No PRs.
 - **No long dashes ever** (em dash, en dash): not in code, comments, commit messages, game text, What's new, or replies.
 - Every player-facing change adds an entry at the TOP of `UPDATES` in `src/castaway/ui/whatsnew.ts` in the same commit
-  (its date drives the "new" dot on the menu). Dates so far run ahead of the calendar (latest 2026-12-08): keep going up.
+  (its date drives the "new" dot on the menu). Dates so far run ahead of the calendar (latest 2026-12-09): keep going up.
 - Commits end with the Co-Authored-By and Claude-Session lines; no model names or IDs in commits.
 - Performance changes must be measured (an earlier perf change was rolled back).
 - Keep this file (`progress.md`) current.
@@ -69,6 +69,14 @@ screen, deep sea abyss with glowing creatures (GlowLayer) and chests, open sea, 
 pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flute, butterflies, gulls, whales, dolphins.
 
 ## Recent work (newest first)
+
+- **Production plan items 4 and 4b, errors and usage reporting**: `ui/diag.ts` shows its panel only with `?diag`;
+  otherwise 3 errors in 10 s bring up a bar (Reload, Copy details, close). Usage: `net/telemetry.ts` (track /
+  startTelemetry; events start, play, mp, err, end; random per-browser id `castaway.anon`; nothing from localhost;
+  Settings > Privacy toggle `castaway.telemetry`). The site now has a Worker (`worker/index.ts`, `main` in both
+  `wrangler.jsonc`): `POST /api/e` writes one log line per event; everything else is the static assets. Read them in
+  the Cloudflare dashboard: Workers & Pages > kr > Observability (Workers Logs, `observability.enabled`). No Analytics
+  Engine (it needs enabling in the dashboard first, else deploys fail). Tested with `wrangler dev` locally.
 
 - **Production plan item 3, HTML injection audit**: every `innerHTML` with a variable checked. Player names and chat
   reach the page only through `textContent` (hud.message, chat log) or `esc` (room panel); the rest are game constants
