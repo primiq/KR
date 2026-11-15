@@ -82,10 +82,10 @@ vertices in about 1400 meshes.
    re-encoding at a lower bitrate (question 2). The narrator clips: confirm they are fetched on demand.
 10. BLOCKED (meshopt even in filter mode packs normals/UVs as integers; the mirror reads raw arrays, so Bora came out streaked. Needs the mirror to read normalised attributes first, or GPU skinning, item 13) **Bora model.** 1.8 MB, 15.9k vertices. Add meshopt compression in `scripts/build-bora.mjs` (the loader supports it),
     and make the skin texture 1024 px (it is recoloured at 512 px anyway). Target under 700 KB.
-11. **PWA basics.** Add a web manifest (name, icons in PNG at 192 and 512, `display: fullscreen`, landscape) so the game
+11. DONE **PWA basics.** Add a web manifest (name, icons in PNG at 192 and 512, `display: fullscreen`, landscape) so the game
     can be installed on phones and opens without browser bars. No service worker yet (stale-cache risk); note it as a
     later option.
-12. **Headers.** In `public/_headers` add `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`, and a
+12. DONE (CSP in report-only mode first: enforce after real sessions show nothing blocked) **Headers.** In `public/_headers` add `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`, and a
     Content-Security-Policy that allows what the game uses (self, blob:, data:, the PeerJS broker, STUN/TURN). Test
     multiplayer and VR after adding it; a wrong CSP breaks things silently.
 

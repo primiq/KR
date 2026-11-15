@@ -6,6 +6,13 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-12-10", title: "Install it on your phone",
+        items: [
+            "On a phone or tablet you can now add the game to your home screen (your browser's menu, Install or Add to home screen). It then opens full screen, without the browser's bars.",
+            "The game downloads less: the developers' test scene is no longer sent with it, and the music is smaller.",
+        ],
+    },
+    {
         date: "2026-12-09", title: "Fewer surprises",
         items: [
             "If something goes wrong in the game, a small bar now says so, with Reload and Copy details (to send to the developer), instead of a wall of developer text.",

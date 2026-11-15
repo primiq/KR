@@ -19,7 +19,7 @@ through rings of open sea to an Arctic. Multiplayer is peer to peer (PeerJS), th
 - Never touch the `primiq/castaway` repo. Work only in `primiq/KR`, directly on `master`, push to `origin master`. No PRs.
 - **No long dashes ever** (em dash, en dash): not in code, comments, commit messages, game text, What's new, or replies.
 - Every player-facing change adds an entry at the TOP of `UPDATES` in `src/castaway/ui/whatsnew.ts` in the same commit
-  (its date drives the "new" dot on the menu). Dates so far run ahead of the calendar (latest 2026-12-09): keep going up.
+  (its date drives the "new" dot on the menu). Dates so far run ahead of the calendar (latest 2026-12-10): keep going up.
 - Commits end with the Co-Authored-By and Claude-Session lines; no model names or IDs in commits.
 - Performance changes must be measured (an earlier perf change was rolled back).
 - Keep this file (`progress.md`) current.
@@ -69,6 +69,11 @@ screen, deep sea abyss with glowing creatures (GlowLayer) and chests, open sea, 
 pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flute, butterflies, gulls, whales, dolphins.
 
 ## Recent work (newest first)
+
+- **Production plan items 11 and 12**: `public/manifest.webmanifest` (fullscreen, landscape, icons 192/512 PNG made
+  from `icon.svg`, plus maskable), linked from `index.html`. `public/_headers`: nosniff, same-origin referrer,
+  Permissions-Policy (xr and microphone self only), and a Content-Security-Policy in REPORT-ONLY mode (it logs in the
+  console what it would block). Enforce it once real sessions (multiplayer, VR) log nothing.
 
 - **Production plan items 9 and 10**: the song re-encoded at 112 kbps without its embedded cover art (625 to 359 KB).
   Bora with meshopt compression was tried and dropped: even the filter mode packs normals and UVs as integers, and the
