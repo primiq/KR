@@ -70,6 +70,11 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Production plan items 5 and 6, versions**: `PlayerInfo.bv` carries each player's version (sent in `hi`, the host's
+  own set at hosting); `net/sync.ts` compares build numbers (`buildNo`, the `v1.N` part) with the host and each joiner
+  and tells the one behind to reload. `main.ts` fetches `index.html` every 10 minutes and, if the live build number is
+  higher, says once that a new version is out (menu version line and HUD); it never reloads by itself.
+
 - **Production plan items 4 and 4b, errors and usage reporting**: `ui/diag.ts` shows its panel only with `?diag`;
   otherwise 3 errors in 10 s bring up a bar (Reload, Copy details, close). Usage: `net/telemetry.ts` (track /
   startTelemetry; events start, play, mp, err, end; random per-browser id `castaway.anon`; nothing from localhost;

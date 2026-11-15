@@ -5,7 +5,10 @@ import { eventOk, RateLimit, stateOk } from "./guard";
 // The host owns the room: it assigns ids, hands joiners a snapshot of the world, and relays everything.
 import { hostRoom, joinRoom, newCode, type Link, type Room, type TransportKind } from './transport';
 
-export interface PlayerInfo { id: number; name: string; /** the look they picked in the customise screen (see outfit.ts) */ look?: number[] }
+export interface PlayerInfo { id: number; name: string; /** the look they picked in the customise screen (see outfit.ts) */ look?: number[]; /** the game version they run (the menu's version line) */ bv?: string }
+
+/** the build number in a version line ("v1.390 · ..." -> 390), 0 if unknown */
+export const buildNo = (v: string | undefined) => +(/v1\.(\d+)/.exec(v ?? '')?.[1] ?? 0);
 
 /** Compact state of one player, sent ~12 times a second. */
 export interface PState {
@@ -92,7 +95,7 @@ export class Session {
     const s = new Session('host', code, name);
     s.pvp = pvp; s.wid = wid;
     s.room = await hostRoom(kind, code);
-    s.players.set(0, { id: 0, name, look: getOutfit() });
+    s.players.set(0, { id: 0, name, look: getOutfit(), bv: __CASTAWAY_VERSION__ });
     s.room.onLink = (l) => s.acceptLink(l);
     return s;
   }
@@ -122,7 +125,7 @@ export class Session {
         resolve({ session: s, snap: m.snap, hour: m.hour });
       };
       link.onClose = () => { clearTimeout(timer); reject(new Error('Connection closed')); };
-      link.send({ t: 'hi', name, v: PROTOCOL, look: getOutfit() });
+      link.send({ t: 'hi', name, v: PROTOCOL, look: getOutfit(), bv: __CASTAWAY_VERSION__ });
     });
   }
 
@@ -138,7 +141,7 @@ export class Session {
         for (const [pid, p] of this.players) if (pid !== 0 && p.name === nm) { this.links.get(pid)?.close(); this.drop(pid); }
         if (this.players.size >= MAX_PLAYERS) { l.send({ t: 'full' }); l.close(); return; }
         id = this.nextId++;
-        const info: PlayerInfo = { id, name: this.uniqueName(nm), look: parseOutfit(m.look) ?? undefined };
+        const info: PlayerInfo = { id, name: this.uniqueName(nm), look: parseOutfit(m.look) ?? undefined, bv: typeof m.bv === 'string' ? m.bv.slice(0, 60) : '' };
         this.players.set(id, info);
         this.links.set(id, l);
         this.rx.set(id, now());

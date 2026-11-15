@@ -59,11 +59,11 @@ vertices in about 1400 meshes.
    quality and body; Play pressed; level entered; multiplayer joined; errors counted; session length on pagehide via
    `sendBeacon`), batched, no names, no ids beyond a random per-browser id, nothing from chat or paintings. A Settings
    toggle "Send anonymous usage data" (on by default) and a line in the credits page saying what is sent.
-5. **Version mismatch in multiplayer is explained.** The outfit change (7 to 9 numbers) already makes old clients show
+5. DONE **Version mismatch in multiplayer is explained.** The outfit change (7 to 9 numbers) already makes old clients show
    a random look. Send the build number in the join handshake; when host and guest differ, show both players "You and
    the host are on different versions: reload the page" rather than failing in odd ways. `PROTOCOL` exists: bump it
    whenever a message changes shape, and make the mismatch message name the fix.
-6. **Stale pages.** `index.html` is served `no-cache`, bundles are immutable: good. Add a check every 10 minutes (fetch
+6. DONE **Stale pages.** `index.html` is served `no-cache`, bundles are immutable: good. Add a check every 10 minutes (fetch
    `index.html` head, compare the injected version) and a quiet "New version available: reload when you like" line in
    the menu. Never reload by itself mid-game.
 

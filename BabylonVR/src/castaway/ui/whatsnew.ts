@@ -9,6 +9,7 @@ export const UPDATES: Update[] = [
         date: "2026-12-09", title: "Fewer surprises",
         items: [
             "If something goes wrong in the game, a small bar now says so, with Reload and Copy details (to send to the developer), instead of a wall of developer text.",
+            "Playing with friends on different versions of the game? Whoever is behind is now told to reload the page. And when a new version comes out while you play, the game says so once (it never reloads by itself).",
             "Settings > Privacy: the game can send anonymous usage data (which kind of device, quality, sessions, errors) to help make it better. No names, chat or pictures. Switch it off there at any time.",
         ],
     },

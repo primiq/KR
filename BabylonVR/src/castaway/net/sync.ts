@@ -9,7 +9,7 @@ import { Avatars, playerColor } from "./avatars";
 import { parseOutfit } from "./outfit";
 import { F_LEVEL } from "../world/warp";
 import { F_LOUNGE } from "../game/structures";
-import { type PState, Session, type VRPoseData } from "./session";
+import { buildNo, type PlayerInfo, type PState, Session, type VRPoseData } from "./session";
 import { applyWorld, captureWorld, packInv, unpackInv } from "./world";
 
 export class WorldSync {
@@ -173,7 +173,14 @@ export class WorldSync {
 
         // ---- remote events -> world
         session.onEvent = (from, e) => this.apply(from, e);
-        session.onJoin = (p) => game.hud.message(`${p.name} joined the island`);
+        // (players on different versions: whoever is behind is told to reload; the room still works as far as it can)
+        const versions = (p: PlayerInfo) => {
+            const mine = buildNo(__CASTAWAY_VERSION__), theirs = buildNo(p.bv);
+            if (!mine || !theirs || mine === theirs) return;
+            game.hud.message(theirs > mine ? `${p.name} has a newer version of the game: reload the page to update (your island is saved).` : `${p.name} is on an older version of the game: they should reload the page.`);
+        };
+        session.onJoin = (p) => { game.hud.message(`${p.name} joined the island`); versions(p); };
+        for (const p of session.players.values()) if (p.id !== session.myId) versions(p);
         session.onLeave = (p) => {
             game.hud.message(`${p.name} left`);
             for (const [k, u] of this.users) if (u === p.id) this.users.delete(k);

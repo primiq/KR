@@ -162,6 +162,23 @@ async function main() {
     const headset = isProbablyHeadset() || params.has("headset");
     // anonymous usage (Settings > Privacy): what kind of device, which quality, which body
     startTelemetry(__CASTAWAY_VERSION__);
+    // a newer version released while this page is open: say so (once), never reload by itself
+    {
+        let said = false;
+        const check = async () => {
+            if (said || document.hidden) return;
+            try {
+                const html = await (await fetch(`./index.html?v=${Date.now()}`, { cache: "no-store" })).text();
+                const live = /class="version">([^<]*)</.exec(html)?.[1] ?? "";
+                const n = +(/v1\.(\d+)/.exec(live)?.[1] ?? 0), mine = +(/v1\.(\d+)/.exec(__CASTAWAY_VERSION__)?.[1] ?? 0);
+                if (!n || !mine || n <= mine) return;
+                said = true;
+                $("version").textContent = `${__CASTAWAY_VERSION__} · a new version is out: reload the page`;
+                (window as unknown as { game?: { hud?: { message(t: string): void } } }).game?.hud?.message("A new version of the game is out: reload the page when you like (your island is saved).");
+            } catch { /* offline: try again later */ }
+        };
+        setInterval(() => void check(), 10 * 60_000);
+    }
     track("start", { dev: headset ? "headset" : "ontouchstart" in window && navigator.maxTouchPoints > 0 ? "touch" : "desktop", q: q.name, body: getOutfit()[7] === 1 ? "bora" : "classic" });
     {
         const box = $<HTMLInputElement>("telemetry-on");
