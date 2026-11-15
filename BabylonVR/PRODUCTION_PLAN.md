@@ -78,9 +78,9 @@ vertices in about 1400 meshes.
    present, the Bora model and code (only when someone in the room uses that body). Each becomes its own chunk loaded
    on entry with the existing loading screen. Check for a hitch on first entry and prewarm where there is one.
    Measure: main page bytes before Play should drop by at least a third.
-9. **Audio.** `ambience` 1 MB, `song` 612 KB, `summon` 428 KB as mp3: load after first frame, not before Play; consider
+9. DONE (song 625 to 359 KB; the 1 MB ambience was the playground's; summon goes with Mario) **Audio.** `ambience` 1 MB, `song` 612 KB, `summon` 428 KB as mp3: load after first frame, not before Play; consider
    re-encoding at a lower bitrate (question 2). The narrator clips: confirm they are fetched on demand.
-10. **Bora model.** 1.8 MB, 15.9k vertices. Add meshopt compression in `scripts/build-bora.mjs` (the loader supports it),
+10. BLOCKED (meshopt even in filter mode packs normals/UVs as integers; the mirror reads raw arrays, so Bora came out streaked. Needs the mirror to read normalised attributes first, or GPU skinning, item 13) **Bora model.** 1.8 MB, 15.9k vertices. Add meshopt compression in `scripts/build-bora.mjs` (the loader supports it),
     and make the skin texture 1024 px (it is recoloured at 512 px anyway). Target under 700 KB.
 11. **PWA basics.** Add a web manifest (name, icons in PNG at 192 and 512, `display: fullscreen`, landscape) so the game
     can be installed on phones and opens without browser bars. No service worker yet (stale-cache risk); note it as a

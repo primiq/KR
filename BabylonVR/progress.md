@@ -70,6 +70,11 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Production plan items 9 and 10**: the song re-encoded at 112 kbps without its embedded cover art (625 to 359 KB).
+  Bora with meshopt compression was tried and dropped: even the filter mode packs normals and UVs as integers, and the
+  mirror's CPU skinning reads the raw arrays (streaked skin). The loader keeps `setMeshoptDecoder` for when the mirror
+  reads normalised attributes (or after GPU skinning, plan item 13).
+
 - **Production plan item 7, playground out of the public build** (owner's choice): `vite.config.ts` builds only
   `index.html`; plugin `castaway-no-playground` deletes `dist/assets/sponza`, `dist/models/woman.glb` and
   `dist/playground.html` after the build. `npm run fetch-assets` no longer downloads Sponza (`fetch-assets:playground`

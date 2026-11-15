@@ -8,6 +8,7 @@
 // skinned meshes. The puppet's wrists are moved onto his hands, so whatever the puppet holds sits in Bora's grip.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import boraUrl from '../assets/bora/bora.glb?url';
 import type { Look, PlayerRig } from './playerModel';
@@ -46,7 +47,8 @@ export function loadBora(onReady?: () => void) {
   if (T) { onReady?.(); return; }
   if (onReady) waiting.push(onReady);
   loading ??= (async () => {
-    const gltf = await new GLTFLoader().loadAsync(boraUrl);
+    // (the model is meshopt-compressed: scripts/build-bora.mjs)
+    const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(boraUrl);
     const scene = gltf.scene;
     // the pose maths below works in "rig space": the puppet's rig group, which faces -Z; Bora faces +Z, so he is turned
     const holder = new THREE.Group();

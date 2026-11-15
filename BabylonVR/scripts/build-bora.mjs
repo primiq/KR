@@ -11,7 +11,7 @@
 import { NodeIO, VertexLayout } from "@gltf-transform/core";
 import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
 import { prune, simplifyPrimitive, weldPrimitive, dedup } from "@gltf-transform/functions";
-import { MeshoptSimplifier } from "meshoptimizer";
+import { MeshoptEncoder, MeshoptSimplifier } from "meshoptimizer";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -39,8 +39,9 @@ const inv = (m) => {
 };
 
 await MeshoptSimplifier.ready;
+await MeshoptEncoder.ready;
 // (separate vertex buffers, not interleaved: the game's mirror reads positions, joints and weights as plain arrays)
-const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).setVertexLayout(VertexLayout.SEPARATE);
+const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ "meshopt.encoder": MeshoptEncoder }).setVertexLayout(VertexLayout.SEPARATE);
 const doc = await io.read(SRC);
 const R = doc.getRoot();
 
@@ -162,6 +163,8 @@ for (const n of meshNodes) {
 }
 
 await doc.transform(dedup(), prune({ keepAttributes: true, keepLeaves: true }));
+// (no meshopt compression: even its "filter" mode packs normals and UVs into small integers, which the game's mirror
+//  reads as plain floats: the skin and the shorts came out streaked. Tried 2026-11-15; 1.83 MB as plain floats.)
 await io.write(OUT, doc);
 let v = 0;
 for (const m of R.listMeshes()) for (const p of m.listPrimitives()) v += p.getAttribute("POSITION").getCount();
