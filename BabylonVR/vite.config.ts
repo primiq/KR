@@ -39,7 +39,7 @@ export default defineConfig(({ mode }) => ({
     // Castaway's 3D models (Bora) are bundled like its sound files (imported with ?inline)
     assetsInclude: ["**/*.glb"],
     optimizeDeps: { exclude: ["@babylonjs/havok"] },
-    // Keep bundled code apart from public/assets (Sponza + HDR fetched by `npm run fetch-assets`).
+    // Keep bundled code apart from public/assets (HDR and textures fetched by `npm run fetch-assets`).
     build: {
         target: "es2022",
         assetsDir: "bundle",

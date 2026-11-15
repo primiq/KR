@@ -12,7 +12,8 @@
     "fetch-assets:playground": "node scripts/fetch-assets.mjs --playground",
     "typecheck": "tsc --noEmit",
     "build:cf": "npm run fetch-assets && npm run build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "smoke": "node tests/smoke/smoke.mjs"
   },
   "dependencies": {
     "@babylonjs/core": "^9.32.0",
