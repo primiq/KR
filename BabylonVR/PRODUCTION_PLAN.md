@@ -53,7 +53,7 @@ vertices in about 1400 meshes.
    loop, keep the game running if it can, count errors, and after 3 in 10 s show a small "Something went wrong"
    bar with Reload and "Copy details" (version, device, last errors, no personal data). No outside reporting service
    unless the owner asks for one.
-4b. DONE (level event still to add: levels have no single entry point) **Anonymous usage reporting** (owner said yes). The Worker serves the static site; give it a tiny script
+4b. DONE (the level event is looked up every 2 s in the frame loop, since levels have no single entry point) **Anonymous usage reporting** (owner said yes). The Worker serves the static site; give it a tiny script
    (`worker/index.ts`, `main` in `wrangler.jsonc`) with a `POST /api/e` endpoint writing to Workers Analytics Engine
    (binding `EVENTS`), every other path to `env.ASSETS`. The game sends a few events (session start with device class,
    quality and body; Play pressed; level entered; multiplayer joined; errors counted; session length on pagehide via

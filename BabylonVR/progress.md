@@ -70,6 +70,9 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Usage reporting: level event**: main.ts checks every 2 s which level the player is in (warp, lava, desert, tiles,
+  hide, cats, campaign, town, locations, airstrip, skydive, sky) and sends `level` when it changes.
+
 - **Production plan items 20 and 8**: the customise rows are grouped (Body, Head, Clothes; `GROUPS` in
   `ui/customise.ts`), the Beard row shows only for Bora, a short-landscape layout in style.css. Item 8 (main bundle)
   measured and deferred: 3.0 MB gzip before Play, mostly the `@babylonjs/core` barrel (see the plan for why it waits).

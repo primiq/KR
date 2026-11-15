@@ -958,6 +958,7 @@ async function main() {
     await nextFrame();
     // ---- VR
     let xr: WebXRDefaultExperience | null = null;
+    let levelT = 0, lastLevel = "";
     let vrMode: import("./vr/vr").CastawayVR | null = null;
     const vrActive = () => !!vrMode?.active;
     if (navigator.xr && (await navigator.xr.isSessionSupported("immersive-vr").catch(() => false))) {
@@ -1160,6 +1161,13 @@ async function main() {
                 if (cat.active || campCat()) paws.update(dt, Math.hypot(player.vel.x, player.vel.z), player.vel.y, player.sprinting);
             }
             waterfall?.update(dt, player.pos.x, player.pos.z, game.under.active);
+            // usage reporting: which level the player is in (levels have no single entry point, so it is looked up here every 2 s)
+            if ((levelT -= dt) < 0) {
+                levelT = 2;
+                const where = game.warp.inLevel ? "warp" : lava.active ? "lava" : desert.active ? "desert" : trial.active ? "tiles" : hide.active ? "hide" : cat.active ? "cats"
+                    : camp.active ? "campaign" : game.under.town?.active ? "town" : locs.active ? "locations" : air.active ? "airstrip" : dive.active ? "skydive" : sky.active ? "sky" : "";
+                if (where !== lastLevel) { lastLevel = where; if (where) track("level", { n: where }); }
+            }
             {
                 const onIsland = !game.under.active && inSeaWorld(player.pos.x, player.pos.z) && player.pos.y < 120;
                 // (in a surfaced sub the top of the window is above the water: see subWaterline)
