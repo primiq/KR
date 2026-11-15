@@ -156,10 +156,10 @@ vertices in about 1400 meshes.
     with each body; an emulated phone boots and the Settings and crafting pages fit. Each fails on any page error.
 30. DONE (typecheck, unit tests, build; browser smoke tests still to add) **CI.** A GitHub Actions workflow on push: typecheck, unit tests, build, and the smoke tests that run in under
     10 minutes headless. Cloudflare builds only what is on master, so a red check should be seen quickly.
-31. **Release checklist** in `docs/RELEASE.md`: bump What's new, run smoke tests, check the Cloudflare build went green
+31. DONE (docs/RELEASE.md, with rollback and a last known good commit) **Release checklist** in `docs/RELEASE.md`: bump What's new, run smoke tests, check the Cloudflare build went green
     and the menu shows the new version, test join between an old and a new tab, test the phone. Keep a short
     "last known good" commit noted there for rolling back.
-32. PARTLY DONE (Mario replaced by Bob, his model and both clips removed, 2026-11-15) **Licences and credits.** List every third-party asset and library with its licence in `CREDITS.md` and link it from
+32. DONE (Mario replaced by Bob; CREDITS.md lists every library and asset, with "to confirm" on the Bora model, the narration and the Babylon assets textures; Settings > Credits in the game) **Licences and credits.** List every third-party asset and library with its licence in `CREDITS.md` and link it from
     the menu: Babylon.js, three.js, PeerJS, Havok, ez-tree, nipplejs, the Bora model (owner's own: confirm), the Mario
     model in `assets/mario` (question 4: this is a Nintendo character and should not ship in a public release), the
     song and narration, the HDR environments. Remove anything whose licence does not allow redistribution.

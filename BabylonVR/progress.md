@@ -70,6 +70,9 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Production plan items 31 and 32**: `docs/RELEASE.md` (checklist, rollback, last known good commit) and `CREDITS.md`
+  (libraries with licences, assets with their terms; three marked for the owner to confirm), Settings > Credits.
+
 - **Usage reporting: level event**: main.ts checks every 2 s which level the player is in (warp, lava, desert, tiles,
   hide, cats, campaign, town, locations, airstrip, skydive, sky) and sends `level` when it changes.
 

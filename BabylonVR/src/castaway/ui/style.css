@@ -358,8 +358,8 @@ body.inwarp #bottom, body.inwarp #compass, body.inwarp #prompt, body.inwarp #cro
 #menu .gfx-actions { display: flex; gap: 10px; }
 #menu .gfx-actions .ghost-btn { flex: 1; margin: 0; }
 #menu .gfx-actions .mbtn { flex: 1; padding: 10px; font-size: 16px; }
-#menu details.controls { margin-top: 14px; }
-#menu details.controls summary { cursor: pointer; font-weight: 700; opacity: .85; }
+#menu details.controls, #menu details.credits { margin-top: 14px; }
+#menu details.controls summary, #menu details.credits summary { cursor: pointer; font-weight: 700; opacity: .85; }
 #menu .menu-foot { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; margin-top: 26px; font-size: 12px; opacity: .6; }
 #menu .version { font-variant-numeric: tabular-nums; }
 @media (max-width: 420px) { #menu .gfx-grid { grid-template-columns: 1fr; } }
