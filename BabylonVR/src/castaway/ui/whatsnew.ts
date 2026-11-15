@@ -6,6 +6,13 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-12-14", title: "Real-looking icebergs",
+        items: [
+            "Icebergs now look like real ice: snow-white tops, pale blue walls with deep blue veins and layers, a bright turquoise band where the waves wear at them, and deep blue fading to navy under the water.",
+            "Light seems to shine through their edges, and at night they glow a cold blue.",
+        ],
+    },
+    {
         date: "2026-12-13", title: "Smoother sailing",
         items: [
             "A raft that is not a plain rectangle (one you have built out to the side) no longer cuts a hole in the water next to it, where you could see the sea floor.",

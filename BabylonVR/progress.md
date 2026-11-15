@@ -70,6 +70,10 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Iceberg material**: `world/arcticView.ts` gives bergs their own material (`bergMat`, the ice plugin with the `ICEBERG`
+  define): white tops, pale blue walls varying per facet, deep blue veins and strata, turquoise waterline notch, deep
+  blue to navy below, stronger blue edge glow. Floes and the land keep the old ice look.
+
 - **No random creak while sailing**: `world/boat.ts` played `sfx.creak()` on 30% of the 2 to 5 s hull-sound ticks; players
   heard it as hitting something. Removed; the splashes stay.
 

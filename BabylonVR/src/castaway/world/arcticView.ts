@@ -13,11 +13,11 @@ import { creviceAt, type Ice, ICE_R0, iceNear, iceWobble, inland, landHeight, ty
 interface Bind { sun: () => { x: number; y: number; z: number }; day: () => number; cut: () => [number, number, number, number] }
 
 class IcePlugin extends MaterialPluginBase {
-    constructor(material: Material, private readonly bind: Bind) {
-        super(material, "ArcticIce", 230, { ICEMAT: false });
+    constructor(material: Material, private readonly bind: Bind, private readonly berg = false) {
+        super(material, "ArcticIce", 230, { ICEMAT: false, ICEBERG: false });
         this._enable(true);
     }
-    override prepareDefines(defines: MaterialDefines): void { defines["ICEMAT"] = true; }
+    override prepareDefines(defines: MaterialDefines): void { defines["ICEMAT"] = true; defines["ICEBERG"] = this.berg; }
     override getClassName(): string { return "IcePlugin"; }
     override isCompatible(shaderLanguage: ShaderLanguage): boolean { return shaderLanguage === ShaderLanguage.GLSL; }
     override getUniforms() {
@@ -67,11 +67,35 @@ if (icCut.w > 0.5 && distance(vPositionW.xz, icCut.xy) < icCut.z) discard;
     ice *= 0.86 + 0.16 * n2;
     ice = mix(ice, vec3(0.80, 0.92, 0.98), smoothstep(0.55, 0.9, n2) * 0.35 * (1.0 - deep));
     surfaceAlbedo = mix(ice, snow, snowK);
+#ifdef ICEBERG
+    // an iceberg: white snow on top, pale blue walls (some faces freshly calved and bluer), deep blue veins and layers
+    // through it, a saturated turquoise band the waves have cut at the waterline, and deep blue to navy under the sea
+    {
+        vec3 Nb = normalize(vNormalW);
+        float face = icHash(floor(Nb * 4.0 + 0.5) + floor(P * 0.08));                     // one value per facet
+        float top = smoothstep(0.55, 0.85, Nb.y);
+        vec3 white = vec3(0.93, 0.96, 1.0) * (0.94 + 0.06 * n3);
+        vec3 pale = mix(vec3(0.66, 0.86, 0.98), vec3(0.42, 0.72, 0.95), face * face);
+        vec3 wall = mix(pale, white, smoothstep(0.35, 0.75, cNoise(P * vec3(0.12, 0.3, 0.12))) * 0.75);
+        float vein = smoothstep(0.58, 0.68, cNoise(P * vec3(0.22, 0.035, 0.22) + face)) * (1.0 - top);
+        wall = mix(wall, vec3(0.04, 0.26, 0.66), vein * 0.85);
+        float strata = smoothstep(0.62, 0.8, cNoise(vec3(P.x * 0.05, P.y * 0.9, P.z * 0.05)));
+        wall = mix(wall, vec3(0.30, 0.60, 0.90), strata * 0.35 * (1.0 - top));
+        vec3 above = mix(wall, white, top);
+        vec3 notch = mix(vec3(0.12, 0.62, 0.86), vec3(0.30, 0.78, 0.95), n3);
+        above = mix(notch, above, smoothstep(0.4, 2.6, P.y));
+        vec3 under = mix(vec3(0.10, 0.45, 0.80), vec3(0.02, 0.10, 0.30), clamp(-P.y / 22.0, 0.0, 1.0));
+        surfaceAlbedo = mix(under, above, smoothstep(-0.6, 0.3, P.y));
+    }
+#endif
 }
 #endif
 `,
             CUSTOM_FRAGMENT_UPDATE_MICROSURFACE: `#ifdef ICEMAT
 microSurface = mix(0.86, 0.12, icSnowK());
+#ifdef ICEBERG
+microSurface = mix(0.9, 0.35, smoothstep(0.55, 0.85, normalize(vNormalW).y));
+#endif
 #endif
 `,
             CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION: `#ifdef ICEMAT
@@ -86,6 +110,11 @@ microSurface = mix(0.86, 0.12, icSnowK());
     float h = icHash(cell);
     float wink = step(0.86, fract(h * 37.0 + dot(V, vec3(3.1, 4.7, 2.3)) * 1.6));
     float sp = step(0.985, h) * wink * snowK * icDay * smoothstep(45.0, 8.0, dist) * clamp(dot(N, icSun) * 2.0, 0.0, 1.0);
+#ifdef ICEBERG
+    // light coming through the berg: a stronger, bluer glow on the walls and the waterline, none on the snowy top
+    float wallK = 1.0 - smoothstep(0.55, 0.85, N.y);
+    glow = vec3(0.05, 0.30, 0.62) * (fr * 1.2 + 0.30) * wallK * (0.2 + 0.8 * icDay) * smoothstep(-3.0, 1.0, vPositionW.y);
+#endif
     finalEmissive += glow + vec3(1.6, 1.7, 1.8) * sp;
 }
 #endif
@@ -95,12 +124,12 @@ microSurface = mix(0.86, 0.12, icSnowK());
 }
 
 /** the ice material (`cut`: the far land's, with a hole round you where the close-up pieces are) */
-function iceMaterial(scene: Scene, name: string, bind: Bind, zOffset = 0): PBRMaterial {
+function iceMaterial(scene: Scene, name: string, bind: Bind, zOffset = 0, berg = false): PBRMaterial {
     const m = new PBRMaterial(name, scene);
     m.metallic = 0; m.roughness = 0.4; m.albedoColor = new Color3(1, 1, 1);
     m.environmentIntensity = 0.9;
     if (zOffset) m.zOffset = zOffset;
-    new IcePlugin(m, bind);
+    new IcePlugin(m, bind, berg);
     return m;
 }
 
@@ -110,6 +139,8 @@ interface Chunk { mesh: Mesh | null; key: string }
 
 export class ArcticView {
     private iceMat: PBRMaterial;
+    /** the icebergs' own look (deep blue to white): see ICEBERG in the plugin */
+    private bergMat: PBRMaterial;
     private landMat: PBRMaterial;
     private farMat: PBRMaterial;
     private poolMat: StandardMaterial;
@@ -130,6 +161,7 @@ export class ArcticView {
         this.bergR = lean ? 900 : BERG_R;
         const bind: Bind = { sun, day, cut: () => [0, 0, 0, 0] };
         this.iceMat = iceMaterial(scene, "arcticIce", bind);
+        this.bergMat = iceMaterial(scene, "arcticBerg", bind, 0, true);
         this.landMat = iceMaterial(scene, "arcticLand", bind);
         this.farMat = iceMaterial(scene, "arcticFar", { ...bind, cut: () => this.cut }, 2);
         const pm = new StandardMaterial("arcticPool", scene);
@@ -213,7 +245,7 @@ export class ArcticView {
         const nor: number[] = []; VertexData.ComputeNormals(pos, idx, nor); vd.normals = nor;
         vd.applyToMesh(m);
         m.convertToFlatShadedMesh();
-        m.material = this.iceMat; m.isPickable = false; m.receiveShadows = true;
+        m.material = floes ? this.iceMat : this.bergMat; m.isPickable = false; m.receiveShadows = true;
         return m;
     }
 
