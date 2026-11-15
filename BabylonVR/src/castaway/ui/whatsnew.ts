@@ -11,6 +11,7 @@ export const UPDATES: Update[] = [
             "Settings > Sound now has sliders for the master volume, the music and the voices.",
             "Settings > Controls: look speed (mouse and touch), field of view, invert up and down, and Reduce camera motion, which turns off the view bobbing and the screen shaking.",
             "Everything applies as you change it and is remembered.",
+            "The Your castaway screen is tidier: its choices are grouped into Body, Head and Clothes, and the beard choice only shows for Bora.",
         ],
     },
     {

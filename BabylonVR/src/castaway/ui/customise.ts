@@ -118,18 +118,28 @@ export function setNameLocked(on: boolean) {
 
 export function setupCustomise() {
     const rows = $("cz-rows");
-    const vals: HTMLElement[] = [];
-    SLOTS.forEach((s, i) => {
-        const row = document.createElement("div"); row.className = "cz-row";
-        const label = document.createElement("span"); label.textContent = s.label;
+    const vals: HTMLElement[] = [], rowEls: HTMLElement[] = [];
+    // grouped (Body, Head, Clothes) instead of in outfit order; the beard row only for Bora (the classic body's beard is a Head)
+    const GROUPS: Array<[string, number[]]> = [["Body", [7, 2]], ["Head", [0, 1, 8]], ["Clothes", [3, 4, 5, 6]]];
+    const LABEL: Record<number, string> = { 8: "Beard" };
+    for (const [title, idx] of GROUPS) {
+        const h = document.createElement("div"); h.className = "cz-group"; h.textContent = title; rows.append(h);
+        for (const i of idx) addRow(i);
+    }
+    function addRow(i: number) {
+        const s = SLOTS[i];
+        const row = document.createElement("div"); row.className = "cz-row"; rowEls[i] = row;
+        const label = document.createElement("span"); label.textContent = LABEL[i] ?? s.label;
         const prev = document.createElement("button"); prev.type = "button"; prev.textContent = "◀"; prev.setAttribute("aria-label", `Previous ${s.label}`);
         const next = document.createElement("button"); next.type = "button"; next.textContent = "▶"; next.setAttribute("aria-label", `Next ${s.label}`);
-        const val = document.createElement("div"); val.className = "cz-val"; vals.push(val);
+        const val = document.createElement("div"); val.className = "cz-val";
         prev.addEventListener("click", () => cycleSlot(i, -1)); next.addEventListener("click", () => cycleSlot(i, 1));
+        vals[i] = val;
         row.append(label, prev, val, next); rows.append(row);
-    });
+    }
     const refresh = () => {
         const o = getOutfit();
+        rowEls[8].classList.toggle("hidden", o[7] !== 1);
         SLOTS.forEach((s, i) => {
             const v = vals[i]; v.textContent = "";
             if (s.colors) { const sw = document.createElement("i"); sw.style.background = s.colors[o[i]]; v.append(sw); } else v.textContent = s.names![o[i]];

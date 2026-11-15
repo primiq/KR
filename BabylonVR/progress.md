@@ -70,6 +70,10 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Production plan items 20 and 8**: the customise rows are grouped (Body, Head, Clothes; `GROUPS` in
+  `ui/customise.ts`), the Beard row shows only for Bora, a short-landscape layout in style.css. Item 8 (main bundle)
+  measured and deferred: 3.0 MB gzip before Play, mostly the `@babylonjs/core` barrel (see the plan for why it waits).
+
 - **Production plan item 21**: player settings in `core/settings.ts` (prefs `castaway.vol.*`, `castaway.look`,
   `castaway.invertY`, `castaway.fov`, `castaway.calm`), read live: master volume in `game/audio.ts` applyGain, voices
   in `game/narrator.ts` (gain node and speech volume), music in `world/skyroom.ts` fadeSong, look speed and invert Y

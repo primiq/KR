@@ -305,6 +305,9 @@ h1:has(.owner) { display: inline-block; }
 .cz-name { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 14px; }
 .cz-name input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.08); color: #fff; font: 600 15px system-ui, sans-serif; user-select: text; -webkit-user-select: text; }
 .cz-note { font-size: 12px; opacity: .75; line-height: 1.4; }
+.cz-group { margin-top: 6px; font-size: 11px; font-weight: 800; letter-spacing: .18em; text-transform: uppercase; opacity: .6; }
+.cz-group:first-child { margin-top: 0; }
+.cz-row.hidden { display: none; }
 .cz-row { display: grid; grid-template-columns: 112px 40px 1fr 40px; gap: 8px; align-items: center; }
 .cz-row > span { font-size: 13px; font-weight: 700; opacity: .85; }
 .cz-row button { height: 38px; border-radius: 10px; border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.1); color: #fff; font-size: 16px; font-weight: 800; cursor: pointer; }
@@ -315,6 +318,7 @@ h1:has(.owner) { display: inline-block; }
 .cz-actions button { flex: 1; margin-top: 0; }
 #cz-done { background: var(--accent); color: #032; border: 0; padding: 12px 24px; border-radius: 40px; font-weight: 800; font-size: 16px; cursor: pointer; box-shadow: 0 8px 30px rgba(47,213,196,.35); }
 @media (max-width: 720px) { .cz-body { grid-template-columns: 1fr; } .cz-view { min-height: 300px; } }
+@media (max-height: 500px) and (min-width: 600px) { .cz-view { min-height: 0; } .cz-body { grid-template-columns: minmax(200px, .8fr) minmax(300px, 1.2fr); } .cz-row button, .cz-val { height: 32px; } .cz-controls { gap: 6px; } }
 /* the secret level behind Mario's pipe: a 16:9 pixel-art screen over the game (the touch controls stay on top and working) */
 #warp { position: fixed; inset: 0; z-index: 4; display: none; align-items: center; justify-content: center; background: #000; pointer-events: none; }
 #warp.on { display: flex; }

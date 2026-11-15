@@ -72,7 +72,7 @@ vertices in about 1400 meshes.
 7. DONE **The playground's assets should not ship with the game.** `public/assets` is 58 MB, 51 MB of it Sponza, which only
    `playground.html` uses. Options, in order of preference: (a) drop the playground page from the production build
    (keep it in dev), or (b) leave Sponza streaming from its source and not copy it. Ask the owner which (question 1).
-8. **Main bundle.** `main-*.js` is 1.57 MB and the page also pulls shared chunks. Use dynamic `import()` for what is not
+8. DEFERRED (measured: 542 preloaded modules, 9.9 MB raw, 3.0 MB gzip before Play; the 4.2 MB `environment` chunk is the whole Babylon core, pulled in by 68 files importing the `@babylonjs/core` barrel; the code loads while the player is still on the menu. A real cut means deep imports everywhere plus their side-effect registrations, or splitting the 1764-line main.ts into a menu shell and a game chunk: both risk breakage that only shows in some levels, so it waits for the smoke tests of item 29) **Main bundle.** `main-*.js` is 1.57 MB and the page also pulls shared chunks. Use dynamic `import()` for what is not
    needed to reach the island: the levels (`world/tiletrial`, `volcano`, `desert*`, `warp`, `town`, `locations*`,
    `catroom`, `airstrip`, `skydive`, `invaders`), the painter, the customise screen, the VR modules when no headset is
    present, the Bora model and code (only when someone in the room uses that body). Each becomes its own chunk loaded
@@ -117,7 +117,7 @@ vertices in about 1400 meshes.
     driving, in the sub) against the classic body in screenshots and fix what looks wrong; his fist for other
     players uses fixed finger angles: check against a held hatchet, spear and torch. VR hands are untested on a
     headset: ask the owner for a session (question 3) and fix what they report.
-20. **Customise screen.** Nine rows now. Group them (Body, Head, Clothes), hide rows that do not apply (Beard only for
+20. DONE (groups Body, Head, Clothes; Beard row only for Bora; phone portrait and landscape checked; drag to turn kept) **Customise screen.** Nine rows now. Group them (Body, Head, Clothes), hide rows that do not apply (Beard only for
     Bora), make sure it fits a phone in landscape and portrait (the Settings grid fix is the model), and add a
     front/side toggle or keep the drag to turn.
 21. DONE (left-handed VR not yet: no such mode exists; swapping the tool hand touches vr/vr.ts, net/avatars.ts and the hand rig and needs a headset to check) **Settings a released game needs.** Master volume and separate music/narrator sliders (today: mute only, master
