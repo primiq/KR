@@ -41,7 +41,7 @@ vertices in about 1400 meshes.
    - write `savedAt` and show "Saved" with the time in the menu;
    - add Export save / Import save buttons (a JSON file) on the Settings page.
    Test: fill localStorage in the harness, confirm the message and that the old save still loads.
-2. **Bad or hostile network messages cannot break the game.** `net/sync.ts` checks types on some events only. Go
+2. DONE **Bad or hostile network messages cannot break the game.** `net/sync.ts` checks types on some events only. Go
    through every `case` in the event switch and the snapshot apply in `net/world.ts`: every number checked with
    `Number.isFinite` and clamped to a sane range, every id checked against its table (`ITEMS`, structure kinds),
    every string length-capped, every array length-capped. A malformed event is dropped, never thrown. Add a rate

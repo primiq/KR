@@ -1,5 +1,6 @@
 import { CLASSIC } from '../world/island';
 import { getOutfit, parseOutfit } from "./outfit";
+import { eventOk, RateLimit, stateOk } from "./guard";
 // A multiplayer session: one host, any number of clients, star topology.
 // The host owns the room: it assigns ids, hands joiners a snapshot of the world, and relays everything.
 import { hostRoom, joinRoom, newCode, type Link, type Room, type TransportKind } from './transport';
@@ -36,7 +37,7 @@ const r2 = (n: number) => +n.toFixed(2), r3 = (n: number) => +n.toFixed(3);
 const packHand = (a: number[] | 0): number[] | 0 => (a ? [r2(a[0]), r2(a[1]), r2(a[2]), r3(a[3]), r3(a[4]), r3(a[5]), r3(a[6])] : 0);
 const packPose = (v: VRPoseData): VRPoseData => ({ h: [r2(v.h[0]), r2(v.h[1]), r2(v.h[2]), r3(v.h[3]), r3(v.h[4]), r3(v.h[5])], r: packHand(v.r), l: packHand(v.l) });
 const pack = (s: PState): any[] => [+s.x.toFixed(2), +s.y.toFixed(2), +s.z.toFixed(2), +s.yaw.toFixed(3), +s.pitch.toFixed(3), +s.spd.toFixed(2), s.item, s.swing, s.flags, Math.round(s.hp), s.v ? packPose(s.v) : 0, s.arm ?? 0];
-const unpack = (a: any[]): PState => ({ x: a[0], y: a[1], z: a[2], yaw: a[3], pitch: a[4], spd: a[5], item: a[6], swing: a[7], flags: a[8], hp: a[9] ?? 100, v: a[10] || null, arm: a[11] ?? 0 });
+const unpack = (a: unknown): PState | null => !stateOk(a) ? null : ({ x: a[0], y: a[1], z: a[2], yaw: a[3], pitch: a[4], spd: a[5], item: a[6], swing: a[7], flags: a[8], hp: a[9] ?? 100, v: a[10] || null, arm: a[11] ?? 0 });
 
 export class Session {
   readonly players = new Map<number, PlayerInfo>();
@@ -74,6 +75,8 @@ export class Session {
   readonly pings = new Map<number, number>();
   private pingAt = 0; private pump_: ReturnType<typeof setInterval> | null = null;
   kicked = false;
+  /** events per player per second (host): a flood is dropped */
+  private limit = new RateLimit();
 
   private constructor(readonly role: 'host' | 'client', readonly code: string, readonly name: string) {
     this.lastRx = now();
@@ -153,6 +156,7 @@ export class Session {
   private drop(id: number) {
     const info = this.players.get(id);
     if (!info || !this.links.has(id)) return;
+    this.limit.forget(id);
     this.links.delete(id); this.players.delete(id); this.states.delete(id); this.pings.delete(id); this.rx.delete(id);
     this.broadcast({ t: 'left', id });
     this.onLeave?.(info);
@@ -178,8 +182,10 @@ export class Session {
 
   private fromClient(id: number, m: any) {
     if (m.t === 'bye') { this.links.get(id)?.close(); this.drop(id); return; }
-    if (m.t === 'me') this.states.set(id, unpack(m.s));
+    if (m.t === 'me') { const st = unpack(m.s); if (st) this.states.set(id, st); }
     else if (m.t === 'ev') {
+      // (a malformed event, or one too many from this player this second, goes no further: not handled, not passed on)
+      if (!eventOk(m.e) || !this.limit.take(id)) return;
       this.safeEvent(id, m.e);
       this.broadcast({ t: 'ev', from: id, e: m.e }, id);
     } else if (m.t === 'pg') {
@@ -195,6 +201,7 @@ export class Session {
 
   /** One bad event must never take the message loop down. */
   private safeEvent(from: number, e: any) {
+    if (!eventOk(e)) return;
     try { this.onEvent?.(from, e); } catch (err) { console.warn('event failed', e?.k, err); }
   }
 
@@ -202,10 +209,13 @@ export class Session {
   private fromHost(m: any) {
     switch (m.t) {
       case 'ps':
-        for (const row of m.p as any[]) {
+        if (!Array.isArray(m.p)) break;
+        for (const row of m.p as unknown[]) {
+          if (!Array.isArray(row) || !Number.isInteger(row[0])) continue;
           const id = row[0] as number;
           if (id === this.myId) continue;
-          this.states.set(id, unpack(row.slice(1)));
+          const st = unpack(row.slice(1));
+          if (st) this.states.set(id, st);
         }
         break;
       case 'ev': this.safeEvent(m.from, m.e); break;

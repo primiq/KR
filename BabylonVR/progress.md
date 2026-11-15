@@ -70,6 +70,13 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Production plan item 2, network hardening**: `net/guard.ts` (eventOk: an object with a short kind, all numbers
+  finite and sane, text, lists and nesting capped; stateOk for packed player states incl. VR poses; RateLimit 80/s,
+  burst 240 per player on the host). `net/session.ts` drops bad states and events before any handler sees them and
+  never relays them. The per-event handlers in `net/sync.ts` still do their own field checks. Tested with direct cases
+  (18/18); two full game pages in one headless browser cannot keep a room alive (about 1 fps each misses the 8 s
+  keep-alive), so the two-player test needs a faster machine.
+
 - **Production plan item 1, saves**: `net/save.ts` keeps the previous save as `castaway.bjs.world.bak` and loads it if the
   main one is damaged; on a full storage it drops the backup, then the paintings' pictures, then tells the player once
   (`setOnSaveProblem`, HUD and the Settings note). Settings > Your island: last-saved time, Export save (all
