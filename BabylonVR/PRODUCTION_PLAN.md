@@ -46,7 +46,7 @@ vertices in about 1400 meshes.
    `Number.isFinite` and clamped to a sane range, every id checked against its table (`ITEMS`, structure kinds),
    every string length-capped, every array length-capped. A malformed event is dropped, never thrown. Add a rate
    limit per sender (events per second) on the host. Outfit parsing (`parseOutfit`) is the model to follow.
-3. **No HTML injection.** 21 uses of `innerHTML`. Player-supplied text is escaped where I looked (`esc(p.name)`,
+3. DONE **No HTML injection.** 21 uses of `innerHTML`. Player-supplied text is escaped where I looked (`esc(p.name)`,
    narrator), and the others interpolate constants, but audit all 21: anything from the network or from user input
    must go through `textContent` or `esc`. Chat is preset phrases only: keep it that way.
 4. **Errors are visible.** `ui/diag.ts` already catches errors for `?diag`. Add: after an uncaught error in the main

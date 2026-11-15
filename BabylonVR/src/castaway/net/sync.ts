@@ -332,9 +332,12 @@ export class WorldSync {
                 break;
             }
             case "ak": if (e.by === this.session.myId && !this.session.isHost) g.hud.message(`${e.nm} down. Pick up the meat.`); break;
-            case "hurt": if (e.to === this.session.myId) g.hurtPlayer(e.d, e.x, e.z, e.by); break;
-            case "ph": if (e.to === this.session.myId && this.session.pvp) g.hurtPlayer(e.d, e.x, e.z, this.session.players.get(from)?.name ?? "Someone"); break;
+            // (damage from a hit: never more than the hardest hit in the game, whatever was sent)
+            case "hurt": if (e.to === this.session.myId && typeof e.d === "number") g.hurtPlayer(Math.max(0, Math.min(60, e.d)), e.x, e.z, String(e.by ?? "Someone").slice(0, 24)); break;
+            case "ph": if (e.to === this.session.myId && this.session.pvp && typeof e.d === "number") g.hurtPlayer(Math.max(0, Math.min(60, e.d)), e.x, e.z, this.session.players.get(from)?.name ?? "Someone"); break;
             case "chat": {
+                if (typeof e.t !== "string") break;
+                e.t = e.t.slice(0, 120);
                 const name = this.session.players.get(from)?.name ?? "?";
                 this.avatars.say(from, e.t);
                 this.onChat?.(name, from, e.t);

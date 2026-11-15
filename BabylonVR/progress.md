@@ -70,6 +70,11 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Production plan item 3, HTML injection audit**: every `innerHTML` with a variable checked. Player names and chat
+  reach the page only through `textContent` (hud.message, chat log) or `esc` (room panel); the rest are game constants
+  (item names and icons, numbers). Also hardened: chat text capped at 120 characters, hit damage from the network
+  clamped to 0..60 (the hardest real hit is about 46).
+
 - **Production plan item 2, network hardening**: `net/guard.ts` (eventOk: an object with a short kind, all numbers
   finite and sane, text, lists and nesting capped; stateOk for packed player states incl. VR poses; RateLimit 80/s,
   burst 240 per player on the host). `net/session.ts` drops bad states and events before any handler sees them and
