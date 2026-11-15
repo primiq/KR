@@ -11,6 +11,7 @@
 import * as THREE from 'three';
 import photoUrl from '../assets/photo.jpg?url';
 import songUrl from '../assets/song.mp3?url';
+import { settings } from '../core/settings';
 
 interface V3 { x: number; y: number; z: number }
 
@@ -298,7 +299,7 @@ export class SkyRoom {
     const a = this.audio; if (!a) return;
     const goal = this.muted() ? 0 : this.want;
     this.vol += Math.sign(goal - this.vol) * Math.min(Math.abs(goal - this.vol), dt * (goal > this.vol ? 0.5 : 1.2));
-    a.volume = Math.max(0, Math.min(1, this.vol));
+    a.volume = Math.max(0, Math.min(1, this.vol * settings.music * settings.master));
     if (this.want > 0 && !this.ended && a.paused && !this.muted()) void a.play().catch(() => {});
     if (this.want === 0 && this.vol <= 0.001 && !a.paused) a.pause();
   }

@@ -102,6 +102,18 @@
         <div class="gfx-actions"><button type="button" id="gfx-reset" class="ghost-btn">Back to the preset</button><button type="button" id="gfx-apply" class="mbtn primary">Apply</button></div>
         <h3>Sound</h3>
         <label class="mp-opt"><input type="checkbox" id="narration-on" checked /> Narrator voice</label>
+        <div class="gfx-grid set-grid">
+          <label>Master volume <input type="range" id="s-master" min="0" max="100" step="5" /></label>
+          <label>Music <input type="range" id="s-music" min="0" max="100" step="5" /></label>
+          <label>Voices <input type="range" id="s-voice" min="0" max="100" step="5" /></label>
+        </div>
+        <h3>Controls</h3>
+        <div class="gfx-grid set-grid">
+          <label>Look speed <input type="range" id="s-look" min="30" max="300" step="10" /></label>
+          <label>Field of view <input type="range" id="s-fov" min="55" max="100" step="1" /></label>
+          <label>Invert up and down <input type="checkbox" id="s-invert" /></label>
+          <label title="Turns off the view bobbing as you walk and the screen shaking">Reduce camera motion <input type="checkbox" id="s-calm" /></label>
+        </div>
         <h3>Privacy</h3>
         <label class="mp-opt"><input type="checkbox" id="telemetry-on" checked /> Send anonymous usage data</label>
         <p class="gfx-note">How the game is played (device kind, quality, which body, sessions, errors), to make it better. No names, no chat, no pictures, nothing personal.</p>

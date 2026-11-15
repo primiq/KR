@@ -86,6 +86,7 @@ import { WorldSync } from "./net/sync";
 import { cleanCode, setTurn, type TransportKind } from "./net/transport";
 import { applyChar, applyWorld, captureChar, captureWorld } from "./net/world";
 import { getPref, setPref } from "./core/prefs";
+import { settings, onSetting, setSetting } from "./core/settings";
 import { type Antialias, type GfxCustom, pickQuality } from "./core/quality";
 import { Game } from "./game/game";
 import { planSprings } from "./game/resources";
@@ -184,6 +185,15 @@ async function main() {
         const box = $<HTMLInputElement>("telemetry-on");
         box.checked = telemetryOn();
         box.addEventListener("change", () => setTelemetry(box.checked));
+    }
+    {
+        // Settings > Sound and Controls: sliders apply as they move (core/settings.ts holds and stores them)
+        const pct = (id: string, k: "master" | "music" | "voice") => { const el = $<HTMLInputElement>(id); el.value = String(Math.round(settings[k] * 100)); el.addEventListener("input", () => setSetting(k, Number(el.value) / 100)); };
+        pct("s-master", "master"); pct("s-music", "music"); pct("s-voice", "voice");
+        const look = $<HTMLInputElement>("s-look"); look.value = String(Math.round(settings.look * 100)); look.addEventListener("input", () => setSetting("look", Number(look.value) / 100));
+        const fov = $<HTMLInputElement>("s-fov"); fov.value = String(settings.fov); fov.addEventListener("input", () => setSetting("fov", Number(fov.value)));
+        const inv = $<HTMLInputElement>("s-invert"); inv.checked = settings.invertY; inv.addEventListener("change", () => setSetting("invertY", inv.checked));
+        const calm = $<HTMLInputElement>("s-calm"); calm.checked = settings.calm; calm.addEventListener("change", () => setSetting("calm", calm.checked));
     }
     if (headset) { lightRoom.n = 5; StructureManager.POOL = 2; toneMapOwnShaders(); }
     const qSel = $<HTMLSelectElement>("quality");
@@ -524,7 +534,8 @@ async function main() {
     //  rooms, a centimetre or two apart, flicker on GPUs with a shallower depth buffer)
     camera.minZ = 0.1;
     camera.maxZ = 1600;
-    camera.fov = 1.2;
+    camera.fov = (settings.fov * Math.PI) / 180;
+    onSetting((k) => { if (k === 'fov') camera.fov = (settings.fov * Math.PI) / 180; });
     scene.activeCamera = camera;
 
     let started = false;

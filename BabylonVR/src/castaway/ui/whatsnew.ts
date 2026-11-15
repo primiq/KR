@@ -6,6 +6,14 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-12-12", title: "Your own settings",
+        items: [
+            "Settings > Sound now has sliders for the master volume, the music and the voices.",
+            "Settings > Controls: look speed (mouse and touch), field of view, invert up and down, and Reduce camera motion, which turns off the view bobbing and the screen shaking.",
+            "Everything applies as you change it and is remembered.",
+        ],
+    },
+    {
         date: "2026-12-11", title: "Meet Bob the plumber",
         items: [
             "Two red stones at the druid circle now summon Bob, a cheerful plumber in a teal cap with a big wrench. He leads you to the warp pipe and its secret level, just as before.",

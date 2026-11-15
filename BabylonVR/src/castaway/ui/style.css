@@ -349,6 +349,7 @@ body.inwarp #bottom, body.inwarp #compass, body.inwarp #prompt, body.inwarp #cro
 #menu .gfx-grid label { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 14px; background: rgba(255,255,255,.05); border-radius: 10px; padding: 8px 10px; }
 #menu .gfx-grid select { background: #0b3440; color: #fff; border: 1px solid rgba(255,255,255,.25); border-radius: 8px; padding: 4px; }
 #menu .gfx-grid input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
+#menu .gfx-grid input[type=range] { width: 46%; min-width: 0; accent-color: var(--accent); }
 #menu .gfx-note { font-size: 12px; opacity: .7; margin: 10px 0; }
 #menu .gfx-actions { display: flex; gap: 10px; }
 #menu .gfx-actions .ghost-btn { flex: 1; margin: 0; }

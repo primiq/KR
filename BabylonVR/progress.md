@@ -70,6 +70,12 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Production plan item 21**: player settings in `core/settings.ts` (prefs `castaway.vol.*`, `castaway.look`,
+  `castaway.invertY`, `castaway.fov`, `castaway.calm`), read live: master volume in `game/audio.ts` applyGain, voices
+  in `game/narrator.ts` (gain node and speech volume), music in `world/skyroom.ts` fadeSong, look speed and invert Y
+  in `world/player.ts`, Reduce camera motion gates the view bob and shake, FOV via `onSetting` in main.ts. Controls in
+  index.html Settings (Sound, new Controls section). Left-handed VR not done (no mode exists; needs a headset).
+
 - **Production plan items 28 and 30**: Vitest unit tests (18) and a GitHub Actions workflow (typecheck, tests, build).
 
 - **Production plan item 16 (Bora part)**: `makeBora().pose()` keeps one world quaternion per bone across frames and

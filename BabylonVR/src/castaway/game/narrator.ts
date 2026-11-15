@@ -5,6 +5,7 @@
 // Nothing is sent over the network: multiplayer events carry a line id and every client plays it locally.
 import script from '../narration/script.json';
 import { getPref, setPref } from '../core/prefs';
+import { settings, onSetting } from '../core/settings';
 import type * as THREE from 'three';
 import { setPannerPos } from '../campaign/mosquito';
 
@@ -64,6 +65,9 @@ export class Narrator {
     const box = document.getElementById('narration-on') as HTMLInputElement | null;
     if (box) { box.checked = this.voiceOn; box.addEventListener('change', () => this.setVoice(box.checked)); }
   }
+
+  /** the voice volume: the voices slider times the master slider */
+  private level() { return settings.voice * settings.master; }
 
   has(id: string) { return LINES.has(id); }
   text(id: string) { const l = LINES.get(id); return l ? l.subtitle ?? l.text : ''; }
@@ -135,7 +139,7 @@ export class Narrator {
       const buf = await this.load(item.id);
       if (gen !== this.gen || !this.cur) return;
       if (buf) {
-        if (!this.gain) { this.gain = ctx.createGain(); this.gain.gain.value = 1; this.gain.connect(ctx.destination); }
+        if (!this.gain) { this.gain = ctx.createGain(); this.gain.gain.value = this.level(); this.gain.connect(ctx.destination); onSetting(() => { if (this.gain) this.gain.gain.value = this.level(); }); }
         const src = ctx.createBufferSource(); src.buffer = buf;
         // the narrator (the mosquito) speaks from where it is; the cashier and the guard do too in spirit, but they are mixed flat
         const at = line.voice === 'narrator' ? this.source() : null;
@@ -153,7 +157,7 @@ export class Narrator {
     try {
       if (!('speechSynthesis' in window)) return;
       const u = new SpeechSynthesisUtterance(text.replace(/\.\.\./g, ', '));
-      u.rate = 0.98; u.pitch = line.voice === 'guard' ? 0.7 : line.voice === 'cashier' ? 1.2 : 1;
+      u.volume = this.level(); u.rate = 0.98; u.pitch = line.voice === 'guard' ? 0.7 : line.voice === 'cashier' ? 1.2 : 1;
       u.onend = () => { if (gen === this.gen && this.cur) { this.cur = null; this.subT = 0.6; } };
       speechSynthesis.speak(u);
       this.cur.until = performance.now() + (guess + 4) * 1000;

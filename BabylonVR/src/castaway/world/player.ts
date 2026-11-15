@@ -5,6 +5,7 @@ import { heightAt } from "./island";
 import { DESERT_LIMIT, DESERT_X, DESERT_Z, inDesert } from "./desertField";
 import type { ColliderGrid } from "./vegetation";
 import { OUTER } from './arctic';
+import { settings } from "../core/settings";
 
 export type Mode = "walk" | "swim" | "fly";
 
@@ -186,9 +187,9 @@ export class Player {
         const time = this.time;
         // ---- look (in VR the headset turns the view; snap / smooth turning is applied to yaw by the VR rig)
         const { dx, dy } = input.consumeLook();
-        const sens = input.touch ? 0.0042 : 0.0022;
+        const sens = (input.touch ? 0.0042 : 0.0022) * settings.look;
         this.yaw -= dx * sens;
-        if (!this.vr) this.pitch = clamp(this.pitch - dy * sens, -1.52, 1.52);
+        if (!this.vr) this.pitch = clamp(this.pitch - dy * sens * (settings.invertY ? -1 : 1), -1.52, 1.52);
 
         if (input.flyToggle) {
             input.flyToggle = false;
@@ -388,7 +389,7 @@ export class Player {
 
         // ---- head bob, step easing and shake (flat screens only: in a headset these make people ill)
         const speed = Math.hypot(this.vel.x, this.vel.z);
-        this.bobAmt += ((this.onGround && this.mode === "walk" && !this.vr ? Math.min(1, speed / 5) : 0) - this.bobAmt) * Math.min(1, 8 * dt);
+        this.bobAmt += ((this.onGround && this.mode === "walk" && !this.vr && !settings.calm ? Math.min(1, speed / 5) : 0) - this.bobAmt) * Math.min(1, 8 * dt);
         this.bob += speed * dt * 2.2;
         const bobY = Math.sin(this.bob * 2) * 0.035 * this.bobAmt;
         if (!this.vr && this.onGround && this.mode === "walk" && this.pos.y - this.lastY > 0.15 && this.pos.y - this.lastY < 1.2) this.stepOffset -= this.pos.y - this.lastY;
@@ -396,7 +397,7 @@ export class Player {
         this.stepOffset *= Math.exp(-11 * dt);
         this.eye.set(this.pos.x, this.pos.y + this.body.eye + bobY + this.stepOffset, this.pos.z);
         this.shakeT += dt;
-        if (this.shakeAmp > 0.002 && !this.vr) {
+        if (this.shakeAmp > 0.002 && !this.vr && !settings.calm) {
             const a = this.shakeAmp;
             this.shakeRot.set(Math.sin(this.shakeT * 53) * 0.012 * a, Math.sin(this.shakeT * 41 + 1.3) * 0.009 * a, Math.sin(this.shakeT * 37) * 0.018 * a);
             this.shakeY = Math.sin(this.shakeT * 61) * 0.02 * a;

@@ -120,7 +120,7 @@ vertices in about 1400 meshes.
 20. **Customise screen.** Nine rows now. Group them (Body, Head, Clothes), hide rows that do not apply (Beard only for
     Bora), make sure it fits a phone in landscape and portrait (the Settings grid fix is the model), and add a
     front/side toggle or keep the drag to turn.
-21. **Settings a released game needs.** Master volume and separate music/narrator sliders (today: mute only, master
+21. DONE (left-handed VR not yet: no such mode exists; swapping the tool hand touches vr/vr.ts, net/avatars.ts and the hand rig and needs a headset to check) **Settings a released game needs.** Master volume and separate music/narrator sliders (today: mute only, master
     gain 0.7 in `game/audio.ts`); mouse sensitivity and touch look sensitivity; invert Y; field of view (PC); a
     "reduce camera motion" toggle that turns off view bob and screen shake; left-handed VR (check what exists). All
     stored in prefs, all applied live.

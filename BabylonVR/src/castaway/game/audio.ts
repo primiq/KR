@@ -1,4 +1,5 @@
 import { getPref, setPref } from '../core/prefs';
+import { settings, onSetting } from '../core/settings';
 // Tiny synthesized sound set: no audio files to download. Everything starts after the first click (autoplay rules).
 export type HitKind = 'wood' | 'stone' | 'ore' | 'leaf';
 
@@ -20,7 +21,7 @@ export class Sfx {
   /** the narrator talks: everything else gets quieter (1 = normal) */
   private duckK = 1;
   setDuck(k: number) { if (Math.abs(k - this.duckK) < 0.01) return; this.duckK = k; this.applyGain(); }
-  private applyGain() { if (this.master && this.ctx) this.master.gain.setTargetAtTime(this.muted || this.deaf ? 0 : 0.7 * this.duckK, this.ctx.currentTime, 0.12); }
+  private applyGain() { if (this.master && this.ctx) this.master.gain.setTargetAtTime(this.muted || this.deaf ? 0 : 0.7 * settings.master * this.duckK, this.ctx.currentTime, 0.12); }
   /** the audio context (null until the first click) */
   get context() { return this.ctx; }
 
@@ -31,7 +32,8 @@ export class Sfx {
       if (!AC) return;
       this.ctx = new AC();
       this.master = this.ctx.createGain();
-      this.master.gain.value = this.muted ? 0 : 0.7;
+      this.master.gain.value = this.muted ? 0 : 0.7 * settings.master;
+      onSetting((k) => { if (k === 'master') this.applyGain(); });
       this.master.connect(this.ctx.destination);
       const len = this.ctx.sampleRate * 2;
       this.noise = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
