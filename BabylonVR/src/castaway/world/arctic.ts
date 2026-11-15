@@ -158,11 +158,13 @@ export function iceNear(x: number, z: number, rad: number, out: Ice[] = [], floe
 
 // ------------------------------------------------------------------ the land
 /** the plateau's height without the crevices and pools (m); `s`: how far inland */
+/** the ice beach: its foot's height (just under the sea) and how far inland it takes to climb to the snowfield (m) */
+const SHORE_Y = -0.6, BEACH = 32;
 function plateau(x: number, z: number, s: number) {
-  // the ice cliff at the shore, then the snow rising gently inland, in long wind-carved swells
-  const cliff = -1.6 + 7.6 * smooth(0, 4, s);
+  // a sloping beach of ice at the shore (from just under the water, so a raft runs up on it and you step off and walk
+  //  up), then the snow rising gently inland, in long wind-carved swells
   const rise = 6 + 16 * smooth(0, 900, s) + 3.5 * N1.get(x * 0.004, z * 0.004) * smooth(0, 100, s) + 0.9 * N2.get(x * 0.03, z * 0.03) * smooth(5, 40, s);
-  return s < 4 ? cliff : Math.max(cliff, rise);
+  return SHORE_Y + (rise - SHORE_Y) * smooth(0, BEACH, s);
 }
 
 export interface Crevice { ax: number; az: number; bx: number; bz: number; w: number; d: number }
@@ -251,7 +253,7 @@ export function landHeight(x: number, z: number): number {
   const s = inland(x, z);
   if (s < -420) return -Infinity;
   // out from the cliffs: the shelf drops away under the sea
-  if (s < 0) return Math.max(-70, -1.6 + s * 0.16);
+  if (s < 0) return Math.max(-70, SHORE_Y + s * 0.16);
   let h = plateau(x, z, s);
   if (s > 150) eachCrevice(x, z, (c) => { const { d, t } = segDist(x, z, c), w = c.w * (0.35 + 0.65 * Math.sin(Math.PI * t)); if (d < w) h -= c.d * Math.sin(Math.PI * t) ** 0.5 * smooth(w, w * 0.45, d); });
   const p = poolIn(Math.floor(x / POOL_CELL), Math.floor(z / POOL_CELL));
@@ -275,4 +277,47 @@ export function arcticHeight(x: number, z: number): number {
   const f = floeIn(Math.floor(x / FLOE_CELL), Math.floor(z / FLOE_CELL));
   if (f) h = Math.max(h, iceHeight(f, x, z));
   return h;
+}
+
+// ------------------------------------------------------------------ the ice wall and its gate
+// Some way inland of the coast, all the way round, a wall of ice taller than the biggest bergs: nobody goes past it. Due
+// north (the way you sail from the island) a great gate is carved into it, and on the land in front of it, here and
+// there, wooden signs point the way. The gate leads to the Christmas village (xmas.ts).
+/** the gate's angle round the world (north: -z) and how far inland of the coast the wall stands */
+export const GATE_A = -Math.PI / 2, WALL_IN = 650;
+/** the wall's inner face (m from the middle) at angle a */
+export const wallR = (a: number) => landShore(a) + WALL_IN;
+/** the gate: the point in front of its doors (where walking in takes you through); `yaw`: its local +z runs out into the
+ *  wall, and it is also the player's yaw facing away from the gate, back towards the sea */
+export const GATE = (() => {
+  const r = wallR(GATE_A) - 3;
+  return { x: Math.cos(GATE_A) * r, z: Math.sin(GATE_A) * r, yaw: Math.atan2(Math.cos(GATE_A), Math.sin(GATE_A)) };
+})();
+/** keeps somebody walking on the land this side of the wall: the clamped position, or null if they are clear of it */
+export function wallClamp(x: number, z: number): [number, number] | null {
+  const r = Math.hypot(x, z);
+  if (r < LAND_R - 600) return null;
+  const a = Math.atan2(z, x), lim = wallR(a) - 2;
+  return r > lim ? [x * lim / r, z * lim / r] : null;
+}
+/** the signs: on the land north of the island, every so often, each pointing at the gate (yaw: the way its arrow points) */
+export interface Sign { x: number; z: number; yaw: number }
+export function signsNear(x: number, z: number, rad: number, out: Sign[] = []): Sign[] {
+  out.length = 0;
+  const r = Math.hypot(x, z);
+  if (r < LAND_R - 900) return out;
+  const a0 = Math.atan2(z, x), da = rad / Math.max(r, 1), STEP = 0.028;
+  for (let k = Math.floor((a0 - da) / STEP); k <= Math.ceil((a0 + da) / STEP); k++) {
+    for (let row = 0; row < 3; row++) {
+      let a = k * STEP + (hash(k, row, 71) - 0.5) * STEP * 0.6;
+      let off = a - GATE_A; off = Math.atan2(Math.sin(off), Math.cos(off));
+      if (Math.abs(off) > 0.5 || hash(k, row, 72) < 0.35) continue;
+      const s = 60 + row * 190 + hash(k, row, 73) * 90, R = landShore(a) + s;
+      if (R > wallR(a) - 40) continue;
+      const sx = Math.cos(a) * R, sz = Math.sin(a) * R;
+      if (Math.hypot(sx - x, sz - z) > rad || creviceAt(sx, sz) > 0 || poolAt(sx, sz)) continue;
+      out.push({ x: sx, z: sz, yaw: Math.atan2(GATE.x - sx, GATE.z - sz) });
+    }
+  }
+  return out;
 }

@@ -4,7 +4,7 @@ import type { Input } from "../core/input";
 import { heightAt } from "./island";
 import { DESERT_LIMIT, DESERT_X, DESERT_Z, inDesert } from "./desertField";
 import type { ColliderGrid } from "./vegetation";
-import { OUTER } from './arctic';
+import { OUTER, wallClamp } from './arctic';
 import { settings } from "../core/settings";
 
 export type Mode = "walk" | "swim" | "fly";
@@ -361,6 +361,9 @@ export class Player {
                 //  your raft, from an islet to the next. Swimming out past the reef without a boat brings the storm's wave)
                 const r = Math.hypot(nx, nz), lim = Math.max(OUTER - 1, Math.hypot(this.pos.x, this.pos.z));
                 if (!this.cave && r > lim && !this.roam(nx, nz)) { nx *= lim / r; nz *= lim / r; }
+                // (the Arctic's ice wall: nobody walks through it, only through its gate)
+                const wc = this.cave ? null : wallClamp(nx, nz);
+                if (wc) { nx = wc[0]; nz = wc[1]; }
             }
             this.pos.x = nx;
             this.pos.z = nz;

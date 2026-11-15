@@ -70,6 +70,22 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Ice Gate and the Christmas village**: `world/arctic.ts` adds the wall ring (`wallR(a)` = coast + 650 m, `GATE_A` due
+  north, `GATE`, `wallClamp` used in player.ts so nobody walks through it, `signsNear` for the signs within 0.5 rad of
+  north). `world/northgate.ts` draws the wall (one ribbon either side of you, rebuilt as you go), the gate (deep blue
+  pillars, carved arch, pale banded doors, glowing snowflake) and the signs ("ICE GATE" + arrow, both faces readable),
+  with the icebergs' material (`arctic.bergMaterial`). Walking within 3.4 m of the gate's front: `xmasGo(true)` in
+  main.ts (fade, `caves.hideWorld(true)`, `xmas.enter`). `world/xmas.ts`: the village at x = 16 km, y = 60, Babylon
+  meshes merged per material (root `keepUnderground`), `player.cave = xmas` (flat floor; `resolve` pushes out of
+  house walls as oriented boxes and trees/posts as circles; open doorways). 14 walk-in houses (outer ring R 73, inner
+  ring R 36), Santa's house at the end of the main path (z -76) with hearth, armchair, milk and cookies, sacks, a tree;
+  great tree in the square (spinning star), trees with bulbs and presents, lanterns, candy canes, snowmen, 5 warm
+  point lights at night (`includedOnlyMeshes`). The exit gate (local z 117) takes you back in front of the Arctic gate.
+  Snow falls there (Snowfall mesh kept). Elves and Santa: later.
+- **Arctic shore walkable**: `plateau` in arctic.ts now ramps from `SHORE_Y` (-0.6) to the snowfield over `BEACH` (32 m)
+  instead of a 6 m ice cliff; the shelf offshore starts at -0.6. world.fixture.json refreshed (8 Arctic points);
+  LAYOUT not bumped (no island nodes changed).
+
 - **Raft engine** (`raft_engine`, workbench): model in `game/engine.ts` (stand, tech box, tubes and wires, an upside-down
   office bottle with 7 butterflies whose wings are kept nodes that flap, `flapWings`). `s.lit` = running; E toggles it
   (`game.openStructure`), synced with a `k: "en"` event and saved like any structure's lit. `Boats.engines` (set in

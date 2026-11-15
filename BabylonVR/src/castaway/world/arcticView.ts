@@ -139,8 +139,9 @@ interface Chunk { mesh: Mesh | null; key: string }
 
 export class ArcticView {
     private iceMat: PBRMaterial;
-    /** the icebergs' own look (deep blue to white): see ICEBERG in the plugin */
+    /** the icebergs' own look (deep blue to white): see ICEBERG in the plugin (the ice wall and its gate use it too) */
     private bergMat: PBRMaterial;
+    get bergMaterial() { return this.bergMat; }
     private landMat: PBRMaterial;
     private farMat: PBRMaterial;
     private poolMat: StandardMaterial;

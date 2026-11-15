@@ -3,6 +3,8 @@ import { setTelemetry, startTelemetry, telemetryOn, track } from "./net/telemetr
 import { SAX as SUB_SAX, SAZ as SUB_SAZ } from "./world/sub";
 import { coldAt, inSeaWorld } from "./world/arctic";
 import { ArcticView, Snowfall } from "./world/arcticView";
+import { GATE, GATE_A, gateDist, NorthGate } from "./world/northgate";
+import { XmasVillage } from "./world/xmas";
 import {
     Color3,
     CascadedShadowGenerator,
@@ -557,6 +559,28 @@ async function main() {
     // the far north: drift ice, icebergs, the Arctic (built only when you are up there)
     const arctic = new ArcticView(scene, () => clock.sunDir, () => clock.day, headset);
     const snowfall = new Snowfall(scene);
+    // the ice wall far inland, its gate, the signs to it; and the Christmas village through the gate
+    const northGate = new NorthGate(scene, arctic.bergMaterial);
+    const xmas = new XmasVillage(scene, arctic.bergMaterial);
+    xmas.night = () => Math.max(0, Math.min(1, 1 - clock.day * 1.4));
+    xmas.say = (t) => game.hud.message(t);
+    { const sm = scene.getMeshByName("arcticSnow"); if (sm) sm.metadata = { ...(sm.metadata ?? {}), keepUnderground: true }; }
+    let xmasGoing = false;
+    /** through the gate, into the village (or back out of it to the front of the gate) */
+    const xmasGo = (into: boolean) => {
+        if (xmasGoing) return;
+        xmasGoing = true;
+        game.hud.fade(true);
+        setTimeout(() => {
+            if (into) { xmas.enter(player); caves.hideWorld(true); }
+            else {
+                xmas.leave(player); caves.hideWorld(false);
+                const k = 9;
+                player.teleport(GATE.x - Math.cos(GATE_A) * k, heightAt(GATE.x - Math.cos(GATE_A) * k, GATE.z - Math.sin(GATE_A) * k), GATE.z - Math.sin(GATE_A) * k, GATE.yaw);
+            }
+            game.hud.fade(false); game.sfx.creak(); xmasGoing = false;
+        }, 450);
+    };
     // ---- Settings > Developer: flying and the time of day (no keys for them any more)
     let devStorm: (() => boolean) | null = null;
     const devTools = {
@@ -1030,6 +1054,11 @@ async function main() {
             if (!trial.active && trial.contains(player.pos.x, player.pos.z) && sky.exitTo) { const e = sky.exitTo; player.teleport(e.x, e.y, e.z, e.yaw); }
             if (trial.active && !trial.contains(player.pos.x, player.pos.z)) { trial.leave(player); player.teleport(player.pos.x, heightAt(player.pos.x, player.pos.z), player.pos.z, player.yaw); }
             if (!lava.active && lava.contains(player.pos.x, player.pos.z) && sky.exitTo) { const e = sky.exitTo; player.teleport(e.x, e.y, e.z, e.yaw); }
+            // the ice gate: walk up to its doors and you go through; walk back out of the village's gate to return
+            if (!xmas.active && !game.under.active && !game.boats.on && player.mode === "walk" && gateDist(player.pos.x, player.pos.z) < 3.4) xmasGo(true);
+            if (xmas.active && xmas.atExitGate(player.pos.x, player.pos.z)) xmasGo(false);
+            if (!xmas.active && !xmasGoing && xmas.contains(player.pos.x, player.pos.z)) player.teleport(GATE.x - Math.cos(GATE_A) * 9, heightAt(GATE.x - Math.cos(GATE_A) * 9, GATE.z - Math.sin(GATE_A) * 9), GATE.z - Math.sin(GATE_A) * 9, GATE.yaw);
+            xmas.update(dt);
             if (lava.active && !lava.contains(player.pos.x, player.pos.z)) { lava.leave(player); player.teleport(player.pos.x, heightAt(player.pos.x, player.pos.z), player.pos.z, player.yaw); }
             // (jump to climb back out of the helicopter before it takes off)
             if (lava.seated && input.jumpQueued) { if (lava.getOut()) input.jumpQueued = false; }
@@ -1164,7 +1193,7 @@ async function main() {
             // usage reporting: which level the player is in (levels have no single entry point, so it is looked up here every 2 s)
             if ((levelT -= dt) < 0) {
                 levelT = 2;
-                const where = game.warp.inLevel ? "warp" : lava.active ? "lava" : desert.active ? "desert" : trial.active ? "tiles" : hide.active ? "hide" : cat.active ? "cats"
+                const where = game.warp.inLevel ? "warp" : xmas.active ? "xmas" : lava.active ? "lava" : desert.active ? "desert" : trial.active ? "tiles" : hide.active ? "hide" : cat.active ? "cats"
                     : camp.active ? "campaign" : game.under.town?.active ? "town" : locs.active ? "locations" : air.active ? "airstrip" : dive.active ? "skydive" : sky.active ? "sky" : "";
                 if (where !== lastLevel) { lastLevel = where; if (where) track("level", { n: where }); }
             }
@@ -1185,11 +1214,13 @@ async function main() {
                 {
                     const c = camera.globalPosition;
                     arctic.update(dt, c, !onIsland);
+                    northGate.update(c, !onIsland);
                     clock.cold = onIsland ? coldAt(c.x, c.z) : 0;
                     // (up there it snows: lightly always, hard when the weather turns)
                     const w = game.weather, snowK = Math.min(1, Math.max(0, (clock.cold - 0.3) / 0.5)) * (player.underwater ? 0 : 1);
                     if (w) w.snowy = Math.min(1, clock.cold * 2.6);
-                    snowfall.update(dt, c, snowK * (0.3 + 0.7 * Math.max(w?.overcast ?? 0, w?.rain ?? 0)), 0.35 + 0.65 * clock.day, (w?.wind ?? 1) * 0.5);
+                    // (and gently, always, in the Christmas village)
+                    snowfall.update(dt, c, xmas.active ? 0.45 : snowK * (0.3 + 0.7 * Math.max(w?.overcast ?? 0, w?.rain ?? 0)), 0.35 + 0.65 * clock.day, xmas.active ? 0.25 : (w?.wind ?? 1) * 0.5);
                 }
                 // (the specks: lit by the day, dim in the deep, bright in a floodlight's beam; none inside a sub)
                 seabed.snowDim = Math.max(0.03, (0.3 + 0.7 * clock.day) * (1 - 0.97 * clock.deep));

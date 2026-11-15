@@ -6,6 +6,15 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-12-15", title: "The Ice Gate and a hidden Christmas village",
+        items: [
+            "Sail north to the Arctic and go ashore: the ice coast now slopes gently down into the sea, so you can step off your raft and walk straight up onto the land.",
+            "Head inland and look out for wooden signs saying ICE GATE. They lead to a wall of ice that goes on as far as the eye can see, and a giant gate carved into it.",
+            "Walk up to the gate's doors and you go through, into a snowy Christmas village hidden behind the ice: cute painted houses you can walk into (a fire in every hearth), lanterns along the paths, snowmen, Christmas trees with coloured lights and presents underneath, a great tree in the village square, and the main path leading to the biggest house of all: Santa's.",
+            "It glows at night. Walk back out through the gate behind you to return to the Arctic.",
+        ],
+    },
+    {
         date: "2026-12-14", title: "Butterfly power and real-looking icebergs",
         items: [
             "New at the workbench: the Raft Engine (6 metal, 4 wood, 6 fibre, 3 berries). A big water bottle full of butterflies on a stand of humming tech, tubes and wires. Set it on your raft facing the way you want to go and press E: the butterflies beat their wings and push the raft along, no rowing needed.",
