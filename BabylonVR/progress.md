@@ -70,6 +70,12 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Production plan item 7, playground out of the public build** (owner's choice): `vite.config.ts` builds only
+  `index.html`; plugin `castaway-no-playground` deletes `dist/assets/sponza`, `dist/models/woman.glb` and
+  `dist/playground.html` after the build. `npm run fetch-assets` no longer downloads Sponza (`fetch-assets:playground`
+  does). The menu's playground link is gone. The playground still works in development (`npm run dev`). dist: 84 MB to
+  30 MB.
+
 - **Production plan items 5 and 6, versions**: `PlayerInfo.bv` carries each player's version (sent in `hi`, the host's
   own set at hosting); `net/sync.ts` compares build numbers (`buildNo`, the `v1.N` part) with the host and each joiner
   and tells the one behind to reload. `main.ts` fetches `index.html` every 10 minutes and, if the live build number is

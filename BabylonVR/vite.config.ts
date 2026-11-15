@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import basicSsl from "@vitejs/plugin-basic-ssl";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
+import { rmSync } from "node:fs";
 
 // the game's version, shown on the main menu: 1.<number of commits>, the day it was built and the commit, so every new
 // build is easy to spot. (Hosted builds - Cloudflare's - clone just the last commit, which made the count 1 every time:
@@ -26,7 +27,12 @@ export default defineConfig(({ mode }) => ({
     base: "./",
     define: { __CASTAWAY_VERSION__: JSON.stringify(version) },
     // (the version is written into the page itself, so the menu shows it at once, not after the game's code has loaded)
-    plugins: [{ name: "castaway-version", transformIndexHtml: (html: string) => html.replace('<span id="version" class="version"></span>', `<span id="version" class="version">${version}</span>`) }, ...(mode === "https" ? [basicSsl()] : [])],
+    plugins: [
+        { name: "castaway-version", transformIndexHtml: (html: string) => html.replace('<span id="version" class="version"></span>', `<span id="version" class="version">${version}</span>`) },
+        // the VR playground stays a development page (npm run dev serves playground.html): what only it uses is not published
+        { name: "castaway-no-playground", apply: "build" as const, closeBundle() { for (const p of ["assets/sponza", "models/woman.glb", "playground.html"]) rmSync(fileURLToPath(new URL(`./dist/${p}`, import.meta.url)), { recursive: true, force: true }); } },
+        ...(mode === "https" ? [basicSsl()] : []),
+    ],
     // ez-tree's bark/leaf textures, grass, flowers and rocks (MIT package; textures CC0).
     resolve: { alias: { "@eztree": fileURLToPath(new URL("./node_modules/@dgreenheck/ez-tree/src", import.meta.url)) } },
     server: { host: true },
@@ -38,7 +44,7 @@ export default defineConfig(({ mode }) => ({
         target: "es2022",
         assetsDir: "bundle",
         chunkSizeWarningLimit: 8000,
-        // Two pages: the Castaway survival game (the main page) and the VR playground.
-        rollupOptions: { input: { main: fileURLToPath(new URL("./index.html", import.meta.url)), playground: fileURLToPath(new URL("./playground.html", import.meta.url)) } },
+        // The published site is the Castaway game only (the VR playground is for development: npm run dev).
+        rollupOptions: { input: { main: fileURLToPath(new URL("./index.html", import.meta.url)) } },
     },
 }));

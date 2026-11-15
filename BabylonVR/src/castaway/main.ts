@@ -191,7 +191,7 @@ async function main() {
     $("version").textContent = __CASTAWAY_VERSION__;
     // developer mode (the cheats in Settings, the VR playground link): ?dev in the address, or tap the version five times
     let devMode = params.has("dev") || getPref("castaway.dev") === "1";
-    const showDev = () => { $("dev-section").classList.toggle("hidden", !devMode); $("playground-link").classList.toggle("hidden", !devMode); };
+    const showDev = () => { $("dev-section").classList.toggle("hidden", !devMode); }; // (the VR playground is a development page now: npm run dev, /playground.html)
     showDev();
     {
         let taps = 0, tapT = 0;

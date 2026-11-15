@@ -31,6 +31,12 @@ async function download(url, dest) {
 }
 
 async function main() {
+    // (Sponza is only for the VR playground, a development page: fetched with --playground)
+    if (process.argv.includes("--playground")) await sponza();
+    await rest();
+}
+
+async function sponza() {
     console.log("Fetching Sponza…");
     const gltfPath = join(root, "sponza", "Sponza.gltf");
     await download(SPONZA + "Sponza.gltf", gltfPath);
@@ -40,6 +46,9 @@ async function main() {
     for (let i = 0; i < uris.length; i += 8) {
         await Promise.all(uris.slice(i, i + 8).map((u) => download(SPONZA + u, join(root, "sponza", u))));
     }
+}
+
+async function rest() {
     console.log("Fetching environment…");
     await download(ENV, join(root, "env", "sanGiuseppeBridge.env"));
     console.log("Fetching forest assets…");

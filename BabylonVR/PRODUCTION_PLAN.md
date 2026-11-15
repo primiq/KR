@@ -69,7 +69,7 @@ vertices in about 1400 meshes.
 
 ## Phase 2: what ships and how fast it loads (no change to what is drawn)
 
-7. **The playground's assets should not ship with the game.** `public/assets` is 58 MB, 51 MB of it Sponza, which only
+7. DONE **The playground's assets should not ship with the game.** `public/assets` is 58 MB, 51 MB of it Sponza, which only
    `playground.html` uses. Options, in order of preference: (a) drop the playground page from the production build
    (keep it in dev), or (b) leave Sponza streaming from its source and not copy it. Ask the owner which (question 1).
 8. **Main bundle.** `main-*.js` is 1.57 MB and the page also pulls shared chunks. Use dynamic `import()` for what is not

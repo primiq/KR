@@ -9,6 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "fetch-assets": "node scripts/fetch-assets.mjs",
+    "fetch-assets:playground": "node scripts/fetch-assets.mjs --playground",
     "typecheck": "tsc --noEmit",
     "build:cf": "npm run fetch-assets && npm run build"
   },
