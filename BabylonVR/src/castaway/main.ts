@@ -79,7 +79,7 @@ import { SKINS } from "./net/playerModel";
 import { setupCustomise, setNameLocked } from "./ui/customise";
 import { setViewLook, setViewSkin } from "./game/viewmodel";
 import { Avatars, playerColor } from "./net/avatars";
-import { eraseSaves, guestKey, LAYOUT, loadChar, loadWorld, migrateWorld, newWorldId, saveChar, saveWorld } from "./net/save";
+import { eraseSaves, exportSaves, guestKey, importSaves, lastSaved, LAYOUT, loadChar, loadWorld, migrateWorld, newWorldId, saveChar, saveWorld, setOnSaveProblem } from "./net/save";
 import { type PState, Session } from "./net/session";
 import { WorldSync } from "./net/sync";
 import { cleanCode, setTurn, type TransportKind } from "./net/transport";
@@ -1238,6 +1238,30 @@ async function main() {
         saveChar(charId(), captureChar(game));
     };
     saveBeforeReload = doSave;
+    // a save that could not be written (storage full) or had to fall back to the backup: say so, once
+    setOnSaveProblem((msg) => { game.hud.message(msg); $("save-note").textContent = msg; $("save-note").dataset.problem = "1"; });
+    // Settings > Your island: when it was last saved, and the save as a file to keep or move to another browser
+    setInterval(() => {
+        if (!lastSaved || !$("settings").offsetParent) return;
+        const t = new Date(lastSaved);
+        if (!$("save-note").dataset.problem) $("save-note").textContent = `Your island saves by itself. Last saved at ${t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.`;
+    }, 2000);
+    $("save-export").addEventListener("click", () => {
+        doSave();
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([exportSaves()], { type: "application/json" }));
+        a.download = `castaway-save-${new Date().toISOString().slice(0, 10)}.json`;
+        a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    });
+    $("save-import").addEventListener("click", () => $<HTMLInputElement>("save-file").click());
+    $<HTMLInputElement>("save-file").addEventListener("change", async (e) => {
+        const f = (e.target as HTMLInputElement).files?.[0];
+        if (!f) return;
+        if (started && !confirm("Importing replaces the island you are playing. Continue?")) return;
+        const err = importSaves(await f.text());
+        if (err) { $("save-note").textContent = err; return; }
+        leaving = true; location.reload();
+    });
     hostingNow = () => !!sync?.session.isHost;
     setInterval(doSave, 30000);
     window.addEventListener("pagehide", doSave);

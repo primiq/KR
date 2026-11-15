@@ -32,7 +32,7 @@ vertices in about 1400 meshes.
 
 ## Phase 1: things that can lose a player's work or break a session (do these first)
 
-1. **Saves cannot be lost silently.** `net/save.ts` writes the whole world to one localStorage key and ignores
+1. DONE **Saves cannot be lost silently.** `net/save.ts` writes the whole world to one localStorage key and ignores
    failure (`put` returns false, nobody looks). Do:
    - keep the previous good save under a second key before overwriting (`world.bak`), and load it when the main one is
      missing or fails to parse or migrate;
@@ -53,6 +53,12 @@ vertices in about 1400 meshes.
    loop, keep the game running if it can, count errors, and after 3 in 10 s show a small "Something went wrong"
    bar with Reload and "Copy details" (version, device, last errors, no personal data). No outside reporting service
    unless the owner asks for one.
+4b. **Anonymous usage reporting** (owner said yes). The Worker serves the static site; give it a tiny script
+   (`worker/index.ts`, `main` in `wrangler.jsonc`) with a `POST /api/e` endpoint writing to Workers Analytics Engine
+   (binding `EVENTS`), every other path to `env.ASSETS`. The game sends a few events (session start with device class,
+   quality and body; Play pressed; level entered; multiplayer joined; errors counted; session length on pagehide via
+   `sendBeacon`), batched, no names, no ids beyond a random per-browser id, nothing from chat or paintings. A Settings
+   toggle "Send anonymous usage data" (on by default) and a line in the credits page saying what is sent.
 5. **Version mismatch in multiplayer is explained.** The outfit change (7 to 9 numbers) already makes old clients show
    a random look. Send the build number in the join handshake; when host and guest differ, show both players "You and
    the host are on different versions: reload the page" rather than failing in odd ways. `PROTOCOL` exists: bump it
@@ -164,7 +170,16 @@ Phase 1 is about a day of work and should go first without waiting for answers. 
 largest loading win. Phase 3 items 13 and 16 matter most for phones. Phases 4 and 5 can be interleaved; 28 and 29
 should land before large refactors (8, 13) so they are protected.
 
-## Questions for the owner
+## Owner's answers (2026-11-15)
+
+1. Remove the playground page from the public build: YES.
+2. Re-encode music and ambience at slightly lower quality: YES.
+3. Quest check of Bora's hands: the owner will do it later.
+4. Replace Mario with an original character: a plumber called Bob.
+5. Usage reporting: YES, wanted (anonymous; see item 4b).
+6. Paid TURN / own broker: not yet.
+
+## Questions for the owner (as asked)
 
 1. The VR playground page and its 51 MB Sponza scene ship with the game. Remove the playground from the public
    build, or keep it?

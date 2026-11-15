@@ -19,7 +19,7 @@ through rings of open sea to an Arctic. Multiplayer is peer to peer (PeerJS), th
 - Never touch the `primiq/castaway` repo. Work only in `primiq/KR`, directly on `master`, push to `origin master`. No PRs.
 - **No long dashes ever** (em dash, en dash): not in code, comments, commit messages, game text, What's new, or replies.
 - Every player-facing change adds an entry at the TOP of `UPDATES` in `src/castaway/ui/whatsnew.ts` in the same commit
-  (its date drives the "new" dot on the menu). Dates so far run ahead of the calendar (latest 2026-12-07): keep going up.
+  (its date drives the "new" dot on the menu). Dates so far run ahead of the calendar (latest 2026-12-08): keep going up.
 - Commits end with the Co-Authored-By and Claude-Session lines; no model names or IDs in commits.
 - Performance changes must be measured (an earlier perf change was rolled back).
 - Keep this file (`progress.md`) current.
@@ -69,6 +69,11 @@ screen, deep sea abyss with glowing creatures (GlowLayer) and chests, open sea, 
 pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flute, butterflies, gulls, whales, dolphins.
 
 ## Recent work (newest first)
+
+- **Production plan item 1, saves**: `net/save.ts` keeps the previous save as `castaway.bjs.world.bak` and loads it if the
+  main one is damaged; on a full storage it drops the backup, then the paintings' pictures, then tells the player once
+  (`setOnSaveProblem`, HUD and the Settings note). Settings > Your island: last-saved time, Export save (all
+  `castaway.*`, `outfit`, `name` keys as one JSON file) and Import save (replaces, reloads).
 
 - **Production plan**: `PRODUCTION_PLAN.md` (audit and a phased plan: saves, network hardening, loading size, GPU
   skinning for Bora, polish, tests and CI, release routine, questions for the owner). Nothing implemented yet: work it

@@ -6,6 +6,14 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-12-08", title: "Your island is safer",
+        items: [
+            "Every save keeps the one before it: if a save is ever damaged, the game loads the previous one and tells you.",
+            "If your browser runs out of room, the game tells you instead of failing quietly (and keeps your island without the paintings' pictures if that is what fits).",
+            "Settings has a new Your island section: when it was last saved, and Export save / Import save to keep your island as a file or move it to another browser.",
+        ],
+    },
+    {
         date: "2026-12-07", title: "Bora holds things properly",
         items: [
             "Bora's hands now close round whatever you hold: the thumb over the handle of an axe, a pickaxe, a torch or a fishing rod, the fingers round a log, a fish or a stone, the palm under a coconut or berries.",
