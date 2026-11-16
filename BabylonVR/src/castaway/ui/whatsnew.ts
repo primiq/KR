@@ -6,6 +6,16 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-12-17", title: "A better-looking island, and first steps for newcomers",
+        items: [
+            "The ground under the grass is now a proper green lawn instead of dark soil, so the meadows and the jungle floor look lush by day and no longer glow oddly at night.",
+            "Sunsets are fixed: the sky used to turn almost black while the sun was still up. Now it stays bright and warm until the sun goes down, then fades through a deep blue dusk into the night.",
+            "The sea is calmer to look at in the distance: the far glitter no longer crawls with speckles, and the sun lays a soft path across the water.",
+            "By day you now hear a soft breeze in the palms, coming and going in slow gusts.",
+            "New players get a small First steps card: gather, craft a hatchet, light a campfire, build a workbench, make a bed, and set out to sea. It ticks itself off as you go, and you can close it any time.",
+        ],
+    },
+    {
         date: "2026-12-16", title: "A faster way north, and treasure in and on the ice",
         items: [
             "Past the islets a strong ocean current now carries every boat and raft along, up to three times as fast. The long sail to the Arctic (and home again) takes a fraction of the time.",

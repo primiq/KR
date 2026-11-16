@@ -208,7 +208,9 @@ void main(void) {
     float n0 = fbm(q * 0.9 + vec2(time * 0.35, time * 0.2));
     float nx = fbm((q + vec2(dn, 0.0)) * 0.9 + vec2(time * 0.35, time * 0.2));
     float nz = fbm((q + vec2(0.0, dn)) * 0.9 + vec2(time * 0.35, time * 0.2));
-    N = normalize(N + vec3(n0 - nx, 0.0, n0 - nz) * 1.4);
+    // (far away the ripples are smaller than a pixel: there they only made the glitter crawl with speckles, so they fade)
+    float fineK = 1.0 / (1.0 + dot(cameraPos - vPos, cameraPos - vPos) * 0.00003);
+    N = normalize(N + vec3(n0 - nx, 0.0, n0 - nz) * 1.4 * fineK);
 #endif
 
     vec3 toCam = cameraPos - vPos;
@@ -245,7 +247,9 @@ void main(void) {
     vec3 L = -sunDir;
     vec3 H = normalize(L + V);
     float NdH = max(dot(N, H), 0.0);
-    vec3 spec = sunColor * (pow(NdH, 900.0) * 40.0 + pow(NdH, 120.0) * 0.8);
+    // (the needle-sharp core only near you; in the distance the broad sheen carries the sun's path)
+    float coreK = 1.0 / (1.0 + dist * dist * 0.00008);
+    vec3 spec = sunColor * (pow(NdH, 900.0) * 40.0 * coreK + pow(NdH, 120.0) * (0.8 + 1.0 * (1.0 - coreK)));
 
     // Water body: absorption by depth, plus light scattered through wave crests.
     float depth = max(vPos.y - vSeabed, 0.0);

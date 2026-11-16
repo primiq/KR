@@ -5,6 +5,7 @@ import { coldAt, inSeaWorld } from "./world/arctic";
 import { ArcticView, Snowfall } from "./world/arcticView";
 import { GATE, GATE_A, gateDist, NorthGate } from "./world/northgate";
 import { XmasVillage } from "./world/xmas";
+import { Goals } from "./ui/goals";
 import { IceGrottos } from "./world/grotto";
 import type { Grotto } from "./world/arctic";
 import {
@@ -610,6 +611,14 @@ async function main() {
     const sites = new SurfaceSites(game.ugRoot as unknown as THREE.Scene, sitePlan, vegetation.colliders, q.shadows);
     game.under.sites = sites;
     const caves = new CaveView(scene, game, clock, q.shadows);
+    // first steps for a new player (a card on the HUD; gone once done or closed)
+    const goals = new Goals({
+        count: (id) => game.inv.count(id as never),
+        built: (...kinds) => game.structures.list.some((s) => kinds.includes(s.kind)),
+        afloat: () => game.boats.list.length > 0 || game.inv.count("raft") + game.inv.count("boat") > 0,
+        touch: input.touch,
+    });
+    goals.onDone = (title, last) => { game.sfx.craft(); game.hud.message(last ? "You know the ropes now. The island, and the sea, are yours!" : `Done: ${title}`); };
     // the ice grottos: a hole in the foot of some big bergs, under the water; a treasure chest inside
     const grottos = new IceGrottos(scene, arctic.bergMaterial, game.natureRoot as unknown as THREE.Object3D, game.deepSea);
     grottos.say = (t) => game.hud.message(t);
@@ -1072,6 +1081,7 @@ async function main() {
             if (xmas.active && xmas.atExitGate(player.pos.x, player.pos.z)) xmasGo(false);
             if (!xmas.active && !xmasGoing && xmas.contains(player.pos.x, player.pos.z)) player.teleport(GATE.x - Math.cos(GATE_A) * 9, heightAt(GATE.x - Math.cos(GATE_A) * 9, GATE.z - Math.sin(GATE_A) * 9), GATE.z - Math.sin(GATE_A) * 9, GATE.yaw);
             xmas.update(dt);
+            if (started) goals.update(dt);
             {
                 const g = grottos.update(dt, player.pos, player.mode === "swim", game.under.active || xmas.active || !inSeaWorld(player.pos.x, player.pos.z));
                 if (g) grottoGo(g);
@@ -1157,8 +1167,11 @@ async function main() {
                     clock.dust = dk;
                     clock.dustDensity = 0.3 * (1 - storm.shelter) + 0.035 * storm.shelter;
                     player.slow = dk * (1 - storm.shelter);
-                    const w = dk * (0.9 - 0.65 * storm.shelter);
-                    if (Math.abs(w - stormWind) > 0.01) { stormWind = w; game.sfx.setWind(w); }
+                    // (and on the island by day a soft breeze in the palms, coming and going in slow gusts: never silence)
+                    const outside = !game.under.active && !player.cave && !player.underwater && inSeaWorld(player.pos.x, player.pos.z);
+                    const breeze = outside ? (0.05 + 0.045 * Math.sin(now / 5300) * Math.sin(now / 1900 + 1.3)) * (0.45 + 0.55 * clock.day) : 0;
+                    const w = Math.max(dk * (0.9 - 0.65 * storm.shelter), breeze);
+                    if (Math.abs(w - stormWind) > 0.004) { stormWind = w; game.sfx.setWind(w); }
                 }
                 if (desert.active !== was) { ocean.mesh.setEnabled(!desert.active); vegetation.setGrassDetail(desert.active ? 3 : 0); ocean.setMirrorLevel(desert.active ? OASIS_WATER : 0); }
                 clock.desert += ((desert.active ? 1 : 0) - clock.desert) * Math.min(1, dt * 2);
@@ -1279,6 +1292,7 @@ async function main() {
         pawRig.matrixWorldNeedsUpdate = true;
         pawMirror.sync();
         vegetation.update(player.pos.x, player.pos.z);
+        vegetation.setGrassLight(clock.day);
         syncCasters();
     });
     engine.runRenderLoop(() => scene.render());

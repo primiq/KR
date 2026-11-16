@@ -70,6 +70,16 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Look and feel pass**: terrain.ts grass and jungle albedo brightened (the ground under the blades reads as lawn);
+  `Vegetation.setGrassLight(day)` dims the grass materials' albedo at night (blades glowed against the ground).
+  atmosphere.ts: the sky dome's own sun never goes below `SKY_MIN` (0.2) and `luminance` (a linear scale in this
+  build's sky) rises from 0.12 to 0.8 as it gets low, then fades with `1 - nightK`: the SkyMaterial went near black
+  from about 10 degrees of sun. Turbidity rises at low sun. ocean.ts: fine ripples and the sharp specular core fade
+  with distance (`fineK`, `coreK`), a broader sheen replaces them far off. A daytime breeze: main.ts feeds
+  `sfx.setWind` max(sandstorm, a slow gusting 0.005..0.095 scaled by daylight) outside. `ui/goals.ts`: the First
+  steps card (6 goals checked once a second against the bag, structures and boats; pref `castaway.goals`).
+- **Plan status**: items 22 (first minutes: the goals card) and 25 (daytime ambience) are covered by this pass.
+
 - **Berg ramps and explorers' camps**: every tabular berg gets `ramp` (arctic.ts `addRamp`: bearing from its id, 5.5 m
   wide, slope 0.3 from the top down to 1.2 m under the sea; `iceHeight` = max(body, ramp), reach grown to cover it;
   drawn in arcticView `iceMesh` as a double-sided wedge). `campOf(berg)` (about half the ramped bergs) puts a camp on

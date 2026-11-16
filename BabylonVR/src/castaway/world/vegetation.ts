@@ -240,6 +240,10 @@ function planIslets() {
 export class Vegetation {
     readonly colliders = new ColliderGrid();
     private grassNoise = new Noise2D(77);
+    private grassMats: PBRMaterial[] = [];
+    /** the grass by night: its blades stand up into every bit of light there is and glowed against the dark ground, so they
+     *  are toned down as the light goes (`day` 0..1) */
+    setGrassLight(day: number) { const k = 0.34 + 0.66 * day; for (const m of this.grassMats) m.albedoColor.set(k, k, k); }
     private tiers: { mesh: Inst; keep: Inst | null; cap: number; cell: number; level: number; r0: number; r1: number; at: { x: number; z: number }; step: number; memo?: GrassMemo }[] = [];
     readonly nodes: ResNode[] = [];
     /** the ground under each tree and rock when it was last placed (so digging under it moves what you hit) */
@@ -666,6 +670,7 @@ export class Vegetation {
             const mk = (mode: number, n: number) => {
                 const name = `grass${t.level}${mode === GrassMode.Keep ? "k" : ""}`;
                 const mat = foliageMaterial(scene, name, 0.5, true, 0.35);
+                if (!this.grassMats.includes(mat)) this.grassMats.push(mat);
                 if (!mat.pluginManager?.getPlugin("GrassLod")) new GrassLodPlugin(mat, t.r0, t.r1, R[2], mode);
                 const mesh = new Inst(name, buildGrassTuft(t.far), mat, n, scene);
                 mesh.count = 0;

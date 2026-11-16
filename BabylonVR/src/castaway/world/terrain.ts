@@ -114,8 +114,9 @@ export class Terrain {
             if (texReady > 0.5) {
                 sandC = surfaceAlbedo * mix(vec3(1.08, 0.98, 0.86), vec3(0.95, 0.86, 0.72), nB * 0.5 + 0.5);
                 vec3 g = toLinearSpace(texture2D(grassSampler, wxz * 0.29).rgb);
-                grassC = g * mix(vec3(0.95, 1.05, 0.55), vec3(0.75, 0.95, 0.5), nB * 0.5 + 0.5);
-                jungleC = g * vec3(0.5, 0.72, 0.38);
+                // (bright enough to sit under the grass blades as one lawn, by day and by moonlight, not as dark soil between them)
+                grassC = g * mix(vec3(1.25, 1.75, 0.62), vec3(1.0, 1.5, 0.55), nB * 0.5 + 0.5);
+                jungleC = g * vec3(0.8, 1.3, 0.5);
                 vec3 rk = toLinearSpace(texture2D(rockSampler, wxz * 0.11 + vec2(nW.x, nW.z) * 0.6).rgb);
                 rockC = rk * vec3(1.0, 0.94, 0.85);
             }

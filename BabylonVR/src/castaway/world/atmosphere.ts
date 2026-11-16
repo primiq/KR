@@ -9,6 +9,9 @@ import { SkyDeco } from "./skyDeco";
  * the spawn beach, a cool moon opposite. The physically based sky follows the sun; the image-based lighting it
  * produces is re-captured whenever the sun has moved noticeably, so everything lit by the sky darkens at dusk.
  */
+/** the lowest the sky dome's own sun goes (sine of its elevation): see apply */
+const SKY_MIN = 0.2;
+
 export class Atmosphere {
     hour = 7;
     dayLength = 1500;
@@ -156,6 +159,7 @@ export class Atmosphere {
     cold = 0;
     dustDensity = 0.3;
 
+    private skySun = new Vector3();
     update(dt: number) {
         const night = this.hour >= 19.5 || this.hour < 5.5;
         this.hour = (this.hour + (dt * 24 * (night ? 1.7 : 0.93)) / this.dayLength) % 24;
@@ -197,7 +201,16 @@ export class Atmosphere {
         // eyes adapt: the dark is lifted a little (not so much that night looks like day)
         this.setExposure(1 + 0.22 * (1 - day) + 0.15 * dusk);
         const sm = this.sky.material as SkyMaterial;
-        sm.sunPosition = this.sunDir.scale(100);
+        // (the scattering sky goes almost black as soon as its sun gets low, long before sunset, while the land is still
+        //  in full light. So its sun never sinks below SKY_MIN and its brightness (`luminance`, a plain scale) is turned up
+        //  to make up for the low sun: the dome stays lit through sunset. Then it fades to nothing as the real sun goes
+        //  under, and the night sky behind it shows)
+        const skyY = Math.max(sy, SKY_MIN);
+        this.skySun.set(this.sunDir.x, skyY, this.sunDir.z).normalize();
+        sm.sunPosition = this.skySun.scale(100);
+        sm.luminance = lerp(0.8, 0.12, smoothstep(SKY_MIN, 0.5, skyY)) * (1 - nightK);
+        // (hazier, so warmer and paler at the horizon, as the sun comes down)
+        sm.turbidity = 5 + 9 * low * day;
         if (this.sunDisc) {
             this.sunDisc.position = this.sunDir.scale(120);
             this.sunDisc.setEnabled(sy > -0.05);

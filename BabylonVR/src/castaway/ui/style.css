@@ -386,3 +386,10 @@ body.inwarp #bottom, body.inwarp #compass, body.inwarp #prompt, body.inwarp #cro
 #menu .wn-entry.latest .wn-date { color: var(--accent); opacity: 1; font-weight: 700; }
 #menu .wn-entry ul { margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.45; }
 #menu .wn-entry li + li { margin-top: 4px; }
+/* first steps (ui/goals.ts): a small card, top left */
+#goals { position: absolute; left: 10px; top: calc(46px + env(safe-area-inset-top)); width: min(250px, 46vw); padding: 9px 26px 8px 11px; background: var(--glass); border: 1px solid var(--glass-edge); border-radius: 12px; font-size: 12.5px; line-height: 1.35; pointer-events: auto; }
+#goals.hidden { display: none; }
+#goals b { display: block; font-size: 13.5px; margin-bottom: 2px; color: var(--accent); }
+#goals i { display: block; margin-top: 4px; font-style: normal; font-size: 10.5px; opacity: .6; letter-spacing: .04em; text-transform: uppercase; }
+#goals button { position: absolute; right: 4px; top: 3px; width: 22px; height: 22px; border: 0; background: transparent; color: #fff; opacity: .6; font-size: 15px; cursor: pointer; }
+@media (max-height: 460px) { #goals { font-size: 11.5px; width: min(220px, 40vw); } #goals span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; } }

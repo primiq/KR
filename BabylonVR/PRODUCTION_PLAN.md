@@ -124,7 +124,7 @@ vertices in about 1400 meshes.
     gain 0.7 in `game/audio.ts`); mouse sensitivity and touch look sensitivity; invert Y; field of view (PC); a
     "reduce camera motion" toggle that turns off view bob and screen shake; left-handed VR (check what exists). All
     stored in prefs, all applied live.
-22. **First minutes.** Play the first 10 minutes as a new player on PC, phone and (owner) VR and write down every
+22. DONE (a First steps card on the HUD, ui/goals.ts; the owner still to play it in VR, where the HUD card is not shown) **First minutes.** Play the first 10 minutes as a new player on PC, phone and (owner) VR and write down every
     moment where it is unclear what to do. Fix with the existing prompt and narrator systems, not new UI: what to
     pick up first, how to craft, how to open the menu on each device, how to save (it is automatic: say so once).
 23. **Touch controls pass.** On a phone: every action reachable (the flute's 8 notes, the drum, painting, the sub's
@@ -133,7 +133,7 @@ vertices in about 1400 meshes.
 24. **Text pass.** Read every string in the game once (`ITEMS` names and descriptions, prompts, messages, What's new,
     the menus): consistent capitals, British spelling as used so far, no placeholder text, no developer words
     (dev mode stays hidden unless enabled).
-25. **Sound pass.** With the bird beeps gone, the island by day is quiet. Add a soft, non-tonal daytime ambience layer
+25. PARTLY DONE (a daytime breeze added; levels and "every action has a sound" not audited by ear: no audio in the build container) **Sound pass.** With the bird beeps gone, the island by day is quiet. Add a soft, non-tonal daytime ambience layer
     (wind in palms, distant surf already exists: check levels) and make sure every action has a sound and none
     clips: craft, place, pick up, eat, drink, hurt, level up tools, door, raft oar, sub. Synthesised like the rest;
     no new audio files unless small.
