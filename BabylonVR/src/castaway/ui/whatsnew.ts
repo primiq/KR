@@ -6,11 +6,13 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
-        date: "2026-12-16", title: "A faster way north, and treasure in the ice",
+        date: "2026-12-16", title: "A faster way north, and treasure in and on the ice",
         items: [
             "Past the islets a strong ocean current now carries every boat and raft along, up to three times as fast. The long sail to the Arctic (and home again) takes a fraction of the time.",
             "Some of the big icebergs hide a secret: a hole in their foot under the water, with a blue glow shining up out of it (look for the shimmer on the surface).",
             "Dive down and swim into the hole: you come up in a grotto inside the ice, with icicles, glowing crystals and a treasure chest. Dive back down through the pool to swim out.",
+            "The big flat-topped icebergs now each have a ramp of ice down one side into the sea: swim or row up to its foot and walk right up onto the top.",
+            "On top of about half of them, an explorer camped long ago: a tent, a flag, a cold campfire, a sled of crates, and a treasure chest left behind.",
         ],
     },
     {

@@ -240,6 +240,21 @@ export class ArcticView {
                 // (Babylon's right-handed front face: the other way round from three.js)
                 idx.push(a, c, b, b, c, d);
             }
+            // a flat-topped berg's ramp: a wedge of ice from its top down to under the sea (both faces of each side, so
+            //  the winding cannot hide it)
+            if (f.ramp) {
+                const m = f.ramp, c = Math.cos(m.a), sn = Math.sin(m.a), b0 = pos.length / 3;
+                const W = (u: number, v: number, y: number) => pos.push(f.x + u * c - v * sn, y, f.z + u * sn + v * c);
+                const u0 = m.r0 - 2, u1 = m.r0 + m.len, yb = -7, hw = m.w / 2;
+                // top: 0 1 (near, left/right) 2 3 (far end); bottom: 4 5 6 7 the same
+                W(u0, -hw, m.top); W(u0, hw, m.top); W(u1, -hw, m.top - (u1 - m.r0) * 0.3); W(u1, hw, m.top - (u1 - m.r0) * 0.3);
+                W(u0, -hw - 1.5, yb); W(u0, hw + 1.5, yb); W(u1, -hw - 1.5, yb); W(u1, hw + 1.5, yb);
+                const quad = (a: number, b: number, c2: number, d: number) => idx.push(b0 + a, b0 + b, b0 + c2, b0 + b, b0 + d, b0 + c2, b0 + a, b0 + c2, b0 + b, b0 + b, b0 + c2, b0 + d);
+                quad(0, 1, 2, 3);   // the walking surface
+                quad(0, 2, 4, 6);   // the sides
+                quad(1, 3, 5, 7);
+                quad(2, 3, 6, 7);   // the toe
+            }
         }
         const m = new Mesh(floes ? "arcticFloes" : "arcticBergs", this.scene);
         const vd = new VertexData(); vd.positions = pos; vd.indices = idx;

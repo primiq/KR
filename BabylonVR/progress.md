@@ -70,6 +70,12 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Berg ramps and explorers' camps**: every tabular berg gets `ramp` (arctic.ts `addRamp`: bearing from its id, 5.5 m
+  wide, slope 0.3 from the top down to 1.2 m under the sea; `iceHeight` = max(body, ramp), reach grown to cover it;
+  drawn in arcticView `iceMesh` as a double-sided wedge). `campOf(berg)` (about half the ramped bergs) puts a camp on
+  the top across from the ramp; grotto.ts builds it near you (tent, flag, dead fire, sled with crates) with a
+  `DeepChest` of id 1e9 + berg id (the deep's full haul). `window.grottos.campsAround` for tests.
+
 - **Sea current and ice grottos**: `seaCurrent(x, z)` in arctic.ts (1 near the island, 1.6 among the islets, up to 3
   from about 2.5 km out, back to 1 before the Arctic coast) multiplies boat and raft travel in `Boats.drive` and in the
   remote prediction; a message the first time it catches you. Grottos: `grottoOf(berg)` (non-floe bergs over 9 m tall,

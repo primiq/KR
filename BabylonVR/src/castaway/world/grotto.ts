@@ -8,7 +8,7 @@
 import { Color3, type Material, Mesh, MeshBuilder, PointLight, Quaternion, type Scene, StandardMaterial, TransformNode, Vector3, VertexData } from "@babylonjs/core";
 import * as THREE from "three";
 import { glow, solid } from "../render/materials";
-import { type Grotto, grottosNear, iceHeight, iceNear } from "./arctic";
+import { type Camp, campsNear, type Grotto, grottosNear, iceHeight, iceNear } from "./arctic";
 import { chestModel, type DeepChest, type DeepSea } from "./deepsea";
 
 /** where the grotto is, its floor's height, the dome's radius and height, the pool (where you come in and go out) */
@@ -48,6 +48,7 @@ export class IceGrottos {
 
   /** the grottos within `rad` of (x, z) (for tests and the map) */
   around(x: number, z: number, rad: number) { return grottosNear(x, z, rad, []); }
+  campsAround(x: number, z: number, rad: number) { return campsNear(x, z, rad, []); }
   contains(x: number, z: number) { return Math.hypot(x - GX, z - GZ) < 80; }
 
   // ---------------------------------------------------------------- out at sea: the mouths
@@ -62,6 +63,11 @@ export class IceGrottos {
       const keep = new Set(this.near.map((g) => g.id));
       for (const [id, n] of this.mouths) if (!keep.has(id)) { n.dispose(); this.mouths.delete(id); }
       for (const g of this.near) if (!this.mouths.has(g.id)) this.mouths.set(g.id, this.mouth(g));
+      // and the explorers' camps on top of the flat bergs
+      const camps = campsNear(me.x, me.z, MOUTH_R, []), keepC = new Set(camps.map((c) => c.id));
+      for (const [id, c] of this.camps) if (!keepC.has(id)) { this.dropCamp(c); this.camps.delete(id); }
+      for (const c of camps) if (!this.camps.has(c.id)) this.camps.set(c.id, this.camp(c));
+      for (const c of camps) if (!this.campTold && Math.hypot(me.x - c.x, me.z - c.z) < 120 && me.y > c.y - 2) { this.campTold = true; this.say("Somebody camped up here once... a tent, a flag, and something left behind."); }
     }
     let hit: Grotto | null = null;
     for (const g of this.near) {
@@ -72,7 +78,61 @@ export class IceGrottos {
     return hit;
   }
 
-  private dropMouths() { for (const n of this.mouths.values()) n.dispose(); this.mouths.clear(); this.near.length = 0; this.nearAt.x = 1e9; }
+  private dropMouths() {
+    for (const n of this.mouths.values()) n.dispose(); this.mouths.clear(); this.near.length = 0; this.nearAt.x = 1e9;
+    for (const c of this.camps.values()) this.dropCamp(c); this.camps.clear();
+  }
+
+  // ---------------------------------------------------------------- explorers' camps on the flat bergs
+  private camps = new Map<number, { node: TransformNode; chestG: THREE.Group; chest: DeepChest }>();
+  private campTold = false;
+  private dropCamp(c: { node: TransformNode; chestG: THREE.Group; chest: DeepChest }) {
+    c.node.dispose(); this.deep.dropChest(c.chest); this.three.remove(c.chestG);
+    c.chestG.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
+  }
+  /** a camp: an orange ridge tent, a pole with a faded red flag, a ring of stones round a dead fire, a sled with crates,
+   *  snow drifted against it all, and the chest */
+  private camp(c: Camp) {
+    const S = this.scene, node = new TransformNode("bergCamp", S);
+    node.position.set(c.x, c.y, c.z); node.rotation.y = c.yaw;
+    const parts = new Map<Material, Mesh[]>();
+    const put = (m: Mesh, mat: Material, x: number, y: number, z: number) => { m.position.set(x, y, z); let a = parts.get(mat); if (!a) parts.set(mat, (a = [])); a.push(m); return m; };
+    const canvas = solid(S, "#e8742a", 0.8), wood = solid(S, "#6b4a2c", 0.9), snow = solid(S, "#f2f7fc", 0.95), stone = solid(S, "#55595e", 0.95), red = solid(S, "#b8322a", 0.85), crate = solid(S, "#a07848", 0.9), char = solid(S, "#1c1917", 1);
+    // the tent: an orange ridge tent side-on to the ramp (its ridge along x), both ends closed
+    for (const sz of [-1, 1]) { const t = MeshBuilder.CreateBox("tent", { width: 2.8, height: 0.05, depth: 1.7 }, S); t.rotation.x = sz * 0.95; put(t, canvas, 0, 0.68, -2 + sz * 0.55); }
+    for (const ex of [-1.4, 1.4]) {
+      const e = new Mesh("tentEnd", S), vd = new VertexData();
+      vd.positions = [0, 0, -1.0, 0, 0, 1.0, 0, 1.36, 0]; vd.indices = [0, 1, 2, 0, 2, 1]; vd.normals = [1, 0, 0, 1, 0, 0, 1, 0, 0]; vd.uvs = [0, 0, 1, 0, 0.5, 1];
+      vd.applyToMesh(e); put(e, canvas, ex, 0, -2);
+    }
+    put(MeshBuilder.CreateBox("ridge", { width: 3.0, height: 0.07, depth: 0.07 }, S), wood, 0, 1.36, -2);
+    put(MeshBuilder.CreateBox("drift", { width: 3.2, height: 0.25, depth: 0.9 }, S), snow, 0, 0.1, -3.2);
+    // the flag
+    put(MeshBuilder.CreateCylinder("pole", { diameter: 0.07, height: 3.4, tessellation: 6 }, S), wood, 2.2, 1.7, -2.6);
+    const flag = MeshBuilder.CreatePlane("flag", { width: 1.1, height: 0.7, sideOrientation: Mesh.DOUBLESIDE }, S); flag.rotation.y = Math.PI / 2; put(flag, red, 2.2, 3.0, -2.05);
+    // the dead campfire
+    for (let k = 0; k < 8; k++) { const a = (k / 8) * Math.PI * 2; put(MeshBuilder.CreateSphere("st", { diameter: 0.26, segments: 4 }, S), stone, 2.0 + Math.cos(a) * 0.45, 0.08, 0.6 + Math.sin(a) * 0.45); }
+    put(MeshBuilder.CreateCylinder("ash", { diameter: 0.7, height: 0.04, tessellation: 12 }, S), char, 2.0, 0.03, 0.6);
+    for (const r of [0.3, -0.5]) { const l = MeshBuilder.CreateCylinder("log", { diameter: 0.1, height: 0.7, tessellation: 6 }, S); l.rotation.set(Math.PI / 2, r, 0); put(l, char, 2.0, 0.08, 0.6); }
+    // the sled with its crates
+    for (const sx of [-1, 1]) { const run = MeshBuilder.CreateBox("runner", { width: 0.06, height: 0.08, depth: 2.2 }, S); put(run, wood, -2.2 + sx * 0.4, 0.05, 0.2); }
+    put(MeshBuilder.CreateBox("deck", { width: 0.95, height: 0.06, depth: 1.9 }, S), wood, -2.2, 0.22, 0.2);
+    put(MeshBuilder.CreateBox("crate", { width: 0.7, height: 0.5, depth: 0.7 }, S), crate, -2.2, 0.5, 0.6);
+    put(MeshBuilder.CreateBox("crate2", { width: 0.55, height: 0.4, depth: 0.55 }, S), crate, -2.2, 0.45, -0.25).rotation.y = 0.3;
+    put(MeshBuilder.CreateBox("sledSnow", { width: 0.9, height: 0.1, depth: 0.7 }, S), snow, -2.2, 0.8, 0.6);
+    for (const [m, list] of parts) {
+      const merged = Mesh.MergeMeshes(list, true, true, undefined, false, false);
+      if (merged) { merged.material = m; merged.parent = node; merged.isPickable = false; merged.receiveShadows = true; }
+    }
+    // the chest, by the tent's door (the deep sea's kind: looted, saved and shared the same way)
+    const cs = Math.cos(c.yaw), sn = Math.sin(c.yaw), lx = 0.9, lz = -0.4;
+    const wx = c.x + lx * cs + lz * sn, wz = c.z - lx * sn + lz * cs;
+    const chestG = new THREE.Group(); chestG.position.set(wx, c.y, wz); chestG.rotation.y = c.yaw;
+    const cm = chestModel(); chestG.add(cm.g); this.three.add(chestG);
+    const chest: DeepChest = { id: c.id, x: wx, y: c.y, z: wz, yaw: c.yaw, lid: cm.lid, glow: cm.glow, looted: 0, small: false };
+    this.deep.addChest(chest);
+    return { node, chestG, chest };
+  }
 
   /** a mouth: a dark hole lying in the slope of the berg's foot, a glowing rim round it, a shimmer up to the surface */
   private mouth(g: Grotto): TransformNode {

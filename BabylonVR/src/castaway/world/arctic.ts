@@ -58,6 +58,26 @@ export interface Ice {
   prof: [number, number][]; widest: number;
   /** the widest it gets (m, before wobble) */
   reach: number;
+  /** a flat-topped berg's ramp: a slope of ice down one side into the sea, to walk up from the water. Bearing `a`, width
+   *  `w`; it leaves the top (height `top`) at `r0` from the middle and runs `len` out to just under the sea */
+  ramp?: { a: number; w: number; r0: number; len: number; top: number };
+}
+
+/** the ramp's slope (rise over run: an easy walk) and how far under the sea it ends */
+const RAMP_SLOPE = 0.3, RAMP_FOOT = -1.2;
+function addRamp(f: Ice) {
+  if (f.kind !== "tabular") return;
+  const R = f.prof[2][0] / 0.9, top = f.prof[0][1], r0 = R * 0.82, len = (top - RAMP_FOOT) / RAMP_SLOPE;
+  f.ramp = { a: hash(f.id % 100000, 7, 93) * Math.PI * 2, w: 5.5, r0, len, top };
+  f.reach = Math.max(f.reach, r0 + len + 3);
+}
+/** the ramp's surface at (x, z), or -Infinity off it */
+function rampHeight(f: Ice, x: number, z: number) {
+  const m = f.ramp!;
+  const dx = x - f.x, dz = z - f.z, c = Math.cos(m.a), s = Math.sin(m.a);
+  const u = dx * c + dz * s, v = -dx * s + dz * c;
+  if (Math.abs(v) > m.w / 2 || u < m.r0 - 2 || u > m.r0 + m.len) return -Infinity;
+  return m.top - Math.max(0, u - m.r0) * RAMP_SLOPE;
 }
 
 /** how much wider or narrower it is in the direction `a` (radius multiplier) */
@@ -131,7 +151,7 @@ function bergIn(i: number, j: number): Ice | null {
       // (the first ones are small: bergy bits; then pinnacles and tabular bergs, bigger the further out)
       if (early) f = makeIce("pinnacle", k, x, z, 3 + t * 3, 2.5 + t * 3, r);
       else if (hash(i, j, 5) < 0.6) f = makeIce("pinnacle", k, x, z, 6 + t * 7 * (0.5 + out), 7 + t * 13 * (0.5 + out * 0.6), r);
-      else f = makeIce("tabular", k, x, z, 14 + t * 16 * (0.5 + out * 0.5), 8.5 + t * 7, r);
+      else { f = makeIce("tabular", k, x, z, 14 + t * 16 * (0.5 + out * 0.5), 8.5 + t * 7, r); addRamp(f); }
     }
   }
   cache.set(k, f);
@@ -140,6 +160,10 @@ function bergIn(i: number, j: number): Ice | null {
 
 /** the height of the top of an ice body's surface at (x, z), -Infinity off it */
 export function iceHeight(f: Ice, x: number, z: number): number {
+  const body = iceBody(f, x, z);
+  return f.ramp ? Math.max(body, rampHeight(f, x, z)) : body;
+}
+function iceBody(f: Ice, x: number, z: number): number {
   const dx = x - f.x, dz = z - f.z;
   const d = Math.hypot(dx, dz) / iceWobble(f, Math.atan2(dz, dx) - f.yaw);
   const P = f.prof;
@@ -346,5 +370,23 @@ export function grottoOf(f: Ice): Grotto | null {
 export function grottosNear(x: number, z: number, rad: number, out: Grotto[] = []): Grotto[] {
   out.length = 0;
   for (const f of iceNear(x, z, rad, [], false, true)) { const g = grottoOf(f); if (g) out.push(g); }
+  return out;
+}
+
+// ------------------------------------------------------------------ explorers' camps
+// On top of about half of the flat-topped bergs (the ones with a ramp up), the camp of an explorer long gone: a tent, a
+// flag, a dead campfire, a sled with crates, and a chest they left behind (grotto.ts draws it).
+export interface Camp { /** its chest's id */ id: number; x: number; y: number; z: number; /** the way the tent faces */ yaw: number }
+export function campOf(f: Ice): Camp | null {
+  if (!f.ramp || hash(f.id % 100000, 7, 94) > 0.55) return null;
+  // (on the top, across from where the ramp comes up)
+  const a = f.ramp.a + Math.PI + (hash(f.id % 100000, 7, 95) - 0.5) * 0.8, R = f.ramp.r0 * 0.45;
+  const x = f.x + Math.cos(a) * R, z = f.z + Math.sin(a) * R, y = iceHeight(f, x, z);
+  if (!Number.isFinite(y)) return null;
+  return { id: 1e9 + f.id, x, y, z, yaw: Math.atan2(Math.cos(f.ramp.a), Math.sin(f.ramp.a)) };
+}
+export function campsNear(x: number, z: number, rad: number, out: Camp[] = []): Camp[] {
+  out.length = 0;
+  for (const f of iceNear(x, z, rad, [], false, true)) { const c = campOf(f); if (c) out.push(c); }
   return out;
 }
