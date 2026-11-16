@@ -31,6 +31,13 @@ const smooth = (a: number, b: number, v: number) => { const t = clamp01((v - a) 
 
 /** on the reachable sea (anywhere short of the end of it) */
 export const inSeaWorld = (x: number, z: number) => Math.hypot(x, z) < OUTER;
+/** the open sea's current: past the islets a strong current sweeps the long, empty way out to the ice (and back), so a
+ *  boat or a raft covers it up to three times as fast; it eases off near the islets and dies away before the coast */
+export function seaCurrent(x: number, z: number): number {
+  const r = Math.hypot(x, z);
+  if (r < 800) return 1;
+  return 1 + (0.6 * smooth(800, 1200, r) + 1.4 * smooth(1900, 2500, r)) * (1 - smooth(-450, -150, inland(x, z)));
+}
 /** past the end of the sea: the nearest point back inside */
 export function keepInSea(x: number, z: number): [number, number] | null {
   const r = Math.hypot(x, z);
@@ -319,5 +326,25 @@ export function signsNear(x: number, z: number, rad: number, out: Sign[] = []): 
       out.push({ x: sx, z: sz, yaw: Math.atan2(GATE.x - sx, GATE.z - sz) });
     }
   }
+  return out;
+}
+
+// ------------------------------------------------------------------ ice grottos
+// Some of the big bergs have a hole in their foot under the water: a cave mouth with a glow coming out of it. Swim down
+// into it and you come up in a grotto inside the ice, with a treasure chest (grotto.ts). The same bergs for everybody.
+export interface Grotto { /** the berg's id (also its chest's id) */ id: number; x: number; y: number; z: number; /** the way out of the ice (radians) */ ang: number }
+export function grottoOf(f: Ice): Grotto | null {
+  if (f.kind === "floe" || f.prof[0][1] < 9 || hash(f.id % 100000, 7, 91) > 0.55) return null;
+  const ang = hash(f.id % 100000, 7, 92) * Math.PI * 2, c = Math.cos(ang), s = Math.sin(ang);
+  // (out along that bearing to where the ice's foot is 3 m under the sea)
+  for (let d = 2; d < f.reach * 1.3; d += 0.5) {
+    const x = f.x + c * d, z = f.z + s * d, h = iceHeight(f, x, z);
+    if (h < -3) return Number.isFinite(h) ? { id: f.id, x, y: h, z, ang } : null;
+  }
+  return null;
+}
+export function grottosNear(x: number, z: number, rad: number, out: Grotto[] = []): Grotto[] {
+  out.length = 0;
+  for (const f of iceNear(x, z, rad, [], false, true)) { const g = grottoOf(f); if (g) out.push(g); }
   return out;
 }

@@ -6,6 +6,14 @@ export interface Update { date: string; title: string; items: string[] }
 
 export const UPDATES: Update[] = [
     {
+        date: "2026-12-16", title: "A faster way north, and treasure in the ice",
+        items: [
+            "Past the islets a strong ocean current now carries every boat and raft along, up to three times as fast. The long sail to the Arctic (and home again) takes a fraction of the time.",
+            "Some of the big icebergs hide a secret: a hole in their foot under the water, with a blue glow shining up out of it (look for the shimmer on the surface).",
+            "Dive down and swim into the hole: you come up in a grotto inside the ice, with icicles, glowing crystals and a treasure chest. Dive back down through the pool to swim out.",
+        ],
+    },
+    {
         date: "2026-12-15", title: "The Ice Gate and a hidden Christmas village",
         items: [
             "Sail north to the Arctic and go ashore: the ice coast now slopes gently down into the sea, so you can step off your raft and walk straight up onto the land.",

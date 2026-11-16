@@ -5,6 +5,8 @@ import { coldAt, inSeaWorld } from "./world/arctic";
 import { ArcticView, Snowfall } from "./world/arcticView";
 import { GATE, GATE_A, gateDist, NorthGate } from "./world/northgate";
 import { XmasVillage } from "./world/xmas";
+import { IceGrottos } from "./world/grotto";
+import type { Grotto } from "./world/arctic";
 import {
     Color3,
     CascadedShadowGenerator,
@@ -608,6 +610,17 @@ async function main() {
     const sites = new SurfaceSites(game.ugRoot as unknown as THREE.Scene, sitePlan, vegetation.colliders, q.shadows);
     game.under.sites = sites;
     const caves = new CaveView(scene, game, clock, q.shadows);
+    // the ice grottos: a hole in the foot of some big bergs, under the water; a treasure chest inside
+    const grottos = new IceGrottos(scene, arctic.bergMaterial, game.natureRoot as unknown as THREE.Object3D, game.deepSea);
+    grottos.say = (t) => game.hud.message(t);
+    (window as unknown as { grottos: IceGrottos }).grottos = grottos;
+    let grottoGoing = false;
+    const grottoGo = (g: Grotto | null) => {
+        if (grottoGoing) return;
+        grottoGoing = true;
+        game.hud.fade(true);
+        setTimeout(() => { if (g) grottos.enter(g, player); else grottos.leave(player); game.hud.fade(false); game.sfx.splash(0.6); grottoGoing = false; }, 400);
+    };
     // the mountain stream and its waterfall (the new island only)
     // the sea floor: rocks, kelp, seagrass, corals and shells (only near the sea; nothing of it exists inland)
     const seabed = new Seabed(scene, clock, () => sun.diffuse, q);
@@ -1059,6 +1072,13 @@ async function main() {
             if (xmas.active && xmas.atExitGate(player.pos.x, player.pos.z)) xmasGo(false);
             if (!xmas.active && !xmasGoing && xmas.contains(player.pos.x, player.pos.z)) player.teleport(GATE.x - Math.cos(GATE_A) * 9, heightAt(GATE.x - Math.cos(GATE_A) * 9, GATE.z - Math.sin(GATE_A) * 9), GATE.z - Math.sin(GATE_A) * 9, GATE.yaw);
             xmas.update(dt);
+            {
+                const g = grottos.update(dt, player.pos, player.mode === "swim", game.under.active || xmas.active || !inSeaWorld(player.pos.x, player.pos.z));
+                if (g) grottoGo(g);
+                if (grottos.wantsOut(player.pos.x, player.pos.y, player.pos.z)) grottoGo(null);
+                // (back from a reload inside one: out on the island's beach)
+                if (!grottos.active && !grottoGoing && grottos.contains(player.pos.x, player.pos.z)) player.teleport(0, heightAt(0, 0) + 0.5, 0, 0);
+            }
             if (lava.active && !lava.contains(player.pos.x, player.pos.z)) { lava.leave(player); player.teleport(player.pos.x, heightAt(player.pos.x, player.pos.z), player.pos.z, player.yaw); }
             // (jump to climb back out of the helicopter before it takes off)
             if (lava.seated && input.jumpQueued) { if (lava.getOut()) input.jumpQueued = false; }
@@ -1193,7 +1213,7 @@ async function main() {
             // usage reporting: which level the player is in (levels have no single entry point, so it is looked up here every 2 s)
             if ((levelT -= dt) < 0) {
                 levelT = 2;
-                const where = game.warp.inLevel ? "warp" : xmas.active ? "xmas" : lava.active ? "lava" : desert.active ? "desert" : trial.active ? "tiles" : hide.active ? "hide" : cat.active ? "cats"
+                const where = game.warp.inLevel ? "warp" : xmas.active ? "xmas" : grottos.active ? "grotto" : lava.active ? "lava" : desert.active ? "desert" : trial.active ? "tiles" : hide.active ? "hide" : cat.active ? "cats"
                     : camp.active ? "campaign" : game.under.town?.active ? "town" : locs.active ? "locations" : air.active ? "airstrip" : dive.active ? "skydive" : sky.active ? "sky" : "";
                 if (where !== lastLevel) { lastLevel = where; if (where) track("level", { n: where }); }
             }

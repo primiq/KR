@@ -70,6 +70,15 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Sea current and ice grottos**: `seaCurrent(x, z)` in arctic.ts (1 near the island, 1.6 among the islets, up to 3
+  from about 2.5 km out, back to 1 before the Arctic coast) multiplies boat and raft travel in `Boats.drive` and in the
+  remote prediction; a message the first time it catches you. Grottos: `grottoOf(berg)` (non-floe bergs over 9 m tall,
+  about half of them) puts a mouth where the berg's foot is 3 m under the sea; `world/grotto.ts` (`IceGrottos`) draws
+  mouths within 380 m (dark hole in the slope, glowing rim, a shimmer column to the surface), and a swimmer within
+  2.6 m goes in (fade). The grotto is one room at x = -16 km, y = 30 (dome of berg ice, icicles, crystals, a pool to
+  come up in and dive out of, the ocean mesh hidden while inside); its chest is a `DeepChest` with the berg's id
+  (saved, synced and refilled like the deep sea's). `window.grottos.around(x, z, r)` lists them (tests).
+
 - **Ice Gate and the Christmas village**: `world/arctic.ts` adds the wall ring (`wallR(a)` = coast + 650 m, `GATE_A` due
   north, `GATE`, `wallClamp` used in player.ts so nobody walks through it, `signsNear` for the signs within 0.5 rad of
   north). `world/northgate.ts` draws the wall (one ribbon either side of you, rebuilt as you go), the gate (deep blue

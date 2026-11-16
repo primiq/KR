@@ -12,7 +12,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { heightAt } from './island';
-import { keepInSea, ringStorm } from './arctic';
+import { keepInSea, ringStorm, seaCurrent } from './arctic';
 import { CELL, type MatKey, type PieceKind, pieceGeometry, RAIL_H, STAIR_DIRS, WALL_H } from '../game/building';
 
 let WOOD: { slab: THREE.Material } | null = null;
@@ -721,6 +721,7 @@ export class Boats {
   /** the raft I drive for its engine without holding the oar (nobody else steers it): see update */
   private pilot: Boat | null = null;
   private bonkT = 0;
+  private curSaid = false;
   /** the boat I'm standing on (or swimming beside: null), and whether I hold its wheel */
   on: Boat | null = null;
   atHelm = false;
@@ -1163,7 +1164,8 @@ export class Boats {
       }
       else if (b.helm !== null) {
         // somebody else steers: follow what they say (and guess ahead a little)
-        b.tx += -Math.sin(b.tyaw) * b.tv * dt + b.ex * dt; b.tz += -Math.cos(b.tyaw) * b.tv * dt + b.ez * dt;
+        const cu = seaCurrent(b.tx, b.tz);
+        b.tx += (-Math.sin(b.tyaw) * b.tv + b.ex) * dt * cu; b.tz += (-Math.cos(b.tyaw) * b.tv + b.ez) * dt * cu;
         const k = 1 - Math.exp(-dt * 6);
         b.x += (b.tx - b.x) * k; b.z += (b.tz - b.z) * k;
         let d = b.tyaw - b.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); b.yaw += d * k; b.yawV = d * 2;
@@ -1242,7 +1244,11 @@ export class Boats {
     const st = this.storm;
     if (st > 0) { b.yawV += st * Math.sin(time * 0.9 + Math.sin(time * 0.37) * 2) * 0.35 * dt; b.v -= st * 0.5 * dt * Math.sign(b.v); }
     b.yaw += b.yawV * dt;
-    const nx = b.x - Math.sin(b.yaw) * b.v * dt + b.ex * dt, nz = b.z - Math.cos(b.yaw) * b.v * dt + b.ez * dt;
+    // (the open sea's current carries you along much faster than you row or sail: see seaCurrent)
+    const cur = seaCurrent(b.x, b.z);
+    if (cur > 2 && !this.curSaid && (Math.abs(b.v) > 2 || Math.hypot(b.ex, b.ez) > 2)) { this.curSaid = true; this.say?.('A strong current catches you: the open sea flies by.'); }
+    if (cur < 1.2) this.curSaid = false;
+    const nx = b.x + (-Math.sin(b.yaw) * b.v + b.ex) * dt * cur, nz = b.z + (-Math.cos(b.yaw) * b.v + b.ez) * dt * cur;
     const clear = (rf ? raftAfloat(rf, nx, nz, b.yaw, 0.55) : this.afloat(nx, nz, b.yaw, 0.9))
       && !this.list.some((o) => o !== b && Math.hypot(o.x - nx, o.z - nz) < reach(o) + reach(b) - 1);
     if (clear) { b.x = nx; b.z = nz; }
