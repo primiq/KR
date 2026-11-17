@@ -70,6 +70,12 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Soak test and Bora armour**: `tests/smoke/soak.cjs` (`npm run soak`, needs a preview server) found no leak over
+  4 and 6 laps (heap about 385 MB on low; only the islets' per-variant instanced meshes appear once). Bora's armour:
+  the pieces hang on the puppet's joints, and `makeBora` hid every puppet mesh each frame; avatars.ts `setArmor` marks
+  them `userData.armor` and bora.ts `keep` spares them (they ride on the puppet, so they are cut for the classic
+  proportions).
+
 - **Touch pass** (plan 23): `#flute-keys` (8 buttons built in game.ts, `fluteKey` held note; body class `fluting`,
   z-index above `#zone-left`, which covers the left 45% of the screen and swallows taps under it); body class
   `strumming` shows `#build-tools` (the ⟳ chord button) while the guitar is held; a `max-height: 460px` block in

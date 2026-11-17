@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "build:cf": "npm run fetch-assets && npm run build",
     "test": "vitest run",
-    "smoke": "node tests/smoke/smoke.mjs"
+    "smoke": "node tests/smoke/smoke.mjs",
+    "soak": "node tests/smoke/soak.cjs"
   },
   "dependencies": {
     "@babylonjs/core": "^9.32.0",

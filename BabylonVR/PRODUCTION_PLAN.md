@@ -102,7 +102,7 @@ vertices in about 1400 meshes.
 16. PARTLY DONE (net/bora.ts pose and makeBoraArm allocate nothing per frame; the sweep of game.update, avatars, vegetation, boats is still to do) **Garbage per frame.** `net/bora.ts` `pose()` and `makeBoraArm.pose()` allocate quaternions and vectors every frame
     (`clone()`, `new`). Hoist them. Do the same sweep over the hot paths named in `progress.md` (`game.update`,
     `avatars.update`, `vegetation.update`, `boats`): no `new` or array literals per frame per object.
-17. **Long session check.** Run the harness for 30 minutes of scripted play (walk, chop, build, sail, enter and leave a
+17. DONE (tests/smoke/soak.cjs, `npm run soak`: 4 and 6 lap runs, island, islets, bergs, Arctic, Christmas village and back; heap steady at about 385 MB on low, meshes, materials and textures flat after the caches fill; no leak found) **Long session check.** Run the harness for 30 minutes of scripted play (walk, chop, build, sail, enter and leave a
     level twice, open menus) and record heap, textures, geometries, meshes at 5 minute marks. Anything that grows
     without bound is a leak: fix it. Known suspects: materials cached by colour key in `net/bora.ts` (`mats`,
     `skinTex`) and in the mirror, never freed; the customise preview's engine.
@@ -112,7 +112,7 @@ vertices in about 1400 meshes.
 
 ## Phase 4: polish players will notice
 
-19. **Bora: finish him.** Armour is not drawn on Bora; sleeve and arm holes are ragged (add a hem ring of geometry at
+19. PARTLY DONE (armour now shows on Bora: it hung on his hidden puppet and was hidden with it; the hems, the pose checks and the VR hands still to do, the last with the owner on a headset) **Bora: finish him.** Armour is not drawn on Bora; sleeve and arm holes are ragged (add a hem ring of geometry at
     each cut edge in `garments()`); check every pose (sitting, lying on the lounger, swimming, dead, sleeping,
     driving, in the sub) against the classic body in screenshots and fix what looks wrong; his fist for other
     players uses fixed finger angles: check against a held hatchet, spear and torch. VR hands are untested on a

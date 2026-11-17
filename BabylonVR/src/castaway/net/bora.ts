@@ -515,8 +515,9 @@ export function makeBora(R: PlayerRig, look: Look): BoraBody | null {
     plate.position.z = T.chest.z - 0.01 - bz;
   }
 
-  // the puppet's own meshes stay out of sight (it still carries the held tool, the name plate and the armour)
-  const keep = (o: THREE.Object3D) => { for (let p: THREE.Object3D | null = o; p; p = p.parent) if (p.name === 'nameplate' || p.userData.held || p === root) return true; return false; };
+  // the puppet's own meshes stay out of sight (it still carries the held tool, the name plate and the armour: worn pieces
+  //  are marked `userData.armor`, see avatars.ts setArmor)
+  const keep = (o: THREE.Object3D) => { for (let p: THREE.Object3D | null = o; p; p = p.parent) if (p.name === 'nameplate' || p.userData.held || p.userData.armor || p === root) return true; return false; };
   const puppetMeshes: THREE.Object3D[] = [];
   R.rig.traverse((o) => { if ((o as THREE.Mesh).isMesh && !keep(o)) puppetMeshes.push(o); });
 

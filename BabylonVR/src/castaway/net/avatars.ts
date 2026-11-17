@@ -256,6 +256,7 @@ class Avatar {
 
   /** tiers worn as one number: head*100 + chest*10 + legs (each 0..3) */
   private setArmor(code: number) {
+    type ArmorPart = THREE.Mesh | null;
     if (code === this.armorCode) return;
     this.armorCode = code;
     for (const o of this.armorParts) { o.parent?.remove(o); (o as THREE.Mesh).geometry?.dispose(); }
@@ -263,11 +264,15 @@ class Avatar {
     if (!code) return;
     const mk = buildArmor([Math.floor(code / 100) % 10, Math.floor(code / 10) % 10, code % 10], this.shadowsOn);
     const first = mk();
+    // (Bora wears the same pieces, on his puppet's joints: marked so his body does not hide them with the puppet's own)
+    const tag = (m: ArmorPart) => { if (m) m.userData.armor = true; return m; };
+    for (const k of ['head', 'chest', 'thigh', 'shin'] as const) tag(first[k]);
     if (first.head) { this.R.head.add(first.head); this.armorParts.push(first.head); }
     if (first.chest) { this.R.body.add(first.chest); this.armorParts.push(first.chest); }
     if (first.thigh && first.shin) {
       for (let i = 0; i < 2; i++) {
         const a = i === 0 ? first : mk();
+        tag(a.thigh); tag(a.shin);
         this.R.thighs[i].add(a.thigh!); this.R.knees[i].add(a.shin!); this.armorParts.push(a.thigh!, a.shin!);
       }
     }
