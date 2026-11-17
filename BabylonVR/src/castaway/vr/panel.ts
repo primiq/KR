@@ -5,6 +5,7 @@ import type { Game } from "../game/game";
 import { ARMOR_SLOT_LABEL, ARMOR_SLOTS, ITEMS, type ItemId } from "../game/items";
 import { canAfford, costHave, costLabel, CRAFT_LIST, craftGroup, GROUP_LABEL } from "../game/recipes";
 import { PHRASES } from "../net/chat";
+import { MAP_ZMIN } from "../ui/map";
 
 const iconCache = new Map<string, string>();
 /** Castaway's item icons are inline SVG: as data URLs they work as GUI images. */
@@ -92,6 +93,7 @@ function slotControl(name: string, size: number): { root: Button; img: Image; cn
  * are looking at, messages) and a floating bag / crafting panel you point at with the right hand's laser. Both read
  * the same Hud state as the flat-screen HTML overlay and call the same actions, so they always agree.
  */
+
 export class VRPanel {
     private wrist: Mesh;
     private wristUI: AdvancedDynamicTexture;
@@ -146,6 +148,7 @@ export class VRPanel {
     private mapPane!: Rectangle;
     private mapImg!: Image;
     private mapCanvas = document.createElement("canvas");
+    // (out at sea, past the island map: opens zoomed out to a few kilometres round you, see setMapOpen)
     private mapZoom = 1.6;
     private mapT = 0;
     private chatPane!: StackPanel;
@@ -700,6 +703,9 @@ export class VRPanel {
     private setExtra(t: "map" | "chat" | null) {
         this.extra = t; this.menuOpen = false; this.gfxOpen = false; this.mapT = 0; this.dirty = true;
         this.game.map.boost = t === "map";
+        // (out at sea, off the island map: open on a chart a few kilometres round you)
+        const p = this.game.player.pos;
+        if (t === "map") this.mapZoom = Math.hypot(p.x, p.z) > 335 ? 670 / 3200 : Math.max(1, this.mapZoom);
     }
 
     /** the map: Castaway's map drawn into a canvas of its own; point at it and pull the trigger to ping a spot */
@@ -740,11 +746,17 @@ export class VRPanel {
             const x = Button.CreateSimpleButton(`z${label}`, label);
             x.width = "280px"; x.height = "92px"; x.color = INK; x.fontSize = 38; x.fontWeight = "bold"; x.cornerRadius = 26; x.thickness = 0; x.background = ACC;
             x.paddingLeft = "8px"; x.paddingRight = "8px";
-            x.onPointerUpObservable.add(() => { this.mapZoom = Math.max(1, Math.min(6, this.mapZoom * f)); this.mapT = 0; });
+            x.onPointerUpObservable.add(() => { this.mapZoom = f === 0 ? (this.mapZoom > MAP_ZMIN * 1.01 ? MAP_ZMIN : 1.6) : Math.max(MAP_ZMIN, Math.min(6, this.mapZoom * f)); this.mapT = 0; });
             zrow.addControl(x);
+            return x;
         };
         zb("Zoom +", 1.5); zb("Zoom −", 1 / 1.5);
-        const help = new TextBlock("mapHelp", "You are the white arrow. North is up.\n\nIn a room with friends, point at the map (or click it) to ping that spot for everyone.");
+        // (all the way out: the whole sea, the islets, the ice and the Arctic, centred on the island; again: back to you)
+        const wb = zb("Whole sea", 0); wb.width = "560px"; wb.background = "rgba(255,255,255,.14)"; wb.color = TXT;
+        zrow.removeControl(wb);
+        const wrow = new StackPanel("wrow"); wrow.isVertical = false; wrow.height = "110px"; wrow.addControl(wb);
+        side.addControl(wrow);
+        const help = new TextBlock("mapHelp", "You are the white arrow. North is up. Zoom out to see the sea: the islets, the ice and the Arctic.\n\nIn a room with friends, point at the map (or click it) to ping that spot for everyone.");
         help.height = "420px"; help.color = TXT; help.fontSize = 34; help.textWrapping = true;
         help.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
         side.addControl(help);
@@ -965,7 +977,8 @@ export class VRPanel {
             this.mapT -= _dt;
             if (this.mapT <= 0) {
                 this.mapT = 0.25;
-                g.map.setView(g.player.pos.x, g.player.pos.z, this.mapZoom);
+                const whole = this.mapZoom <= MAP_ZMIN * 1.01;
+                g.map.setView(whole ? 0 : g.player.pos.x, whole ? 0 : g.player.pos.z, this.mapZoom);
                 g.map.render(this.mapCanvas.getContext("2d")!, this.mapCanvas.width);
                 this.mapImg.markAsDirty();
             }

@@ -133,7 +133,7 @@ export const ITEMS = {
     icon: svg('<path d="M4 25c3-7 7-11 12-11s9 4 12 11z" fill="#d6ad6b"/><path d="M9 25c2-4 4-6 7-6s5 2 7 6z" fill="#e8c88a"/><g fill="#b98a4c"><circle cx="11" cy="22" r="0.9"/><circle cx="18" cy="20" r="0.8"/><circle cx="22" cy="23" r="0.9"/><circle cx="15" cy="24" r="0.7"/></g>'),
   },
   fiber: {
-    id: 'fiber', name: 'Plant Fiber', stack: 1000, kind: 'resource',
+    id: 'fiber', name: 'Plant Fibre', stack: 1000, kind: 'resource',
     desc: 'Tough strands from palm fronds and bushes. Binds tools and makes cloth.',
     icon: svg('<g stroke-linecap="round" fill="none"><path d="M9 28C8 18 12 9 16 4" stroke="#a8bd5a" stroke-width="2.6"/><path d="M14 28c0-9 2-16 5-22" stroke="#c4d37a" stroke-width="2.6"/><path d="M20 28c0-9 3-15 8-19" stroke="#8fa748" stroke-width="2.6"/><path d="M6 21h22" stroke="#7a5a30" stroke-width="3"/></g>'),
   },

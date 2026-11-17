@@ -70,6 +70,13 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Sea chart on the map** (plan 26): `MapView.chart` draws below the island texture when zoomed out (`zoom < 1`, down
+  to `MAP_ZMIN` = the whole sea): the islets band, drift ice and berg rings, the Arctic coast (`landShore`) to the wall
+  (`wallR`), islets and wrecks (`featuresNear`), the Ice Gate once you have been within 1.5 km (pref
+  `castaway.gateSeen`), and the bergs themselves (`iceNear`) when the view is under 7 km. The grid and scale bar step
+  100 m / 500 m / 1, 2, 5 km. The menu board's map (vr/panel.ts) has a Whole sea button and opens on a 3.2 km chart
+  when you are off the island. Text pass (plan 24): "Plant Fibre".
+
 - **Look and feel pass**: terrain.ts grass and jungle albedo brightened (the ground under the blades reads as lawn);
   `Vegetation.setGrassLight(day)` dims the grass materials' albedo at night (blades glowed against the ground).
   atmosphere.ts: the sky dome's own sun never goes below `SKY_MIN` (0.2) and `luminance` (a linear scale in this

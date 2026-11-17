@@ -130,14 +130,14 @@ vertices in about 1400 meshes.
 23. **Touch controls pass.** On a phone: every action reachable (the flute's 8 notes, the drum, painting, the sub's
     controls, the raft helm, the compass), buttons not under the thumbs' resting places, safe-area insets respected,
     the crafting swipe (done) repeated for every other scrolling list (inventory, map legend, What's new).
-24. **Text pass.** Read every string in the game once (`ITEMS` names and descriptions, prompts, messages, What's new,
+24. DONE (no long dashes anywhere; item names checked; "Plant Fiber" renamed "Plant Fibre" to match the British spelling used elsewhere) **Text pass.** Read every string in the game once (`ITEMS` names and descriptions, prompts, messages, What's new,
     the menus): consistent capitals, British spelling as used so far, no placeholder text, no developer words
     (dev mode stays hidden unless enabled).
 25. PARTLY DONE (a daytime breeze added; levels and "every action has a sound" not audited by ear: no audio in the build container) **Sound pass.** With the bird beeps gone, the island by day is quiet. Add a soft, non-tonal daytime ambience layer
     (wind in palms, distant surf already exists: check levels) and make sure every action has a sound and none
     clips: craft, place, pick up, eat, drink, hurt, level up tools, door, raft oar, sub. Synthesised like the rest;
     no new audio files unless small.
-26. **Map.** `progress.md` lists "Map does not show the open sea or the Arctic". Add a zoomed-out page: the rings, the
+26. DONE (ui/map.ts chart: zooms out to the whole sea, rings, islets and wrecks, the Arctic coast and wall, the Ice Gate once seen, icebergs when closer; Whole sea button on the menu board) **Map.** `progress.md` lists "Map does not show the open sea or the Arctic". Add a zoomed-out page: the rings, the
     islets you have visited, the Arctic coast, your boats and the compass's home bearing.
 27. **Known rough edges from `progress.md`.** The far Arctic coast reads as a thin dark line from the berg zone; penguin
     huddles are loose; the raft's deck cut-out is a rectangle (an L-shaped raft shows a gap in a wave): replace the
