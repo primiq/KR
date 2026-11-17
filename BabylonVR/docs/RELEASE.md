@@ -20,5 +20,5 @@ If a release is bad, revert the commit(s) on `master` (`git revert`, never a for
 rebuilds the reverted state. Players' saves are forward compatible only, so a rollback past a save layout change
 (`LAYOUT` in `net/save.ts`) needs a migration check first.
 
-Last known good: `85e5f18` (2026-11-15, all checks passed locally). Update this line after each release you have
+Last known good: `60f8913` (2026-11-17, typecheck, unit tests, build and browser smoke tests green in CI; soak test clean). Update this line after each release you have
 checked live.
