@@ -126,6 +126,8 @@ export class Game {
     readonly guitar: Guitar;
     /** the flute: blow it (hold the button), the finger buttons or keys 1-8 are the notes */
     readonly flute: Flute;
+    /** the flute note button held on a touch screen (-1: none) */
+    private fluteKey = -1;
     private fluteHinted = false;
     /** the drum you are playing, and every drum's sound */
     readonly drum: Drum;
@@ -373,6 +375,17 @@ export class Game {
         this.boats.say = (t) => this.hud.message(t);
         this.boats.sfx = this.sfx as never;
         this.boats.shake = (a) => this.player.shake(a);
+        // the flute's note buttons (touch screens): hold one to play it
+        {
+            const box = document.getElementById("flute-keys");
+            if (box) NOTE_NAMES.forEach((n, i) => {
+                const b = document.createElement("button"); b.type = "button"; b.textContent = i === 7 ? "Do'" : n;
+                const end = () => { if (this.fluteKey === i) this.fluteKey = -1; b.classList.remove("on"); };
+                b.addEventListener("pointerdown", (e) => { e.preventDefault(); b.setPointerCapture(e.pointerId); this.fluteKey = i; b.classList.add("on"); });
+                b.addEventListener("pointerup", end); b.addEventListener("pointercancel", end); b.addEventListener("lostpointercapture", end);
+                box.appendChild(b);
+            });
+        }
         // raft engines switched on, on a boat's deck: the way they face (summed; a pair facing the same way is no faster)
         this.boats.engines = (b) => {
             let x = 0, z = 0, n = 0;
@@ -1102,6 +1115,9 @@ export class Game {
                 }
             } else this.guitar.reset();
             // the flute: it sounds as long as you blow it
+            document.body.classList.toggle("fluting", !!def?.flute && !this.vr.active);
+            // (the guitar's chord button is the ⟳ of the build tools: shown while it is in your hands)
+            document.body.classList.toggle("strumming", def?.id === "guitar" && !this.vr.active);
             {
                 let breath = 0, note = this.flute.note, oct = false;
                 if (def?.flute) {
@@ -1110,13 +1126,15 @@ export class Game {
                         if (v?.mouth) { breath = v.breath > 0.06 ? 0.15 + 0.85 * v.breath : 0; note = v.bits; oct = v.oct; }
                     } else {
                         if (input.rotateQueued) { this.flute.note = (this.flute.note + input.rotateQueued + 32) % 8; input.rotateQueued = 0; hud.message(`Note: ${NOTE_NAMES[this.flute.note]}`); }
-                        breath = input.attackHeld ? 0.75 : 0; note = this.flute.note; oct = input.wantsSprint;
+                        // (on a touch screen the eight note buttons play directly: hold one to blow that note)
+                        if (this.fluteKey >= 0) this.flute.note = this.fluteKey;
+                        breath = input.attackHeld || this.fluteKey >= 0 ? 0.75 : 0; note = this.flute.note; oct = input.wantsSprint;
                     }
                     // (blowing a flute is not hitting anything)
                     input.attackQueued = false;
                     if (!this.fluteHinted) {
                         this.fluteHinted = true;
-                        hud.message(this.vr.active ? "Flute: bring it to your lips and squeeze the right trigger to blow. X, Y and the left trigger are your fingers; the left grip plays higher." : input.touch ? "Flute: hold HIT to blow, ⟳ changes the note" : "Flute: hold the mouse button to blow; keys 1-8 play the notes while you blow, Shift plays higher");
+                        hud.message(this.vr.active ? "Flute: bring it to your lips and squeeze the right trigger to blow. X, Y and the left trigger are your fingers; the left grip plays higher." : input.touch ? "Flute: hold a note button to play it (» held plays higher)" : "Flute: hold the mouse button to blow; keys 1-8 play the notes while you blow, Shift plays higher");
                     }
                 }
                 this.flute.update(dt, breath, note, oct, player.pos);

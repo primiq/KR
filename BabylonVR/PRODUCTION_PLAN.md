@@ -127,7 +127,7 @@ vertices in about 1400 meshes.
 22. DONE (a First steps card on the HUD, ui/goals.ts; the owner still to play it in VR, where the HUD card is not shown) **First minutes.** Play the first 10 minutes as a new player on PC, phone and (owner) VR and write down every
     moment where it is unclear what to do. Fix with the existing prompt and narrator systems, not new UI: what to
     pick up first, how to craft, how to open the menu on each device, how to save (it is automatic: say so once).
-23. **Touch controls pass.** On a phone: every action reachable (the flute's 8 notes, the drum, painting, the sub's
+23. DONE (flute note buttons, the guitar chord button shown while held, landscape layout: top buttons in a row, build tools left of the action buttons; drum, painting, sub, raft helm and compass already reachable; lists already scroll) **Touch controls pass.** On a phone: every action reachable (the flute's 8 notes, the drum, painting, the sub's
     controls, the raft helm, the compass), buttons not under the thumbs' resting places, safe-area insets respected,
     the crafting swipe (done) repeated for every other scrolling list (inventory, map legend, What's new).
 24. DONE (no long dashes anywhere; item names checked; "Plant Fiber" renamed "Plant Fibre" to match the British spelling used elsewhere) **Text pass.** Read every string in the game once (`ITEMS` names and descriptions, prompts, messages, What's new,

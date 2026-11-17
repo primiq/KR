@@ -167,12 +167,18 @@ body:not(.touch) #help-touch { display: none; }
 #build-chip small { display: block; opacity: .65; font-weight: 500; font-size: 11px; }
 #build-chip.bad b.cost { color: #ff9a8a; }
 #build-tools { position: absolute; right: calc(14px + env(safe-area-inset-right)); bottom: calc(238px + env(safe-area-inset-bottom)); display: none; flex-direction: column; gap: 10px; pointer-events: none; }
-body.touch.placing #build-tools { display: flex; }
+body.touch.placing #build-tools, body.touch.strumming #build-tools { display: flex; }
 #build-tools button { pointer-events: auto; width: 50px; height: 50px; border-radius: 50%; border: 2px solid rgba(255,255,255,.55); background: rgba(255,255,255,.14); color: #fff; font-size: 22px; }
 #mode-tool { position: absolute; right: calc(14px + env(safe-area-inset-right)); bottom: calc(358px + env(safe-area-inset-bottom)); display: none; pointer-events: none; }
 body.touch.holdmode #mode-tool { display: block; }
 #mode-tool button { pointer-events: auto; width: 50px; height: 50px; border-radius: 50%; border: 2px solid rgba(255,255,255,.55); background: rgba(255,255,255,.14); color: #fff; font-size: 22px; }
 body.placemode #mode-tool button { background: rgba(255,170,60,.55); border-color: #ffd28a; }
+/* the flute's eight notes on a touch screen (game.ts fills them): hold one to play it */
+#flute-keys { z-index: 3; position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(150px + env(safe-area-inset-bottom)); display: none; gap: 6px; pointer-events: none; }
+body.touch.fluting #flute-keys { display: flex; }
+#flute-keys button { pointer-events: auto; width: 44px; height: 54px; border-radius: 12px; border: 2px solid rgba(255,255,255,.5); background: rgba(10,30,40,.55); color: #fff; font: 700 13px system-ui, sans-serif; touch-action: none; }
+#flute-keys button.on { background: rgba(47,213,196,.75); color: #032; }
+@media (max-width: 520px) { #flute-keys { gap: 4px; } #flute-keys button { width: 36px; height: 48px; font-size: 11px; } }
 #build-tools #btn-piece { display: none; } body.touch.planning #build-tools #btn-piece { display: block; }
 #fade { position: fixed; inset: 0; z-index: 15; background: #02060a; opacity: 0; pointer-events: none; transition: opacity 1.1s ease; display: grid; place-items: center; color: #cfe; font-size: 20px; letter-spacing: .12em; }
 #fade.on { opacity: 1; pointer-events: auto; }
@@ -393,3 +399,14 @@ body.inwarp #bottom, body.inwarp #compass, body.inwarp #prompt, body.inwarp #cro
 #goals i { display: block; margin-top: 4px; font-style: normal; font-size: 10.5px; opacity: .6; letter-spacing: .04em; text-transform: uppercase; }
 #goals button { position: absolute; right: 4px; top: 3px; width: 22px; height: 22px; border: 0; background: transparent; color: #fff; opacity: .6; font-size: 15px; cursor: pointer; }
 @media (max-height: 460px) { #goals { font-size: 11.5px; width: min(220px, 40vw); } #goals span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; } }
+/* a phone on its side (short screen): the menu, bag and map buttons in a row along the top, out of the way of the jump
+   and sprint buttons; the build tools (⟳) to the left of the action buttons; the first steps card out of the way of the
+   flute's keys */
+@media (max-height: 460px) {
+  #btn-bag { top: calc(8px + env(safe-area-inset-top)); right: 56px; }
+  body.touch #btn-map { top: calc(8px + env(safe-area-inset-top)); right: 102px; }
+  #build-tools { right: calc(196px + env(safe-area-inset-right)); bottom: calc(80px + env(safe-area-inset-bottom)); }
+  #mode-tool { right: calc(196px + env(safe-area-inset-right)); bottom: calc(196px + env(safe-area-inset-bottom)); }
+  #flute-keys { bottom: calc(132px + env(safe-area-inset-bottom)); }
+  body.fluting #goals { display: none; }
+}

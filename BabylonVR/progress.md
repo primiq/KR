@@ -70,6 +70,11 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Touch pass** (plan 23): `#flute-keys` (8 buttons built in game.ts, `fluteKey` held note; body class `fluting`,
+  z-index above `#zone-left`, which covers the left 45% of the screen and swallows taps under it); body class
+  `strumming` shows `#build-tools` (the ⟳ chord button) while the guitar is held; a `max-height: 460px` block in
+  style.css puts menu, bag and map in a top row (the map button used to sit on the jump button in landscape).
+
 - **Rough edges** (plan 27): penguins.ts huddles spread by area (`0.12 + sqrt(ring) * HUD_R`, HUD_R 1.05 m);
   arcticView `stepTiles` builds the nearest missing land tile before any melt pool (it used to build every pool within
   600 m first, so you could land on undrawn ground). Testing note: high quality in the Arctic runs at about one frame in
