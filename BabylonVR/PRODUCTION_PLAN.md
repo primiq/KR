@@ -139,7 +139,7 @@ vertices in about 1400 meshes.
     no new audio files unless small.
 26. DONE (ui/map.ts chart: zooms out to the whole sea, rings, islets and wrecks, the Arctic coast and wall, the Ice Gate once seen, icebergs when closer; Whole sea button on the menu board) **Map.** `progress.md` lists "Map does not show the open sea or the Arctic". Add a zoomed-out page: the rings, the
     islets you have visited, the Arctic coast, your boats and the compass's home bearing.
-27. **Known rough edges from `progress.md`.** The far Arctic coast reads as a thin dark line from the berg zone; penguin
+27. DONE (huddles packed by area, radius 1.05 m; the raft cut-out done earlier with Raft.cover; the far coast no longer reads as a dark line since the ice beach and haze changes. Found on the way: Arctic land tiles waited for every melt pool within 600 m to be built first: the ground now comes first) **Known rough edges from `progress.md`.** The far Arctic coast reads as a thin dark line from the berg zone; penguin
     huddles are loose; the raft's deck cut-out is a rectangle (an L-shaped raft shows a gap in a wave): replace the
     box with up to 4 boxes per raft, one per row of tiles, within the shader's existing 4 slots or by raising them to
     8 (measure the shader cost).

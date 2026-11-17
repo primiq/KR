@@ -274,14 +274,6 @@ export class ArcticView {
         }
         for (const [k, p] of this.pools) if (!landNear || Math.hypot(p.x - cam.x, p.z - cam.z) > 700) { p.m.dispose(); this.pools.delete(k); }
         if (!landNear) return false;
-        // (the pools: a sheet of still, clear meltwater in each hollow)
-        for (const p of poolsNear(cam.x, cam.z, 600, this.poolTmp)) {
-            if (this.pools.has(p.id)) continue;
-            const d = MeshBuilder.CreateDisc("arcticPool", { radius: p.r * 1.04, tessellation: 28 }, this.scene);
-            d.rotation.x = Math.PI / 2; d.position.set(p.x, p.level, p.z); d.material = this.poolMat; d.isPickable = false;
-            this.pools.set(p.id, { m: d, x: p.x, z: p.z });
-            return true;
-        }
         let best: [number, number] | null = null, bd = Infinity;
         const R = NEAR_R + NEAR_T * 0.75;
         const i0 = Math.floor((cam.x - R) / NEAR_T), i1 = Math.floor((cam.x + R) / NEAR_T), j0 = Math.floor((cam.z - R) / NEAR_T), j1 = Math.floor((cam.z + R) / NEAR_T);
@@ -290,7 +282,18 @@ export class ArcticView {
             if (d > R || d >= bd || this.tiles.has(`${i},${j}`)) continue;
             bd = d; best = [i, j];
         }
-        if (!best) return false;
+        // (the ground first, nearest first, so you never stand on nothing; then the pools: a sheet of still, clear
+        //  meltwater in each hollow)
+        if (!best) {
+            for (const p of poolsNear(cam.x, cam.z, 600, this.poolTmp)) {
+                if (this.pools.has(p.id)) continue;
+                const d = MeshBuilder.CreateDisc("arcticPool", { radius: p.r * 1.04, tessellation: 28 }, this.scene);
+                d.rotation.x = Math.PI / 2; d.position.set(p.x, p.level, p.z); d.material = this.poolMat; d.isPickable = false;
+                this.pools.set(p.id, { m: d, x: p.x, z: p.z });
+                return true;
+            }
+            return false;
+        }
         const [i, j] = best;
         this.tiles.set(`${i},${j}`, { mesh: this.landMesh(i * NEAR_T, j * NEAR_T, NEAR_T, NEAR_STEP, this.landMat, true), key: `${i},${j}` });
         return true;

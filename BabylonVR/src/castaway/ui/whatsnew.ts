@@ -14,6 +14,7 @@ export const UPDATES: Update[] = [
             "By day you now hear a soft breeze in the palms, coming and going in slow gusts.",
             "New players get a small First steps card: gather, craft a hatchet, light a campfire, build a workbench, make a bed, and set out to sea. It ticks itself off as you go, and you can close it any time.",
             "The map now zooms out past the island to the whole sea: the islets and wrecks, the drift ice, the icebergs, the Arctic and its ice wall (and the Ice Gate, once you have found it). Opened out at sea it shows the icebergs round you. Press Whole sea to see everything at once.",
+            "Penguins huddle properly now, packed shoulder to shoulder. And when you land in the Arctic, the ground under you is drawn first (it used to wait for the melt pools round about).",
         ],
     },
     {

@@ -70,6 +70,11 @@ pictures and flags, guitar (strings in VR), drum (velocity and rim/centre), flut
 
 ## Recent work (newest first)
 
+- **Rough edges** (plan 27): penguins.ts huddles spread by area (`0.12 + sqrt(ring) * HUD_R`, HUD_R 1.05 m);
+  arcticView `stepTiles` builds the nearest missing land tile before any melt pool (it used to build every pool within
+  600 m first, so you could land on undrawn ground). Testing note: high quality in the Arctic runs at about one frame in
+  several seconds in the headless browser; test there on low.
+
 - **Sea chart on the map** (plan 26): `MapView.chart` draws below the island texture when zoomed out (`zoom < 1`, down
   to `MAP_ZMIN` = the whole sea): the islets band, drift ice and berg rings, the Arctic coast (`landShore`) to the wall
   (`wallR`), islets and wrecks (`featuresNear`), the Ice Gate once you have been within 1.5 km (pref
@@ -368,9 +373,6 @@ Plan and state:
   Auto-fullscreen is off by default now (opt-in setting).
 - Not yet verified on a real device: the new sounds (guitar, drum, flute), the flute's VR lip distance (0.33 m), the
   second storm in play, Ctrl+W keyboard lock in Edge.
-- The far Arctic coast reads as a thin dark line on the horizon from the berg zone.
-- Penguin huddles are a bit loose.
-- Map does not show the open sea or the Arctic.
 
 ## Testing notes (for whoever continues)
 

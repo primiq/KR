@@ -34,6 +34,9 @@ function merge(gs: THREE.BufferGeometry[]): THREE.BufferGeometry {
 }
 const egg = (rx: number, ry: number, rz: number, x: number, y: number, z: number, seg = 12) => new THREE.SphereGeometry(1, seg, Math.round(seg * 0.75)).scale(rx, ry, rz).translate(x, y, z);
 
+/** a huddle's radius (m) */
+const HUD_R = 1.05;
+
 export class Penguins {
   readonly group = new THREE.Group();
   private pens: Pen[] = [];
@@ -133,7 +136,8 @@ export class Penguins {
           p.a += H.spin * dt * (1.2 - p.ring * 0.4);
           p.ring = Math.max(0, p.ring - dt * 0.004);
           if (p.ring <= 0.02) p.ring = 1;
-          const r = 0.35 + p.ring * 1.7, tx = H.x + Math.cos(p.a) * r, tz = H.z + Math.sin(p.a) * r;
+          // (packed shoulder to shoulder: spread evenly over the huddle's area, about a metre across for a dozen)
+          const r = 0.12 + Math.sqrt(p.ring) * HUD_R, tx = H.x + Math.cos(p.a) * r, tz = H.z + Math.sin(p.a) * r;
           const dx = tx - p.x, dz = tz - p.z, d = Math.hypot(dx, dz);
           if (d > 0.05) { p.x += dx * Math.min(1, dt * 0.8); p.z += dz * Math.min(1, dt * 0.8); moving = d > 0.25; }
           // (huddlers face in, more or less, the same way: out of the wind)
@@ -191,7 +195,7 @@ export class Penguins {
         const p = this.pens[k * PER + i];
         p.on = i < Math.min(PER, c.n);
         p.hud = i % nh; p.a = Math.random() * Math.PI * 2; p.ring = Math.random(); p.walking = false; p.look = 0; p.flap = 0;
-        const H = hs[p.hud], r = 0.4 + p.ring * 1.6;
+        const H = hs[p.hud], r = 0.12 + Math.sqrt(p.ring) * HUD_R;
         p.x = H.x + Math.cos(p.a) * r; p.z = H.z + Math.sin(p.a) * r; p.yaw = Math.random() * 6.28;
       }
     }
